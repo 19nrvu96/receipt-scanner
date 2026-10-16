@@ -150,11 +150,12 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
     </div>
   </section>
 
-  <!-- ERROR -->
+   <!-- ERROR -->
   <section id="vError" class="hide">
-    <h2>Couldn't read that</h2>
+    <h2 id="errTitle">Couldn't read that</h2>
     <p class="sub" id="errMsg"></p>
     <img id="errImg" class="preview hide" alt="">
+    <button class="btn hide" id="btnRetry">🔄 Try again</button>
     <button class="btn sec" id="btnRetake">📷 Retake photo</button>
     <button class="btn sec" id="btnManual">✏️ Enter manually</button>
     <button class="btn ghost" id="btnCancelErr">Cancel</button>
