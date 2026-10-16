@@ -163,7 +163,8 @@ function buildReview(result, source) {
   $('fDate').value  = rows[0]?.['purchase date'] || today();
   $('fOrder').value = rows[0]?.['order number'] || '';
   $('fPay').value   = rows[0]?.['payment method'] || '';
-  $('fNotes').value = '';
+  $('fNotes').value = '';   $('fFees').value = state.meta.feeTotal || '';
+
 
   $('pChannel').textContent = state.channel;
   $('pMethod').textContent  = state.method;
@@ -191,7 +192,9 @@ function renderItems() {
     card.innerHTML = `
       <div class="row">
         <input class="chk" type="checkbox" ${r._sel ? 'checked' : ''} data-k="_sel" data-i="${i}">
-        <input class="name" value="${esc(r.item)}" data-k="item" data-i="${i}">
+                <input class="name" value="${esc(r.item)}" placeholder="Item name"
+               data-k="item" data-i="${i}">
+        <button class="rm" data-rm="${i}" aria-label="Remove">✕</button>
       </div>
       <div class="nums">
         <span>Qty</span>
@@ -220,7 +223,27 @@ function renderItems() {
     updateSave();
   };
 
+    box.onclick = e => {
+    const rm = e.target.dataset.rm;
+    if (rm === undefined) return;
+    if (state.rows.length === 1) { toast('Need at least one item', true); return; }
+    state.rows.splice(Number(rm), 1);
+    renderItems();
+  };
+
+  const add = document.createElement('button');
+  add.className = 'btn sec';
+  add.textContent = '+ Add another item';
+  add.onclick = () => {
+    state.rows.push({ _sel: true, item: '', quantity: 1, 'buy price': 0,
+      'total price': 0, 'additional cost': 0, 'total cost': 0, purpose: '',
+      _confidence: 'low' });
+    renderItems();
+  };
+  box.appendChild(add);
+
   recalc();
+
 }
 
 function recalc() {
@@ -487,6 +510,11 @@ $('pShared').onclick = () => {
 };
 
 $('btnSelAll').onclick = selectAll;
+$('fFees').oninput = () => {
+  if (!state) return;
+  state.meta.feeTotal = Number($('fFees').value) || 0;
+  recalc();
+};
 $('btnBulk').onclick   = bulkPurpose;
 $('btnSave').onclick   = saveToSheet;
 
