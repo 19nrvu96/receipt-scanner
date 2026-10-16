@@ -116,8 +116,10 @@ async function handleFile(file, source) {
   }
 }
 
-function showError(msg) {
+function showError(msg, canRetry) {
+  $('errTitle').textContent = canRetry ? 'Gemini is busy' : "Couldn't read that";
   $('errMsg').textContent = msg;
+  $('btnRetry').classList.toggle('hide', !canRetry || !imageData);
   if (imageData) {
     $('errImg').src = imageData.dataUrl;
     $('errImg').classList.remove('hide');
@@ -126,6 +128,23 @@ function showError(msg) {
   }
   show('vError');
 }
+
+async function retryExtract() {
+  if (!imageData) { toast('No image to retry', true); return; }
+  try {
+    show('vWork');
+    $('workMsg').textContent = 'Trying again…';
+    const result = await api('extract', {
+      imageBase64: imageData.base64,
+      mimeType: imageData.mimeType
+    });
+    buildReview(result, lastSource);
+  } catch (err) {
+    showError(err.message, /busy|503|429|overload/i.test(err.message));
+  }
+}
+
+$('btnRetry').onclick = retryExtract;
 
 /* ---------- review screen ---------- */
 function buildReview(result, source) {
