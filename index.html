@@ -42,8 +42,12 @@ p.sub{color:#666;font-size:14px;margin-bottom:16px}
 .card.low{border-left:4px solid #f5a623;background:#fffdf7}
 .row{display:flex;align-items:center;gap:10px}
 .chk{width:24px;height:24px;flex-shrink:0;accent-color:#0a84ff}
-.name{font-weight:600;flex:1;border:none;background:transparent;font-size:16px;
-      font-family:inherit;min-width:0;color:#1a1a1a}
+.name{font-weight:600;flex:1;font-size:16px;font-family:inherit;min-width:0;
+      color:#1a1a1a;background:#fff;border:1px solid #ddd;border-radius:8px;
+      padding:9px 10px}
+.name:placeholder-shown{border-color:#f5a623;background:#fffdf7}
+.rm{background:none;border:none;color:#c00;font-size:18px;padding:4px 6px;
+    cursor:pointer;flex-shrink:0}
 .nums{display:flex;gap:8px;align-items:center;margin:10px 0 0 34px;
       font-size:14px;color:#555;flex-wrap:wrap}
 .nums input{width:72px;padding:7px 8px;border:1px solid #ddd;border-radius:8px;
@@ -179,6 +183,8 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
     <div id="items"></div>
 
     <div class="meta">
+               <label>Delivery / booking fees (split across items)</label>
+      <input id="fFees" type="number" step="0.01" inputmode="decimal" placeholder="0.00">
       <label>Order / receipt number</label>
       <input id="fOrder" placeholder="Optional">
       <label>Payment method</label>
