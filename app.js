@@ -8,6 +8,7 @@ let CFG = { purposes: [], stores: [], payments: [] };
 let state = null;          // current receipt being reviewed
 let imageData = null;      // { base64, mimeType, dataUrl }
 let lastSource = 'cam';
+let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -110,15 +111,40 @@ async function handleFile(file, source) {
       imageBase64: imageData.base64,
       mimeType: imageData.mimeType
     });
-    buildReview(result, source);
+    lastResult = result;
+    showReview(result, source);
   } catch (err) {
     showError(err.message);
   }
 }
 
+// Review-screen failures are separate from extraction failures: the scan
+// already succeeded and is kept in lastResult, so no new Gemini request is needed.
+function showReview(result, source) {
+  try {
+    buildReview(result, source);
+  } catch (err) {
+    showRenderError(err);
+  }
+}
+
+function showRenderError(err) {
+  $('errTitle').textContent = 'Review screen failed';
+  $('errMsg').textContent = 'Your scan was read and is kept. Nothing was re-sent to Gemini. Tap Retry view. (' + err.message + ')';
+  $('btnRetry').textContent = '🔄 Retry view';
+  $('btnRetry').onclick = () => showReview(lastResult, lastSource);
+  $('btnRetry').classList.remove('hide');
+  $('btnRetake').classList.add('hide');
+  $('errImg').classList.add('hide');
+  show('vError');
+}
+
 function showError(msg, canRetry) {
   $('errTitle').textContent = canRetry ? 'Gemini is busy' : "Couldn't read that";
   $('errMsg').textContent = msg;
+  $('btnRetry').textContent = '🔄 Try again';
+  $('btnRetry').onclick = retryExtract;
+  $('btnRetake').classList.remove('hide');
   $('btnRetry').classList.toggle('hide', !canRetry || !imageData);
   if (imageData) {
     $('errImg').src = imageData.dataUrl;
@@ -138,7 +164,8 @@ async function retryExtract() {
       imageBase64: imageData.base64,
       mimeType: imageData.mimeType
     });
-    buildReview(result, lastSource);
+    lastResult = result;
+    showReview(result, lastSource);
   } catch (err) {
     showError(err.message, /busy|503|429|overload/i.test(err.message));
   }
