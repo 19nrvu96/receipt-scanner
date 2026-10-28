@@ -202,6 +202,15 @@ function buildReview(result, source) {
 
   if (meta.isRefund) toast('Refund detected — values are negative', false);
 
+  // Check items add up to the receipt total (catches single misread prices). Free — no API call.
+  if (meta.receiptTotal != null && rows.length) {
+    const itemsSum = rows.reduce((s, r) => s + (Number(r['total cost']) || 0), 0);
+    const expected = Number(meta.receiptTotal);
+    if (Math.abs(itemsSum - expected) > 0.02) {
+      toast('Items add to £' + itemsSum.toFixed(2) + ' but receipt total is £' + expected.toFixed(2) + ' — check prices', true);
+    }
+  }
+
    
    renderItems();
   show('vReview');
