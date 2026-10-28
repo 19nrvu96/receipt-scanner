@@ -175,33 +175,6 @@ function buildReview(result, source) {
 
   if (meta.isRefund) toast('Refund detected — values are negative', false);
 
-function findDupes() {
-  const groups = {};
-  state.rows.forEach((r, i) => {
-    const k = (r.item || '').trim().toLowerCase() + '|' + r['buy price'];
-    if (!k.startsWith('|')) (groups[k] = groups[k] || []).push(i);
-  });
-  return Object.values(groups).filter(g => g.length > 1);
-}
-
-function combineAll() {
-  const groups = findDupes();
-  if (!groups.length) { toast('No duplicate lines found', true); return; }
-  let merged = 0;
-  const drop = [];
-  groups.forEach(g => {
-    const keep = state.rows[g[0]];
-    for (let n = 1; n < g.length; n++) {
-      keep.quantity = Number(keep.quantity) + Number(state.rows[g[n]].quantity);
-      drop.push(g[n]);
-      merged++;
-    }
-  });
-  drop.sort((a, b) => b - a).forEach(i => state.rows.splice(i, 1));
-  renderItems();
-  toast('Merged ' + merged + ' duplicate line' + (merged > 1 ? 's' : ''));
-}
-
    
    renderItems();
   show('vReview');
@@ -286,7 +259,7 @@ function renderItems() {
     renderItems();
   };
 
-  if (findDupes().length) {
+  if (typeof findDupes === 'function' && findDupes().length) {
     const cmb = document.createElement('button');
     cmb.className = 'btn sec';
     cmb.textContent = '⇅ Combine duplicate lines';
