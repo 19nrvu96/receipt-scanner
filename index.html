@@ -57,6 +57,13 @@ p.sub{color:#666;font-size:14px;margin-bottom:16px}
 .split{margin:8px 0 0 0;padding:6px 12px;border:1px solid #ddd;border-radius:16px;
        background:#fff;font-size:13px;color:#555;font-family:inherit;cursor:pointer}
 .split.on{background:#0a84ff;color:#fff;border-color:#0a84ff}
+.big .count{margin-left:auto;background:#ff3b30;color:#fff;border-radius:12px;
+            padding:2px 9px;font-size:14px;font-weight:700}
+.qcard h3{font-size:16px;margin:0 0 4px}
+.qcard .qmeta{font-size:13px;color:#666;margin-bottom:6px;word-break:break-word}
+.qcard .sum{font-size:15px;margin-bottom:8px}
+.qcard .warn{font-size:13px;color:#b71c1c;background:#ffebee;padding:6px 9px;border-radius:8px;margin-bottom:8px}
+.qcard .duo .btn{margin-bottom:0}
 .duo{display:flex;gap:8px}
 .duo .btn{flex:1;padding:14px 8px;font-size:15px}
 select{width:100%;padding:11px;margin-top:10px;border:1px solid #ddd;border-radius:10px;
@@ -145,10 +152,22 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
     <p class="sub">Capture a purchase</p>
     <button class="big" id="btnCam"><span class="ico">📷</span> Scan Receipt</button>
     <button class="big" id="btnLib"><span class="ico">🖼️</span> From Photos</button>
+    <button class="big" id="btnEmails"><span class="ico">📧</span> <span id="emailLabel">Emailed receipts</span></button>
     <div class="status">
       <span id="homeStatus">Ready</span><br>
       <button class="link" id="btnReset">Change sheet connection</button>
     </div>
+  </section>
+
+  <!-- EMAIL QUEUE -->
+  <section id="vQueue" class="hide">
+    <div class="hdr">
+      <button class="back" id="btnQBack">‹</button>
+      <h2 style="margin:0;flex:1">Emailed receipts</h2>
+    </div>
+    <p class="sub" id="qSub"></p>
+    <div id="qList"></div>
+    <button class="btn sec" id="btnQRefresh">↻ Refresh</button>
   </section>
 
   <!-- WORKING -->

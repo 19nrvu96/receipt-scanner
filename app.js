@@ -12,7 +12,7 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview'];
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue'];
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -184,8 +184,9 @@ function buildReview(result, source) {
   state = {
     rows: rows.map(r => Object.assign({ _sel: true, _shared: false }, r)),
     meta,
-    channel: source === 'lib' ? 'Email' : (rows[0]?.['email or in person'] || 'In person'),
-    method:  rows[0]?.method || 'Collection'
+    channel: (source === 'lib' || source === 'email') ? 'Email' : (rows[0]?.['email or in person'] || 'In person'),
+    method:  rows[0]?.method || 'Collection',
+    queueId: null
   };
 
   $('fStore').value = rows[0]?.store || '';
@@ -508,13 +509,15 @@ async function saveToSheet() {
     };
   });
 
+  const queueId = state.queueId;
   try {
     show('vWork');
     $('workMsg').textContent = 'Saving to sheet…';
     const res = await api('append', {
       rows: payload,
       imageBase64: imageData ? imageData.base64 : null,
-      mimeType: imageData ? imageData.mimeType : null
+      mimeType: imageData ? imageData.mimeType : null,
+      queueId: queueId
     });
 
     if (store && !CFG.stores.includes(store)) { CFG.stores.push(store); CFG.stores.sort(); }
@@ -525,8 +528,9 @@ async function saveToSheet() {
     $('homeStatus').textContent =
       '✅ ' + res.rowsAdded + ' row' + (res.rowsAdded > 1 ? 's' : '') +
       ' saved · ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    show('vHome');
     toast('Saved to sheet');
+    if (queueId) openQueue();     // straight on to the next emailed receipt
+    else show('vHome');
   } catch (err) {
     showError('Save failed: ' + err.message);
   }
@@ -548,6 +552,88 @@ function manualEntry() {
   toast('Fill in the details');
 }
 
+/* ---------- emailed receipts (queue) ---------- */
+// The backend reads forwarded emails every 15 minutes. Here you review them like a scan.
+let queueItems = [];
+
+function setEmailCount(n) {
+  $('emailLabel').innerHTML = 'Emailed receipts' + (n ? ' <span class="count">' + n + '</span>' : '');
+}
+
+async function openQueue() {
+  show('vWork');
+  $('workMsg').textContent = 'Checking emails…';
+  try {
+    renderQueue(await api('queue', {}));
+    show('vQueue');
+  } catch (err) {
+    show('vHome');
+    toast('Couldn\'t load emails: ' + err.message, true);
+  }
+}
+
+function renderQueue(d) {
+  queueItems = d.items || [];
+  setEmailCount(queueItems.length);
+  const waiting = d.processing
+    ? d.processing + ' more being read — check back within 15 minutes.' : '';
+  $('qSub').textContent = queueItems.length
+    ? queueItems.length + ' to review. ' + waiting
+    : (waiting || 'Nothing to review. Forwarded emails appear here within 15 minutes.');
+
+  $('qList').innerHTML = queueItems.map((q, i) => {
+    const res = q.result || {};
+    const rows = res.rows || [];
+    const meta = res.meta || {};
+    const total = meta.receiptTotal != null ? meta.receiptTotal
+                : rows.reduce((s, r) => s + (Number(r['total cost']) || 0), 0);
+    const sender = meta.orderEmail || q.from;
+    const body = q.status === 'ready'
+      ? `<div class="sum"><b>${esc(rows[0]?.store || 'Unknown store')}</b> · ${money(total)} · ${rows.length} item${rows.length === 1 ? '' : 's'}</div>
+         ${meta.possibleDuplicate ? `<div class="warn">⚠️ ${esc(meta.possibleDuplicate)}</div>` : ''}
+         <div class="duo"><button class="btn" data-q="review" data-i="${i}">Review</button>
+         <button class="btn sec" data-q="dismiss" data-i="${i}">Dismiss</button></div>`
+      : `<div class="warn">${esc(emailError(q.error))}</div>
+         <div class="duo"><button class="btn sec" data-q="retry" data-i="${i}">Try again</button>
+         <button class="btn sec" data-q="dismiss" data-i="${i}">Dismiss</button></div>`;
+    return `<div class="card qcard"><h3>${esc(q.subject || '(no subject)')}</h3>
+      <div class="qmeta">${esc(sender)} · ${esc(q.received)}</div>${body}</div>`;
+  }).join('');
+}
+
+// Extraction errors are worded for photos; reword them for emails
+function emailError(msg) {
+  msg = String(msg || '');
+  if (/No line items|empty response/i.test(msg)) return 'No purchases found — this may not be an order confirmation.';
+  if (/busy|503|429|overload/i.test(msg)) return 'Google was busy when this was read. Try again.';
+  return 'Couldn\'t read this email: ' + (msg || 'unknown error');
+}
+
+$('qList').onclick = async e => {
+  const act = e.target.dataset.q;
+  if (!act) return;
+  const q = queueItems[e.target.dataset.i];
+
+  if (act === 'review') {
+    imageData = null;
+    lastSource = 'email';
+    showReview(q.result, 'email');
+    if (state) {
+      state.queueId = q.id;
+      const sender = q.result.meta?.orderEmail;
+      if (sender) toast('From ' + sender);
+    }
+    return;
+  }
+  if (act === 'dismiss' && !confirm('Dismiss this email? It won\'t be added to the Sheet.')) return;
+  try {
+    renderQueue(await api('queueSet', { id: q.id, queueAction: act }));
+    toast(act === 'retry' ? 'Queued — it will be read within 15 minutes' : 'Dismissed');
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
 /* ---------- config cache ---------- */
 function saveCache() { localStorage.setItem(LS_CACHE, JSON.stringify(CFG)); }
 
@@ -565,6 +651,7 @@ async function refreshConfig() {
     CFG.stores   = d.stores   || [];
     CFG.payments = d.payments || [];
     saveCache(); fillStores(); fillPayPicker();
+    setEmailCount(d.emails || 0);
     $('homeStatus').textContent = 'Ready · ' + CFG.purposes.length + ' purposes';
   } catch (e) {
     $('homeStatus').textContent = '⚠️ Offline — using saved settings';
@@ -576,7 +663,7 @@ $('btnConnect').onclick = async () => {
   // Tidy what phones paste: invisible characters, spaces, auto-capitalised "Https",
   // trailing slash or ?query. The script ID itself is case-sensitive, so only the prefix is normalised.
   const url = $('scriptUrl').value
-    .replace(/[\s​-‍⁠﻿]/g, '')
+    .replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, '')
     .replace(/[?#].*$/, '')
     .replace(/\/+$/, '')
     .replace(/^https?:\/\/script\.google\.com/i, 'https://script.google.com');
@@ -617,7 +704,16 @@ $('inpLib').onchange = e => { handleFile(e.target.files[0], 'lib'); e.target.val
 $('btnRetake').onclick    = () => { imageData = null; $('inpCam').click(); };
 $('btnManual').onclick    = manualEntry;
 $('btnCancelErr').onclick = () => { imageData = null; show('vHome'); };
-$('btnBack').onclick      = () => { if (confirm('Discard this receipt?')) { imageData = null; show('vHome'); } };
+$('btnBack').onclick      = () => {
+  if (state && state.queueId) {   // emails stay in the queue until saved or dismissed
+    if (confirm('Go back to the email list? Your edits here won\'t be kept.')) openQueue();
+    return;
+  }
+  if (confirm('Discard this receipt?')) { imageData = null; show('vHome'); }
+};
+$('btnEmails').onclick    = openQueue;
+$('btnQBack').onclick     = () => show('vHome');
+$('btnQRefresh').onclick  = openQueue;
 
 $('pChannel').onclick = () => {
   state.channel = state.channel === 'In person' ? 'Email' : 'In person';
