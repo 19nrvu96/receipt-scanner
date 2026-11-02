@@ -179,11 +179,10 @@ function buildReview(result, source) {
   const meta = result.meta || {};
 
   state = {
-    rows: rows.map(r => Object.assign({ _sel: true }, r)),
+    rows: rows.map(r => Object.assign({ _sel: true, _shared: false }, r)),
     meta,
     channel: source === 'lib' ? 'Email' : (rows[0]?.['email or in person'] || 'In person'),
-    method:  rows[0]?.method || 'Collection',
-    shared:  'No'
+    method:  rows[0]?.method || 'Collection'
   };
 
   $('fStore').value = rows[0]?.store || '';
@@ -195,8 +194,6 @@ function buildReview(result, source) {
 
   $('pChannel').textContent = state.channel;
   $('pMethod').textContent  = state.method;
-  $('pShared').textContent  = 'Not shared';
-  $('pShared').classList.remove('on');
   $('pChannel').classList.toggle('on', state.channel === 'Email');
   $('pMethod').classList.toggle('on', state.method === 'Delivery');
 
@@ -219,8 +216,9 @@ function buildReview(result, source) {
 function findDupes() {
   const groups = {};
   state.rows.forEach((r, i) => {
-    const k = (r.item || '').trim().toLowerCase() + '|' + r['buy price'];
-    if (!k.startsWith('|')) (groups[k] = groups[k] || []).push(i);
+    // Shared and unshared lines are never merged together
+    const k = (r.item || '').trim().toLowerCase() + '|' + r['buy price'] + '|' + (r._shared ? 'S' : '');
+    if (r.item && r.item.trim()) (groups[k] = groups[k] || []).push(i);
   });
   return Object.values(groups).filter(g => g.length > 1);
 }
@@ -272,7 +270,8 @@ function renderItems() {
         <option value="">Select purpose…</option>
         ${CFG.purposes.map(p =>
           `<option ${p === r.purpose ? 'selected' : ''}>${esc(p)}</option>`).join('')}
-      </select>`;
+      </select>
+      <button class="split${r._shared ? ' on' : ''}" data-share="${i}">${r._shared ? '✓ Shared' : 'Not shared'}</button>`;
     box.appendChild(card);
   });
 
@@ -288,6 +287,12 @@ function renderItems() {
   };
 
     box.onclick = e => {
+    const sh = e.target.dataset.share;
+    if (sh !== undefined) {
+      state.rows[sh]._shared = !state.rows[sh]._shared;
+      renderItems();
+      return;
+    }
     const rm = e.target.dataset.rm;
     if (rm === undefined) return;
     if (state.rows.length === 1) { toast('Need at least one item', true); return; }
@@ -307,13 +312,14 @@ function renderItems() {
   add.className = 'btn sec';
   add.textContent = '+ Add another item';
   add.onclick = () => {
-    state.rows.push({ _sel: true, item: '', quantity: 1, 'buy price': 0,
+    state.rows.push({ _sel: true, _shared: false, item: '', quantity: 1, 'buy price': 0,
       'total price': 0, 'additional cost': 0, 'total cost': 0, purpose: '',
       _confidence: 'low' });
     renderItems();
   };
   box.appendChild(add);
 
+  updateSharedPill();
   recalc();
 
 }
@@ -367,6 +373,30 @@ function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ---------- shared cost (per item) ---------- */
+// Top pill: blanket switch + summary. Shows "Part shared (n/N)" when only some lines are shared.
+function updateSharedPill() {
+  const n = state.rows.filter(r => r._shared).length;
+  const all = n === state.rows.length && n > 0;
+  $('pShared').textContent = n === 0 ? 'Not shared' : all ? 'Shared cost' : 'Part shared (' + n + '/' + state.rows.length + ')';
+  $('pShared').classList.toggle('on', n > 0);
+}
+
+function toggleSharedAll() {
+  const all = state.rows.every(r => r._shared);
+  state.rows.forEach(r => r._shared = !all);
+  renderItems();
+}
+
+function shareSelected() {
+  const chosen = state.rows.filter(r => r._sel);
+  if (!chosen.length) { toast('Tick some items first', true); return; }
+  const allShared = chosen.every(r => r._shared);
+  chosen.forEach(r => r._shared = !allShared);
+  renderItems();
+  toast((allShared ? 'Unshared ' : 'Shared ') + chosen.length + ' item' + (chosen.length > 1 ? 's' : ''));
 }
 
 /* ---------- bulk actions ---------- */
@@ -458,7 +488,7 @@ async function saveToSheet() {
     'purpose':            r.purpose,
     'method':             state.method,
     'email or in person': state.channel,
-    'shared cost?':       state.shared,
+    'shared cost?':       r._shared ? 'Yes' : 'No',
     'order number':       order,
     'payment method':     pay
   }));
@@ -576,9 +606,7 @@ $('pMethod').onclick = () => {
   $('pMethod').classList.toggle('on', state.method === 'Delivery');
 };
 $('pShared').onclick = () => {
-  state.shared = state.shared === 'No' ? 'Yes' : 'No';
-  $('pShared').textContent = state.shared === 'Yes' ? 'Shared cost' : 'Not shared';
-  $('pShared').classList.toggle('on', state.shared === 'Yes');
+  toggleSharedAll();
 };
 
 $('btnSelAll').onclick = selectAll;
@@ -588,6 +616,7 @@ $('fFees').oninput = () => {
   recalc();
 };
 $('btnBulk').onclick   = bulkPurpose;
+$('btnShareSel').onclick = shareSelected;
 $('btnSave').onclick   = saveToSheet;
 
 /* ---------- boot ---------- */
