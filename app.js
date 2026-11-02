@@ -29,6 +29,9 @@ function toast(msg, isErr) {
 
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const money = n => '£' + r2(n).toFixed(2);
+// Your half of a shared amount, worked in pennies. Odd pennies round up (you take the extra 1p).
+const half = n => Math.round(Math.round((Number(n) || 0) * 100) / 2) / 100;
+const shareLabel = r => r._shared ? '✓ Shared · you ' + money(half(r['total cost'])) : 'Not shared';
 
 function today() {
   const d = new Date();
@@ -271,7 +274,7 @@ function renderItems() {
         ${CFG.purposes.map(p =>
           `<option ${p === r.purpose ? 'selected' : ''}>${esc(p)}</option>`).join('')}
       </select>
-      <button class="split${r._shared ? ' on' : ''}" data-share="${i}">${r._shared ? '✓ Shared' : 'Not shared'}</button>`;
+      <button class="split${r._shared ? ' on' : ''}" data-share="${i}">${shareLabel(r)}</button>`;
     box.appendChild(card);
   });
 
@@ -342,21 +345,26 @@ function recalc() {
     if (t) t.textContent = money(state.rows[i]['total cost']);
     const f = c.querySelector('.fee');
     if (f) f.textContent = 'incl. ' + money(state.rows[i]['additional cost']) + ' fees';
+    const sp = c.querySelector('.split');
+    if (sp) sp.textContent = shareLabel(state.rows[i]);
   });
 
+  // Receipt check always uses full prices; "your share" halves the shared lines
   const sum = r2(state.rows.reduce((s, r) => s + r['total cost'], 0));
+  const mine = r2(state.rows.reduce((s, r) => s + (r._shared ? half(r['total cost']) : r['total cost']), 0));
+  const shareNote = state.rows.some(r => r._shared) ? ' · your share ' + money(mine) : '';
   const expected = state.meta.receiptTotal;
   const el = $('recon');
   if (expected == null) {
     el.className = 'recon ok';
-    el.textContent = 'Total ' + money(sum);
+    el.textContent = 'Total ' + money(sum) + shareNote;
   } else if (Math.abs(sum - expected) < 0.02) {
     el.className = 'recon ok';
-    el.textContent = '✅ Total ' + money(sum) + ' — matches receipt';
+    el.textContent = '✅ Total ' + money(sum) + ' — matches receipt' + shareNote;
   } else {
     el.className = 'recon warn';
     el.textContent = '⚠️ Lines total ' + money(sum) +
-                     ' but receipt says ' + money(expected) + ' — check figures';
+                     ' but receipt says ' + money(expected) + ' — check figures' + shareNote;
   }
   updateSave();
 }
@@ -475,23 +483,30 @@ async function saveToSheet() {
   const order = $('fOrder').value.trim();
   const notes = $('fNotes').value.trim();
 
-  const payload = state.rows.map(r => ({
+  // Shared lines record only your half. The full price goes in that line's notes for the audit trail.
+  const payload = state.rows.map(r => {
+    const s = r._shared;
+    const tp = s ? half(r['total price']) : r['total price'];
+    const ad = s ? half(r['additional cost']) : r['additional cost'];
+    const lineNote = s ? 'Split 50/50 — full ' + money(r['total cost']) : '';
+    return {
     'purchase date':      date,
     'item':               r.item,
-    'buy price':          r['buy price'],
+    'buy price':          s ? half(r['buy price']) : r['buy price'],
     'quantity':           r.quantity,
-    'total price':        r['total price'],
-    'additional cost':    r['additional cost'],
-    'total cost':         r['total cost'],
+    'total price':        tp,
+    'additional cost':    ad,
+    'total cost':         r2(tp + ad),
     'store':              store,
-    'notes':              notes,
+    'notes':              [notes, lineNote].filter(Boolean).join(' · '),
     'purpose':            r.purpose,
     'method':             state.method,
     'email or in person': state.channel,
     'shared cost?':       r._shared ? 'Yes' : 'No',
     'order number':       order,
     'payment method':     pay
-  }));
+    };
+  });
 
   try {
     show('vWork');
@@ -558,10 +573,19 @@ async function refreshConfig() {
 
 /* ---------- wiring ---------- */
 $('btnConnect').onclick = async () => {
-  const url = $('scriptUrl').value.trim();
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)) {
-    toast('That does not look like an /exec URL', true); return;
+  // Tidy what phones paste: invisible characters, spaces, auto-capitalised "Https",
+  // trailing slash or ?query. The script ID itself is case-sensitive, so only the prefix is normalised.
+  const url = $('scriptUrl').value
+    .replace(/[\s​-‍⁠﻿]/g, '')
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
+    .replace(/^https?:\/\/script\.google\.com/i, 'https://script.google.com');
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)) {
+    const hint = /\/dev$/.test(url) ? ' — that is the /dev test URL; use the /exec one from Deploy → Manage deployments'
+               : !/\/exec$/i.test(url) ? ' — it should end in /exec' : '';
+    toast('That does not look like an /exec URL' + hint, true); return;
   }
+  $('scriptUrl').value = url;
   localStorage.setItem(LS_URL, url);
   $('btnConnect').textContent = 'Connecting…';
   $('btnConnect').disabled = true;

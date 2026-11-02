@@ -1,7 +1,7 @@
 /* Service worker — caches the app shell so it opens instantly and offline.
    Never caches API calls to Apps Script. */
 
-const CACHE = 'receipts-v10';
+const CACHE = 'receipts-v11';
 const SHELL = ['./', './index.html', './app.js', './manifest.json'];
 
 self.addEventListener('install', e => {
