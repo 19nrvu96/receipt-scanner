@@ -50,9 +50,144 @@ async function api(action, payload) {
   });
   if (!res.ok) throw new Error('Network error ' + res.status);
   const j = await res.json();
-  if (!j.ok) throw new Error(j.error || 'Unknown error');
+  // Any reply may carry the latest usage figures; keep the home card current.
+  const u = j.usage || (j.data && j.data.usage);
+  if (u) setUsage(u);
+  if (!j.ok) {
+    const err = new Error(j.error || 'Unknown error');
+    err.code = j.code || '';
+    throw err;
+  }
   return j.data;
 }
+
+/* ---------- Gemini usage: free scans left, or credit left ---------- */
+// The Sheet's script counts receipts and estimates spend; Google has no way
+// for apps to read the real allowance or balance, so these are estimates.
+const LS_USAGE = 'rs_usage';
+const BILLING_URL = 'https://aistudio.google.com/projects';
+const LIMITS_URL = 'https://aistudio.google.com/rate-limit';
+let USAGE = null;
+
+// Price per receipt in pence: rates double on 1 Jan 2027.
+const penceNow = () => (Date.now() < Date.UTC(2027, 0, 1) ? 0.5 : 1);
+const costLine = () => {
+  const p = penceNow();
+  return 'about ' + p + 'p a receipt' + (p < 1 ? ' (about 1p from 1 January)' : '');
+};
+
+function resetText(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d)) return 'tomorrow morning';
+  const t = d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true })
+             .replace(':00', '').replace(/\s/g, '').toLowerCase();   // "8am", "7:30am"
+  const mins = Math.max(0, Math.round((d - Date.now()) / 60000));
+  const left = mins >= 60 ? Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm' : mins + 'm';
+  return t + ' (in ' + left + ')';
+}
+
+function setUsage(u) {
+  USAGE = Object.assign({}, USAGE, u, { _at: Date.now() });
+  try { localStorage.setItem(LS_USAGE, JSON.stringify(USAGE)); } catch (e) {}
+  renderUsage();
+}
+
+// A day's count is stale once its reset time has passed.
+function usageNow() {
+  if (!USAGE) return null;
+  const u = Object.assign({}, USAGE);
+  if (!u.billing && u.resetAt && Date.now() >= new Date(u.resetAt)) {
+    u.used = 0; u.exhausted = false; u.stale = true;
+  }
+  return u;
+}
+
+function renderUsage() {
+  const box = $('usage');
+  const u = usageNow();
+  if (!box) return;
+  if (!u) { box.classList.add('hide'); return; }
+  box.classList.remove('hide');
+
+  if (u.billing) {
+    const hasTop = Number(u.topupUsd) > 0;
+    const rem = Number(u.remainingUsd);
+    const low = hasTop && rem < 1;
+    const perReceipt = Number(u.avgCostUsd) || 0;
+    const receiptsLeft = hasTop && perReceipt > 0 ? Math.floor(Math.max(0, rem) / perReceipt) : null;
+    box.className = 'usage' + (low ? ' warn' : '');
+    box.innerHTML = hasTop
+      ? `<div class="uhead">💳 About <b>$${Math.max(0, rem).toFixed(2)}</b> credit left</div>
+         <div class="bar2"><i style="width:${Math.max(0, Math.min(100, rem / u.topupUsd * 100))}%"></i></div>
+         <div class="usub">Estimate: $${Number(u.spentUsd || 0).toFixed(2)} used of $${Number(u.topupUsd).toFixed(2)} since ${esc(u.topupDate || 'your top-up')}${receiptsLeft != null ? ' · roughly ' + receiptsLeft + ' receipts left' : ''}.
+         ${low ? '<br><b>Running low.</b> If credit hits $0, scanning stops until you top up.' : ''}</div>
+         <div class="uact"><a class="ubtn" href="${BILLING_URL}" target="_blank" rel="noopener">Top up</a>
+         <button class="ubtn" data-u="topup">Record top-up</button><button class="ubtn" data-u="more">⋯</button></div>`
+      : `<div class="uhead">💳 Billing on · ${costLine()}</div>
+         <div class="usub">Spent so far (estimate): $${Number(u.spentUsd || 0).toFixed(2)}. Record your top-up to see roughly how much credit is left.</div>
+         <div class="uact"><button class="ubtn" data-u="topup">Record top-up</button>
+         <a class="ubtn" href="${BILLING_URL}" target="_blank" rel="noopener">Billing</a><button class="ubtn" data-u="more">⋯</button></div>`;
+    return;
+  }
+
+  const limit = Math.max(1, Number(u.limit) || 20);
+  const used = Math.max(0, Number(u.used) || 0);
+  const left = Math.max(0, limit - used);
+  const out = u.exhausted || left === 0;
+  box.className = 'usage' + (out ? ' out' : left <= 3 ? ' warn' : '');
+  box.innerHTML = out
+    ? `<div class="uhead">⛔ Today's free scans are used up</div>
+       <div class="usub">They come back at <b>${resetText(u.resetAt)}</b>. Manual entry and saving still work.
+       To keep scanning now, turn on billing: ${costLine()}.</div>
+       <div class="uact"><a class="ubtn" href="${BILLING_URL}" target="_blank" rel="noopener">Turn on billing</a>
+       <button class="ubtn" data-u="paid">I've turned it on</button></div>`
+    : `<div class="uhead">🧾 About <b>${left}</b> of ${limit} free scans left today</div>
+       <div class="bar2"><i style="width:${left / limit * 100}%"></i></div>
+       <div class="usub">Resets ${resetText(u.resetAt)}. Emailed receipts count too.${u.learned ? '' : ' The limit is Google\'s rough figure; the app learns yours the first time you run out.'}</div>
+       <div class="uact"><button class="ubtn" data-u="more">⋯</button></div>`;
+}
+
+$('usage').onclick = async e => {
+  const act = e.target.dataset.u;
+  if (!act) return;
+  try {
+    if (act === 'paid') {
+      if (!confirm('Switch the app to paid mode? Do this once billing is set up in AI Studio.')) return;
+      await api('usageSet', { billing: true });
+      toast('Paid mode on. Record your top-up to track credit');
+    } else if (act === 'topup') {
+      const v = prompt('How much credit did you add, in US dollars? (e.g. 5)');
+      if (v == null) return;
+      const n = Number(String(v).replace(/[^\d.]/g, ''));
+      if (!(n > 0)) { toast('Enter an amount like 5', true); return; }
+      await api('usageSet', { topupUsd: n });
+      toast('Top-up of $' + n.toFixed(2) + ' recorded');
+    } else if (act === 'more') {
+      const u = usageNow() || {};
+      const pick = prompt(
+        (u.billing
+          ? '1. Switch back to free mode\n2. Reset credit tracking\n3. Open AI Studio billing'
+          : '1. Set the daily free limit (now ' + (u.limit || 20) + ')\n2. I\'ve turned on billing\n3. See my real limits in AI Studio') +
+        '\n\nEnter a number:');
+      if (!pick) return;
+      if (u.billing) {
+        if (pick === '1') await api('usageSet', { billing: false });
+        else if (pick === '2' && confirm('Clear the recorded top-ups and spend?')) await api('usageSet', { resetSpend: true });
+        else if (pick === '3') window.open(BILLING_URL, '_blank');
+      } else {
+        if (pick === '1') {
+          const v = prompt('Free receipts per day (whole number):', u.limit || 20);
+          const n = parseInt(v, 10);
+          if (n > 0) await api('usageSet', { limit: n });
+        } else if (pick === '2') await api('usageSet', { billing: true });
+        else if (pick === '3') window.open(LIMITS_URL, '_blank');
+      }
+    }
+  } catch (err) {
+    toast(/Unknown action|usageSet/i.test(err.message)
+      ? 'Your Sheet\'s script needs updating for this' : err.message, true);
+  }
+};
 
 /* ---------- image handling ---------- */
 function readFile(file) {
@@ -117,8 +252,31 @@ async function handleFile(file, source) {
     lastResult = result;
     showReview(result, source);
   } catch (err) {
-    showError(err.message);
+    if (err.code === 'QUOTA_DAY') showQuotaError();
+    else showError(err.message, /busy|503|429|overload/i.test(err.message));
   }
+}
+
+// The free daily allowance is used up. Keep the photo so they can come back to it.
+function showQuotaError() {
+  const u = usageNow() || {};
+  $('errTitle').textContent = 'Free scans used up for today';
+  $('errMsg').innerHTML =
+    'Google\'s free allowance resets at <b>' + esc(resetText(u.resetAt)) + '</b>. Nothing was saved and nothing was charged.' +
+    '<br><br>To keep scanning now, turn on billing in AI Studio, then tap Try again. It costs ' + esc(costLine()) + '. ' +
+    'Or enter this one by hand.';
+  $('btnRetry').textContent = '🔄 Try again';
+  $('btnRetry').onclick = retryExtract;
+  $('btnRetry').classList.toggle('hide', !imageData);
+  $('btnRetake').classList.add('hide');
+  $('btnBilling').classList.remove('hide');
+  if (imageData) {
+    $('errImg').src = imageData.dataUrl;
+    $('errImg').classList.remove('hide');
+  } else {
+    $('errImg').classList.add('hide');
+  }
+  show('vError');
 }
 
 // Review-screen failures are separate from extraction failures: the scan
@@ -138,6 +296,7 @@ function showRenderError(err) {
   $('btnRetry').onclick = () => showReview(lastResult, lastSource);
   $('btnRetry').classList.remove('hide');
   $('btnRetake').classList.add('hide');
+  $('btnBilling').classList.add('hide');
   $('errImg').classList.add('hide');
   show('vError');
 }
@@ -145,6 +304,7 @@ function showRenderError(err) {
 function showError(msg, canRetry) {
   $('errTitle').textContent = canRetry ? 'Gemini is busy' : "Couldn't read that";
   $('errMsg').textContent = msg;
+  $('btnBilling').classList.add('hide');
   $('btnRetry').textContent = '🔄 Try again';
   $('btnRetry').onclick = retryExtract;
   $('btnRetake').classList.remove('hide');
@@ -170,7 +330,8 @@ async function retryExtract() {
     lastResult = result;
     showReview(result, lastSource);
   } catch (err) {
-    showError(err.message, /busy|503|429|overload/i.test(err.message));
+    if (err.code === 'QUOTA_DAY') showQuotaError();
+    else showError(err.message, /busy|503|429|overload/i.test(err.message));
   }
 }
 
@@ -605,6 +766,7 @@ function renderQueue(d) {
 function emailError(msg) {
   msg = String(msg || '');
   if (/No line items|empty response/i.test(msg)) return 'No purchases found — this may not be an order confirmation.';
+  if (/QUOTA_DAY|daily free/i.test(msg)) return 'Today\'s free scans ran out before this was read. It will be read again after the reset, or tap Try again once billing is on.';
   if (/busy|503|429|overload/i.test(msg)) return 'Google was busy when this was read. Try again.';
   return 'Couldn\'t read this email: ' + (msg || 'unknown error');
 }
@@ -702,6 +864,7 @@ $('inpCam').onchange = e => { handleFile(e.target.files[0], 'cam'); e.target.val
 $('inpLib').onchange = e => { handleFile(e.target.files[0], 'lib'); e.target.value = ''; };
 
 $('btnRetake').onclick    = () => { imageData = null; $('inpCam').click(); };
+$('btnBilling').onclick   = () => window.open(BILLING_URL, '_blank');
 $('btnManual').onclick    = manualEntry;
 $('btnCancelErr').onclick = () => { imageData = null; show('vHome'); };
 $('btnBack').onclick      = () => {
@@ -741,6 +904,13 @@ $('btnSave').onclick   = saveToSheet;
 
 /* ---------- boot ---------- */
 loadCache();
+try { USAGE = JSON.parse(localStorage.getItem(LS_USAGE)) || null; } catch (e) {}
+renderUsage();
+// Keep the reset countdown honest while the app sits open
+setInterval(() => { if (!$('vHome').classList.contains('hide')) renderUsage(); }, 60000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && localStorage.getItem(LS_URL)) refreshConfig();
+});
 if (localStorage.getItem(LS_URL)) { show('vHome'); refreshConfig(); }
 else { show('vSetup'); }
 
