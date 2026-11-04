@@ -29,9 +29,12 @@ function toast(msg, isErr) {
 
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const money = n => '£' + r2(n).toFixed(2);
-// Your half of a shared amount, worked in pennies. Odd pennies round up (you take the extra 1p).
-const half = n => Math.round(Math.round((Number(n) || 0) * 100) / 2) / 100;
-const shareLabel = r => r._shared ? '✓ Shared · you ' + money(half(r['total cost'])) : 'Not shared';
+// Your share of a shared amount, worked in pennies. Odd pennies round up (you take the extra 1p).
+const sharePart = (n, pct) => Math.round(Math.round((Number(n) || 0) * 100) * pct / 100) / 100;
+const clampPct = p => { p = Number(p); return p > 0 && p < 100 ? Math.round(p * 100) / 100 : 50; };
+const pctOf = r => clampPct(r._pct);
+const shareLabel = r => r._shared
+  ? '✓ Shared · you ' + money(sharePart(r['total cost'], pctOf(r))) : 'Not shared';
 
 function today() {
   const d = new Date();
@@ -343,7 +346,8 @@ function buildReview(result, source) {
   const meta = result.meta || {};
 
   state = {
-    rows: rows.map(r => Object.assign({ _sel: true, _shared: false }, r)),
+    rows: rows.map(r => Object.assign({ _sel: true, _shared: false, _pct: 50 }, r)),
+    sharePct: 50,     // your % for the next line you share; follows the last % you typed
     meta,
     channel: (source === 'lib' || source === 'email') ? 'Email' : (rows[0]?.['email or in person'] || 'In person'),
     method:  rows[0]?.method || 'Collection',
@@ -382,7 +386,7 @@ function findDupes() {
   const groups = {};
   state.rows.forEach((r, i) => {
     // Shared and unshared lines are never merged together
-    const k = (r.item || '').trim().toLowerCase() + '|' + r['buy price'] + '|' + (r._shared ? 'S' : '');
+    const k = (r.item || '').trim().toLowerCase() + '|' + r['buy price'] + '|' + (r._shared ? 'S' + pctOf(r) : '');
     if (r.item && r.item.trim()) (groups[k] = groups[k] || []).push(i);
   });
   return Object.values(groups).filter(g => g.length > 1);
@@ -436,7 +440,9 @@ function renderItems() {
         ${CFG.purposes.map(p =>
           `<option ${p === r.purpose ? 'selected' : ''}>${esc(p)}</option>`).join('')}
       </select>
-      <button class="split${r._shared ? ' on' : ''}" data-share="${i}">${shareLabel(r)}</button>`;
+      <div class="splitrow"><button class="split${r._shared ? ' on' : ''}" data-share="${i}">${shareLabel(r)}</button>
+      ${r._shared ? `<label class="pctwrap">you pay <input class="pct" type="number" inputmode="decimal" min="1" max="99"
+        step="any" list="pctList" value="${pctOf(r)}" data-k="_pct" data-i="${i}"> %</label>` : ''}</div>`;
     box.appendChild(card);
   });
 
@@ -445,16 +451,29 @@ function renderItems() {
     if (i === undefined) return;
     const row = state.rows[i];
     if (k === '_sel') { row._sel = e.target.checked; return; }
+    if (k === '_pct') {             // typing a % updates this line now; no re-render, so the keyboard stays open
+      if (e.target.value === '') return;
+      row._pct = clampPct(e.target.value);
+      state.sharePct = row._pct;
+      recalc();
+      return;
+    }
     row[k] = (k === 'quantity' || k === 'buy price') ? Number(e.target.value) : e.target.value;
     if (k === 'quantity' || k === 'buy price') recalc();
     if (k === 'purpose') e.target.classList.toggle('unset', !e.target.value);
     updateSave();
   };
 
+  box.onchange = e => {   // when you leave the % box, show the % actually used (e.g. 150 → 50)
+    if (e.target.dataset.k === '_pct') e.target.value = pctOf(state.rows[e.target.dataset.i]);
+  };
+
     box.onclick = e => {
     const sh = e.target.dataset.share;
     if (sh !== undefined) {
-      state.rows[sh]._shared = !state.rows[sh]._shared;
+      const row = state.rows[sh];
+      row._shared = !row._shared;
+      if (row._shared) row._pct = state.sharePct;
       renderItems();
       return;
     }
@@ -477,7 +496,7 @@ function renderItems() {
   add.className = 'btn sec';
   add.textContent = '+ Add another item';
   add.onclick = () => {
-    state.rows.push({ _sel: true, _shared: false, item: '', quantity: 1, 'buy price': 0,
+    state.rows.push({ _sel: true, _shared: false, _pct: state.sharePct, item: '', quantity: 1, 'buy price': 0,
       'total price': 0, 'additional cost': 0, 'total cost': 0, purpose: '',
       _confidence: 'low' });
     renderItems();
@@ -513,7 +532,7 @@ function recalc() {
 
   // Receipt check always uses full prices; "your share" halves the shared lines
   const sum = r2(state.rows.reduce((s, r) => s + r['total cost'], 0));
-  const mine = r2(state.rows.reduce((s, r) => s + (r._shared ? half(r['total cost']) : r['total cost']), 0));
+  const mine = r2(state.rows.reduce((s, r) => s + (r._shared ? sharePart(r['total cost'], pctOf(r)) : r['total cost']), 0));
   const shareNote = state.rows.some(r => r._shared) ? ' · your share ' + money(mine) : '';
   const expected = state.meta.receiptTotal;
   const el = $('recon');
@@ -556,7 +575,7 @@ function updateSharedPill() {
 
 function toggleSharedAll() {
   const all = state.rows.every(r => r._shared);
-  state.rows.forEach(r => r._shared = !all);
+  state.rows.forEach(r => { r._shared = !all; if (r._shared) r._pct = state.sharePct; });
   renderItems();
 }
 
@@ -564,7 +583,7 @@ function shareSelected() {
   const chosen = state.rows.filter(r => r._sel);
   if (!chosen.length) { toast('Tick some items first', true); return; }
   const allShared = chosen.every(r => r._shared);
-  chosen.forEach(r => r._shared = !allShared);
+  chosen.forEach(r => { r._shared = !allShared; if (r._shared) r._pct = state.sharePct; });
   renderItems();
   toast((allShared ? 'Unshared ' : 'Shared ') + chosen.length + ' item' + (chosen.length > 1 ? 's' : ''));
 }
@@ -647,14 +666,14 @@ async function saveToSheet() {
 
   // Shared lines record only your half. The full price goes in that line's notes for the audit trail.
   const payload = state.rows.map(r => {
-    const s = r._shared;
-    const tp = s ? half(r['total price']) : r['total price'];
-    const ad = s ? half(r['additional cost']) : r['additional cost'];
-    const lineNote = s ? 'Split 50/50 — full ' + money(r['total cost']) : '';
+    const s = r._shared, p = pctOf(r);
+    const tp = s ? sharePart(r['total price'], p) : r['total price'];
+    const ad = s ? sharePart(r['additional cost'], p) : r['additional cost'];
+    const lineNote = s ? 'Shared — your ' + p + '% of full ' + money(r['total cost']) : '';
     return {
     'purchase date':      date,
     'item':               r.item,
-    'buy price':          s ? half(r['buy price']) : r['buy price'],
+    'buy price':          s ? sharePart(r['buy price'], p) : r['buy price'],
     'quantity':           r.quantity,
     'total price':        tp,
     'additional cost':    ad,

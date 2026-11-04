@@ -73,6 +73,11 @@ p.sub{color:#666;font-size:14px;margin-bottom:16px}
 .split{margin:8px 0 0 0;padding:6px 12px;border:1px solid #ddd;border-radius:16px;
        background:#fff;font-size:13px;color:#555;font-family:inherit;cursor:pointer}
 .split.on{background:#0a84ff;color:#fff;border-color:#0a84ff}
+.splitrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+.splitrow .split{margin:0}
+.pctwrap .pct::-webkit-inner-spin-button,.pctwrap .pct::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.pctwrap{font-size:13px;color:#555;display:flex;align-items:center;gap:5px}
+.pctwrap .pct{width:86px;-moz-appearance:textfield;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-size:15px;font-family:inherit}
 .big .count{margin-left:auto;background:#ff3b30;color:#fff;border-radius:12px;
             padding:2px 9px;font-size:14px;font-weight:700}
 .qcard h3{font-size:16px;margin:0 0 4px}
@@ -213,6 +218,7 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
       <button class="back" id="btnBack">‹</button>
       <input class="store" id="fStore" placeholder="Store name" list="storeList">
       <datalist id="storeList"></datalist>
+      <datalist id="pctList"><option value="25"><option value="33.33"><option value="50"><option value="66.67"><option value="75"></datalist>
       <input class="date" id="fDate" placeholder="DD/MM/YYYY" inputmode="numeric">
     </div>
     <div class="pills">
