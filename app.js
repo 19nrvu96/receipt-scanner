@@ -345,6 +345,8 @@ const jobAll = () => dbDo('readonly', st => st.getAll()).then(a => (a || []).sor
 let busyJob = null;   // id of the job being read right now
 
 const jobImages = j => j.pages.map(pg => ({ base64: pg.dataUrl.split(',')[1], mimeType: 'image/jpeg' }));
+// Also send the first photo the old way, so a Sheet whose script isn't updated yet still reads it
+const withLegacy = imgs => imgs && imgs.length ? { images: imgs, imageBase64: imgs[0].base64, mimeType: imgs[0].mimeType } : {};
 
 // Reads a job while you watch: spinner, then the review screen.
 async function readJobNow(j) {
@@ -353,7 +355,7 @@ async function readJobNow(j) {
   $('workMsg').textContent = 'Reading receipt' + (j.pages.length > 1 ? ' (' + j.pages.length + ' photos)' : '') + '…';
   busyJob = j.id;
   try {
-    const result = await api('extract', { images: jobImages(j) });
+    const result = await api('extract', withLegacy(jobImages(j)));
     j.status = 'ready'; j.result = result; j.error = '';
     await jobPut(j);
     busyJob = null;
@@ -401,7 +403,7 @@ async function jobTick() {
   if (!next || busyJob) { ticking = false; return; }
   busyJob = next.id;
   try {
-    next.result = await api('extract', { images: jobImages(next) });
+    next.result = await api('extract', withLegacy(jobImages(next)));
     next.status = 'ready'; next.error = '';
     await jobPut(next);
     toast('📥 A receipt photo is ready to review');
@@ -995,12 +997,11 @@ async function saveToSheet(force) {
   try {
     show('vWork');
     $('workMsg').textContent = 'Saving to sheet…';
-    const res = await api('append', {
+    const res = await api('append', Object.assign({
       rows: payload,
-      images: job && jobId ? jobImages(job) : null,
       queueId: queueId,
       force: !!force
-    });
+    }, job && jobId ? withLegacy(jobImages(job)) : {}));
 
     if (store && !CFG.stores.includes(store)) { CFG.stores.push(store); CFG.stores.sort(); }
     if (pay && !CFG.payments.includes(pay))   { CFG.payments.push(pay); CFG.payments.sort(); }
