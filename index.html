@@ -151,6 +151,56 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
 /* ---------- Preview ---------- */
 .preview{width:100%;border-radius:12px;margin-bottom:12px;max-height:220px;
          object-fit:cover;display:block}
+
+/* ---------- Pages (multi-photo capture) ---------- */
+.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.thumb{position:relative;border-radius:10px;overflow:hidden;background:#ddd;aspect-ratio:3/4}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .n{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;
+          border-radius:10px;padding:1px 7px}
+.thumb .x{position:absolute;right:4px;top:4px;background:rgba(0,0,0,.6);color:#fff;border:none;
+          border-radius:50%;width:26px;height:26px;font-size:14px;cursor:pointer}
+.thumb .bad{position:absolute;left:0;right:0;bottom:0;background:#b71c1c;color:#fff;font-size:11px;
+            padding:3px 5px;text-align:center}
+.mini{display:flex;gap:10px;margin-bottom:12px}
+.mini .big{margin:0;padding:16px;font-size:15px;flex:1}
+.mini .big .ico{font-size:22px}
+
+/* ---------- Bottom sheet (purpose picker) ---------- */
+.veil{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));
+       max-height:80vh;overflow:auto}
+.sheet h3{font-size:16px;margin:0 0 10px}
+.opt{display:block;width:100%;text-align:left;padding:14px;margin-bottom:8px;border:1px solid #e0e0e5;border-radius:12px;
+     background:#fff;font-size:16px;font-family:inherit;color:#1a1a1a;cursor:pointer}
+.opt.on{border-color:#0a84ff;background:#eef5ff}
+.opt.add{color:#0a84ff;font-weight:600}
+.sheet .newp{display:flex;gap:8px;margin-bottom:8px}
+.sheet .newp input{flex:1;padding:12px;border:1px solid #ddd;border-radius:10px;font-size:16px;font-family:inherit}
+.sheet .newp button{padding:0 16px;border:none;border-radius:10px;background:#0a84ff;color:#fff;font-size:15px;font-weight:600}
+
+/* ---------- Banners, refunds, VAT, forms ---------- */
+.banner{padding:11px 13px;border-radius:10px;font-size:14px;margin-bottom:10px}
+.banner.dup{background:#fff4e5;color:#7a4a00}
+.banner.ref{background:#eef5ff;color:#0a3d7a}
+.match{margin:10px 0 0;font-size:13px;color:#555}
+.match select{margin-top:4px}
+.vat{margin:6px 0 0 34px;font-size:13px;color:#555;display:flex;align-items:center;gap:6px}
+.vat input{width:72px;padding:5px 7px;border:1px solid #ddd;border-radius:8px;font-size:14px;text-align:right;font-family:inherit}
+.form label{display:block;font-size:12px;color:#888;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.3px}
+.form input[type=text],.form input[type=number],.form input:not([type]){width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;font-size:16px;font-family:inherit;background:#fff}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{flex:1;padding:11px 6px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px;font-family:inherit;cursor:pointer;color:#1a1a1a}
+.seg button.on{background:#0a84ff;border-color:#0a84ff;color:#fff}
+.check,.form label.check{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:15px;color:#1a1a1a;text-transform:none;letter-spacing:0}
+.check input{width:22px;height:22px;accent-color:#0a84ff}
+.owed{background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.07);font-size:14px;color:#444}
+.owed b{font-size:20px;color:#1a1a1a}
+.jstat{font-size:13px;color:#666;margin:6px 0 8px}
+.jstat.err{color:#b71c1c}
+.jcard{display:flex;gap:12px}
+.jcard img{width:64px;height:84px;object-fit:cover;border-radius:8px;flex-shrink:0;background:#ddd}
+.jcard .jb{flex:1;min-width:0}
 </style>
 </head>
 <body>
@@ -174,6 +224,11 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
     <button class="big" id="btnCam"><span class="ico">📷</span> Scan Receipt</button>
     <button class="big" id="btnLib"><span class="ico">🖼️</span> From Photos</button>
     <button class="big" id="btnEmails"><span class="ico">📧</span> <span id="emailLabel">Emailed receipts</span></button>
+    <button class="big hide" id="btnJobs"><span class="ico">📥</span> <span id="jobsLabel">Photos to review</span></button>
+    <div class="mini">
+      <button class="big" id="btnTrip"><span class="ico">🚗</span> Log a trip</button>
+      <button class="big" id="btnRepay"><span class="ico">💷</span> Pay back</button>
+    </div>
     <div id="usage" class="usage hide" aria-live="polite"></div>
     <div class="status">
       <span id="homeStatus">Ready</span><br>
@@ -190,6 +245,66 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
     <p class="sub" id="qSub"></p>
     <div id="qList"></div>
     <button class="btn sec" id="btnQRefresh">↻ Refresh</button>
+  </section>
+
+  <!-- PAGES: photos for one receipt, before reading -->
+  <section id="vPages" class="hide">
+    <div class="hdr">
+      <button class="back" id="btnPBack">‹</button>
+      <h2 style="margin:0;flex:1">Receipt photos</h2>
+    </div>
+    <p class="sub" id="pSub">Long receipt? Add a photo for each part. All photos are read together as one receipt.</p>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="duo">
+      <button class="btn sec" id="btnAddPage">＋ Add another photo</button>
+      <button class="btn sec" id="btnRetakeLast">↺ Retake last</button>
+    </div>
+    <button class="btn" id="btnPagesDone">✓ Done — read receipt</button>
+  </section>
+
+  <!-- PHOTOS WAITING (offline queue) -->
+  <section id="vJobs" class="hide">
+    <div class="hdr">
+      <button class="back" id="btnJBack">‹</button>
+      <h2 style="margin:0;flex:1">Photos to review</h2>
+    </div>
+    <p class="sub" id="jSub"></p>
+    <div id="jList"></div>
+  </section>
+
+  <!-- MILEAGE -->
+  <section id="vTrip" class="hide form">
+    <div class="hdr">
+      <button class="back" id="btnTBack">‹</button>
+      <h2 style="margin:0;flex:1">Log a business trip</h2>
+    </div>
+    <p class="sub" id="tSub">Claimed at HMRC's mileage rates. Don't also claim fuel for the same car.</p>
+    <label>Date</label><input id="tDate" inputmode="numeric" placeholder="DD/MM/YYYY">
+    <label>From</label><input id="tFrom" list="placeList" placeholder="e.g. Home">
+    <label>To</label><input id="tTo" list="placeList" placeholder="e.g. Car boot sale, Wimbledon">
+    <datalist id="placeList"></datalist>
+    <label>Reason</label><input id="tReason" placeholder="e.g. Sourcing stock">
+    <label>Miles (one way)</label><input id="tMiles" type="number" step="0.1" inputmode="decimal" placeholder="0">
+    <label class="check"><input type="checkbox" id="tReturn"> Return trip (doubles the miles)</label>
+    <label>Vehicle</label>
+    <div class="seg" id="tVehicle">
+      <button data-v="Car or van" class="on">🚗 Car or van</button><button data-v="Motorbike">🏍️ Motorbike</button><button data-v="Bicycle">🚲 Bicycle</button>
+    </div>
+    <p class="sub" id="tCalc" style="margin-top:12px"></p>
+    <div class="bar"><button class="btn" id="btnTripSave">Save trip</button></div>
+  </section>
+
+  <!-- REPAYMENT -->
+  <section id="vRepay" class="hide form">
+    <div class="hdr">
+      <button class="back" id="btnRBack">‹</button>
+      <h2 style="margin:0;flex:1">Pay back personal spending</h2>
+    </div>
+    <div class="owed" id="rOwed">Loading…</div>
+    <label>Date you paid it back</label><input id="rDate" inputmode="numeric" placeholder="DD/MM/YYYY">
+    <label>Amount (£)</label><input id="rAmount" type="number" step="0.01" inputmode="decimal" placeholder="0.00">
+    <label>Note</label><input id="rNote" placeholder="Optional, e.g. bank transfer">
+    <div class="bar"><button class="btn" id="btnRepaySave">Record repayment</button></div>
   </section>
 
   <!-- WORKING -->
@@ -227,12 +342,17 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
       <button class="pill" id="pShared">Not shared</button>
     </div>
 
+    <div id="refBanner" class="banner ref hide"></div>
+    <div id="dupBanner" class="banner dup hide"></div>
     <div id="recon" class="recon ok"></div>
     <div id="items"></div>
 
     <div class="meta">
                <label>Delivery / booking fees (split across items)</label>
       <input id="fFees" type="number" step="0.01" inputmode="decimal" placeholder="0.00">
+      <div id="emailWrap" class="hide"><label>Order email (who sent it)</label>
+      <input id="fEmail" type="email" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="e.g. orders@argos.co.uk" list="emailList">
+      <datalist id="emailList"></datalist></div>
       <label>Order / receipt number</label>
       <input id="fOrder" placeholder="Optional">
       <label>Payment method</label>
@@ -257,7 +377,7 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
 </div>
 
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
-<input type="file" id="inpLib" accept="image/*" class="hide">
+<input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
 <script src="app.js"></script>
 </body>
