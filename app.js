@@ -1138,24 +1138,128 @@ const RATES = { 'Car or van': 0.55, 'Motorbike': 0.24, 'Bicycle': 0.20 };
 
 function lsList(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } }
 
+const LS_HOME = 'rs_home', LS_RECENT = 'rs_recent_trips', LS_PENDING_TRIPS = 'rs_pending_trips';
+const HOME = 'Home';
+let trip = { route: null, routeKey: '', milesFromRoute: null, seq: 0 };
+
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function homeAddr() { return localStorage.getItem(LS_HOME) || ''; }
+
 function openTrip() {
   $('tDate').value = today();
-  ['tFrom', 'tTo', 'tReason', 'tMiles'].forEach(id => { $(id).value = ''; });
-  $('tReturn').checked = false;
+  $('tReason').value = ''; $('tMiles').value = ''; $('tReturn').checked = false;
+  trip = { route: null, routeKey: '', milesFromRoute: null, seq: trip.seq + 1 };
   const v = localStorage.getItem(LS_VEHICLE) || 'Car or van';
   document.querySelectorAll('#tVehicle button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  $('placeList').innerHTML = lsList(LS_PLACES).map(p => `<option value="${esc(p)}">`).join('');
+  fillPlaces();
+  renderStops([homeAddr() ? HOME : '', '']);
+  renderRepeat();
+  $('homeWrap').classList.add('hide');
+  $('btnHome').textContent = homeAddr() ? '🏠 ' + homeAddr() : '🏠 Set home';
   $('tSub').textContent = CFG.business === 'ltd'
     ? 'The company owes you this at HMRC\'s rates, and it\'s a business expense. Don\'t also claim fuel for the same car.'
     : 'Claimed at HMRC\'s rates instead of fuel and running costs for this vehicle.';
+  routeIdle();
   tripCalc();
   show('vTrip');
+}
+
+function fillPlaces() {
+  const list = (homeAddr() ? [HOME] : []).concat(lsList(LS_PLACES).filter(p => p !== HOME));
+  $('placeList').innerHTML = list.map(p => `<option value="${esc(p)}">`).join('');
+}
+
+// Stops: start, any stops in between, end. Each is a postcode, address, "Home" or the phone's location.
+function renderStops(vals, geos) {
+  geos = geos || [];
+  const n = vals.length;
+  $('tStops').innerHTML = vals.map((v, i) => `<div class="stop">
+    <span class="dot">${i === 0 ? 'A' : i === n - 1 ? String.fromCharCode(65 + i) : String.fromCharCode(65 + i)}</span>
+    <input data-stop="${i}" list="placeList" value="${esc(v)}" ${geos[i] ? `data-geo="${esc(geos[i])}"` : ''}
+      placeholder="${i === 0 ? 'Start: postcode or address' : i === n - 1 ? 'Where you went' : 'Stop'}" autocomplete="off">
+    ${i === 0 ? '<button class="ib" data-here="1" aria-label="Use my location">📍</button>'
+      : i < n - 1 ? `<button class="ib" data-del="${i}" aria-label="Remove stop">✕</button>` : '<span style="width:44px"></span>'}
+  </div>`).join('');
+}
+
+function stopInputs() { return Array.from(document.querySelectorAll('#tStops input')); }
+function stopValues() { return stopInputs().map(x => x.value.trim()); }
+
+// What's sent to Google: "Home" becomes your saved postcode, the 📍 button sends coordinates
+function stopsForRoute() {
+  const out = stopInputs().map(x => x.dataset.geo || (x.value.trim() === HOME ? homeAddr() : x.value.trim())).filter(Boolean);
+  if ($('tReturn').checked && out.length >= 2 && out[out.length - 1].toLowerCase() !== out[0].toLowerCase()) out.push(out[0]);
+  return out;
+}
+
+function routeIdle(msg) {
+  $('tRoute').className = 'routebox';
+  $('tRoute').textContent = msg || 'Enter where you started and where you went, and the miles are worked out for you.';
+}
+
+async function lookupRoute() {
+  const raw = stopValues();
+  if (raw.some(v => v === HOME) && !homeAddr()) { routeIdle('Set your home postcode first: tap 🏠 Set home.'); return; }
+  const stops = stopsForRoute();
+  if (stops.length < 2 || raw.filter(Boolean).length < 2) { trip.route = null; routeIdle(); tripCalc(); return; }
+  const key = stops.join('|').toLowerCase();
+  if (key === trip.routeKey && trip.route) return;
+  const seq = ++trip.seq;
+  $('tRoute').className = 'routebox';
+  $('tRoute').textContent = 'Working out the route…';
+  try {
+    const r = await api('route', { stops });
+    if (seq !== trip.seq) return;          // a newer lookup has started
+    trip.route = r; trip.routeKey = key; trip.milesFromRoute = r.miles;
+    $('tMiles').value = r.miles;
+    $('tMilesNote').textContent = '(from Google Maps — change it if you took a detour)';
+    showRoute(r);
+  } catch (err) {
+    if (seq !== trip.seq) return;
+    trip.route = null; trip.routeKey = '';
+    $('tRoute').className = 'routebox' + (err.code === 'OFFLINE' ? '' : ' err');
+    $('tRoute').textContent = err.code === 'OFFLINE'
+      ? 'No signal. Save the trip anyway: the miles are worked out when you\'re back online.'
+      : /Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for route lookups. Type the miles for now.'
+      : err.message;
+  }
+  tripCalc();
+}
+
+function showRoute(r) {
+  const hrs = r.minutes >= 60 ? Math.floor(r.minutes / 60) + ' h ' + (r.minutes % 60) + ' min' : r.minutes + ' min';
+  $('tRoute').className = 'routebox';
+  $('tRoute').innerHTML = `<b>${r.miles} miles</b> · ${hrs} by car
+    <div class="legs">${r.legs.map(l => esc(l.from) + ' → ' + esc(l.to) + ': ' + l.miles + ' mi').join('<br>')}</div>
+    <div style="margin-top:6px"><a href="${esc(r.link)}" target="_blank" rel="noopener">View route in Google Maps ›</a></div>`;
+}
+
+function renderRepeat() {
+  const rec = lsList(LS_RECENT);
+  $('tRepeatWrap').classList.toggle('hide', !rec.length);
+  $('tRepeat').innerHTML = rec.map((t, i) => `<button class="chip" data-rep="${i}">${esc(t.label)}
+    <small>${t.miles} mi${t.reason ? ' · ' + esc(t.reason) : ''}</small></button>`).join('');
+}
+
+function repeatTrip(i) {
+  const t = lsList(LS_RECENT)[i];
+  if (!t) return;
+  renderStops(t.stops);
+  $('tReturn').checked = !!t.ret;
+  $('tReason').value = t.reason || '';
+  document.querySelectorAll('#tVehicle button').forEach(b => b.classList.toggle('on', b.dataset.v === t.vehicle));
+  $('tMiles').value = t.miles;
+  trip.route = t.route || null; trip.milesFromRoute = t.route ? t.route.miles : null;
+  trip.routeKey = t.route ? stopsForRoute().join('|').toLowerCase() : '';
+  $('tMilesNote').textContent = t.route ? '(from Google Maps — change it if you took a detour)' : '';
+  if (t.route) showRoute(t.route); else routeIdle('Same as last time: ' + t.miles + ' miles.');
+  tripCalc();
 }
 
 function tripVehicle() { const b = document.querySelector('#tVehicle button.on'); return b ? b.dataset.v : 'Car or van'; }
 
 function tripCalc() {
-  const miles = (Number($('tMiles').value) || 0) * ($('tReturn').checked ? 2 : 1);
+  const miles = Number($('tMiles').value) || 0;
   const v = tripVehicle(), rate = RATES[v];
   $('tCalc').textContent = miles
     ? miles + ' miles × ' + Math.round(rate * 100) + 'p ≈ ' + money(miles * rate) +
@@ -1163,26 +1267,99 @@ function tripCalc() {
     : 'HMRC rates: car or van 55p a mile (25p after 10,000 miles a year), motorbike 24p, bicycle 20p.';
 }
 
+// The trip as it's saved: places as Google named them (short), or as typed
+function buildTrip() {
+  const raw = stopValues(), r = trip.route;
+  const places = r ? r.places : raw.map(v => v === HOME ? HOME : v);
+  const named = places.slice();
+  if ($('tReturn').checked && r && named.length > raw.filter(Boolean).length) named.pop();   // the leg back is the return
+  const miles = Number($('tMiles').value) || 0;
+  const edited = r && Math.abs(miles - r.miles) >= 0.05;
+  return {
+    date: $('tDate').value.trim(), reason: $('tReason').value.trim(), vehicle: tripVehicle(),
+    from: named[0] || '', to: named[named.length - 1] || '', via: named.slice(1, -1).join(' → '),
+    miles: miles, ret: false, returnIncluded: $('tReturn').checked,
+    link: r ? r.link : '', source: r ? (edited ? 'Google Maps ' + r.miles + ', edited' : 'Google Maps') : 'Typed',
+    _stops: raw, _route: r
+  };
+}
+
+function rememberTrip(t) {
+  const label = [t._stops[0], t._stops[t._stops.length - 1]].join(' → ') + (t.returnIncluded ? ' ↺' : '');
+  const rec = [{ label, stops: t._stops, ret: t.returnIncluded, reason: t.reason, vehicle: t.vehicle, miles: t.miles, route: t._route }]
+    .concat(lsList(LS_RECENT).filter(x => x.label !== label || x.reason !== t.reason)).slice(0, 5);
+  lsSet(LS_RECENT, rec);
+  const places = t._stops.filter(p => p && p !== HOME).concat(lsList(LS_PLACES)).filter((p, i, a) => a.indexOf(p) === i).slice(0, 20);
+  lsSet(LS_PLACES, places);
+  localStorage.setItem(LS_VEHICLE, t.vehicle);
+  if (t.vehicle === 'Car or van') localStorage.setItem(LS_TRIPS, String(Number(localStorage.getItem(LS_TRIPS) || 0) + 1));
+}
+
+const sendTrip = t => { const x = Object.assign({}, t); delete x._stops; delete x._route; delete x._routeStops; return api('mileage', { trip: x }); };
+
 async function saveTrip() {
-  const trip = { date: $('tDate').value.trim(), from: $('tFrom').value.trim(), to: $('tTo').value.trim(),
-                 reason: $('tReason').value.trim(), miles: Number($('tMiles').value) || 0,
-                 ret: $('tReturn').checked, vehicle: tripVehicle() };
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(trip.date)) { toast('Date must be DD/MM/YYYY', true); return; }
-  if (!(trip.miles > 0)) { toast('Enter the miles', true); return; }
+  const t = buildTrip();
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(t.date)) { toast('Date must be DD/MM/YYYY', true); return; }
+  if (t._stops.filter(Boolean).length < 2 && !(t.miles > 0)) { toast('Add where you went, or type the miles', true); return; }
+  const offline = navigator.onLine === false;
+  if (!(t.miles > 0) && !offline) { toast('Waiting for the miles: check the route, or type them', true); return; }
   const b = $('btnTripSave'); b.disabled = true; b.textContent = 'Saving…';
   try {
-    const r = await api('mileage', { trip });
-    localStorage.setItem(LS_VEHICLE, trip.vehicle);
-    if (trip.vehicle === 'Car or van') localStorage.setItem(LS_TRIPS, String(Number(localStorage.getItem(LS_TRIPS) || 0) + 1));
-    const places = [trip.from, trip.to].concat(lsList(LS_PLACES)).filter((p, i, a) => p && a.indexOf(p) === i).slice(0, 20);
-    try { localStorage.setItem(LS_PLACES, JSON.stringify(places)); } catch (e) {}
+    if (offline) throw Object.assign(new Error('No signal'), { code: 'OFFLINE' });
+    const r = await sendTrip(t);
+    rememberTrip(t);
     toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' (' + r.rate + ')');
     show('vHome');
   } catch (err) {
-    toast(err.code === 'OFFLINE' ? 'No signal — trip not saved yet. Try again when you have signal'
-          : /Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for trips' : err.message, true);
+    if (err.code === 'OFFLINE') {          // kept on the phone; sent (and the miles worked out) when signal returns
+      t._routeStops = t.miles > 0 ? null : stopsForRoute();
+      lsSet(LS_PENDING_TRIPS, lsList(LS_PENDING_TRIPS).concat([t]));
+      rememberTripSafe(t);
+      toast('No signal — trip saved on your phone. It goes to your Sheet when you\'re back online');
+      refreshTrips();
+      show('vHome');
+    } else {
+      toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for trips' : err.message, true);
+    }
   }
   b.disabled = false; b.textContent = 'Save trip';
+}
+function rememberTripSafe(t) { if (t.miles > 0) rememberTrip(t); }
+
+// Background: send trips saved without signal
+let tripsTicking = false;
+async function tripTick() {
+  if (tripsTicking || navigator.onLine === false || !localStorage.getItem(LS_URL)) return;
+  const list = lsList(LS_PENDING_TRIPS);
+  if (!list.length) return;
+  tripsTicking = true;
+  const left = [];
+  let sent = 0;
+  for (const t of list) {
+    try {
+      if (!(t.miles > 0) && t._routeStops) {
+        const r = await api('route', { stops: t._routeStops });
+        t.miles = r.miles; t.link = r.link; t.source = 'Google Maps';
+        t.from = r.places[0]; t.to = r.places[t.returnIncluded ? r.places.length - 2 : r.places.length - 1] || t.to;
+        t._route = r;
+      }
+      await sendTrip(t);
+      rememberTrip(t);
+      sent++;
+    } catch (err) {
+      if (err.code === 'OFFLINE' || err.code === 'QUOTA_MAPS') left.push(t);
+      else { left.push(Object.assign(t, { error: err.message })); }
+    }
+  }
+  lsSet(LS_PENDING_TRIPS, left);
+  tripsTicking = false;
+  refreshTrips();
+  if (sent) toast('🚗 ' + sent + ' trip' + (sent > 1 ? 's' : '') + ' saved to your Sheet');
+}
+
+function refreshTrips() {
+  const n = lsList(LS_PENDING_TRIPS).length;
+  $('btnTrip').innerHTML = '<span class="ico">🚗</span> Log a trip' + (n ? ' <span class="count">' + n + '</span>' : '');
 }
 
 /* ---------- paying back personal spending ---------- */
@@ -1304,8 +1481,51 @@ $('btnJBack').onclick = () => show('vHome');
 $('btnTrip').onclick  = openTrip;
 $('btnTBack').onclick = () => show('vHome');
 $('btnTripSave').onclick = saveTrip;
-$('tMiles').oninput = tripCalc;
-$('tReturn').onchange = tripCalc;
+$('tMiles').oninput = () => {
+  $('tMilesNote').textContent = trip.route && Math.abs((Number($('tMiles').value) || 0) - trip.route.miles) >= 0.05
+    ? '(changed from Google\'s ' + trip.route.miles + ')' : trip.route ? '(from Google Maps — change it if you took a detour)' : '';
+  tripCalc();
+};
+$('tReturn').onchange = lookupRoute;
+$('tStops').addEventListener('change', e => { if (e.target.dataset.stop !== undefined) { delete e.target.dataset.geo; lookupRoute(); } });
+$('tStops').onclick = e => {
+  const t = e.target;
+  if (t.dataset.del) {
+    const v = stopValues(); v.splice(Number(t.dataset.del), 1);
+    renderStops(v); lookupRoute();
+  } else if (t.dataset.here) {
+    if (!navigator.geolocation) { toast('Location isn\'t available on this phone', true); return; }
+    t.textContent = '…';
+    navigator.geolocation.getCurrentPosition(pos => {
+      const inp = stopInputs()[0];
+      inp.value = 'Current location';
+      inp.dataset.geo = pos.coords.latitude.toFixed(5) + ',' + pos.coords.longitude.toFixed(5);
+      t.textContent = '📍';
+      lookupRoute();
+    }, () => { t.textContent = '📍'; toast('Couldn\'t get your location. Type a postcode instead', true); },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  }
+};
+$('btnAddStop').onclick = () => {
+  const v = stopValues(), geos = stopInputs().map(x => x.dataset.geo || '');
+  if (v.length >= 10) { toast('Up to 8 stops', true); return; }
+  v.splice(v.length - 1, 0, ''); geos.splice(geos.length - 1, 0, '');
+  renderStops(v, geos);
+  stopInputs()[v.length - 2].focus();
+};
+$('btnHome').onclick = () => { $('homeWrap').classList.toggle('hide'); $('tHome').value = homeAddr(); $('tHome').focus(); };
+$('btnHomeSave').onclick = () => {
+  const h = $('tHome').value.trim().toUpperCase();
+  if (!h) { localStorage.removeItem(LS_HOME); } else localStorage.setItem(LS_HOME, h);
+  $('homeWrap').classList.add('hide');
+  $('btnHome').textContent = h ? '🏠 ' + h : '🏠 Set home';
+  fillPlaces();
+  const first = stopInputs()[0];
+  if (h && first && !first.value) first.value = HOME;
+  toast(h ? 'Home saved on this phone' : 'Home removed');
+  trip.routeKey = ''; lookupRoute();
+};
+$('tRepeat').onclick = e => { const c = e.target.closest('.chip'); if (c) repeatTrip(Number(c.dataset.rep)); };
 $('tVehicle').onclick = e => {
   const v = e.target.closest('button'); if (!v) return;
   document.querySelectorAll('#tVehicle button').forEach(b => b.classList.toggle('on', b === v));
@@ -1375,7 +1595,8 @@ else { show('vSetup'); }
 // Offline queue: a photo left "reading" when the app closed is waiting again
 jobAll().then(all => Promise.all(all.filter(j => j.status === 'reading').map(j => { j.status = 'pending'; return jobPut(j); })))
   .then(refreshJobs).then(() => setTimeout(jobTick, 2000));
-window.addEventListener('online', () => { refreshJobs(); jobTick(); });
+window.addEventListener('online', () => { refreshJobs(); jobTick(); tripTick(); });
+refreshTrips(); setTimeout(tripTick, 3000); setInterval(tripTick, 60000);
 window.addEventListener('offline', refreshJobs);
 setInterval(jobTick, 60000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') jobTick(); });

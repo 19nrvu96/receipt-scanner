@@ -201,6 +201,25 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
 .jcard{display:flex;gap:12px}
 .jcard img{width:64px;height:84px;object-fit:cover;border-radius:8px;flex-shrink:0;background:#ddd}
 .jcard .jb{flex:1;min-width:0}
+
+/* ---------- trip route ---------- */
+.stop{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.stop .dot{width:26px;height:26px;border-radius:50%;background:#eef5ff;color:#0a84ff;font-size:12px;font-weight:700;
+           display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.stop input{flex:1;min-width:0}
+.stop .ib{flex-shrink:0;width:44px;height:44px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:18px;cursor:pointer}
+.routebox{margin-top:12px;padding:12px 14px;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.07);font-size:14px;color:#555}
+.routebox b{font-size:18px;color:#1a1a1a}
+.routebox.err{background:#fdecea;color:#b71c1c;box-shadow:none}
+.routebox .legs{margin-top:6px;font-size:13px;color:#666}
+.routebox a{color:#0a84ff;font-weight:600;text-decoration:none}
+.lnote{text-transform:none;letter-spacing:0;color:#999}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.chip{flex-shrink:0;max-width:220px;padding:10px 12px;border:1px solid #e0e0e5;border-radius:12px;background:#fff;font-size:13px;
+      font-family:inherit;color:#1a1a1a;text-align:left;cursor:pointer;line-height:1.3}
+.chip small{display:block;color:#888}
+.newhome{display:flex;gap:8px;margin-top:8px}
+.newhome .btn{width:auto;padding:0 18px;margin:0}
 </style>
 </head>
 <body>
@@ -279,13 +298,24 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
       <h2 style="margin:0;flex:1">Log a business trip</h2>
     </div>
     <p class="sub" id="tSub">Claimed at HMRC's mileage rates. Don't also claim fuel for the same car.</p>
+    <div id="tRepeatWrap" class="hide"><label>Repeat a recent trip</label><div class="chips" id="tRepeat"></div></div>
     <label>Date</label><input id="tDate" inputmode="numeric" placeholder="DD/MM/YYYY">
-    <label>From</label><input id="tFrom" list="placeList" placeholder="e.g. Home">
-    <label>To</label><input id="tTo" list="placeList" placeholder="e.g. Car boot sale, Wimbledon">
+    <label>Route</label>
+    <div id="tStops"></div>
     <datalist id="placeList"></datalist>
+    <div class="duo" style="margin-top:8px">
+      <button class="btn sec" id="btnAddStop">＋ Add stop</button>
+      <button class="btn sec" id="btnHome">🏠 Home</button>
+    </div>
+    <div id="homeWrap" class="hide newhome">
+      <input id="tHome" placeholder="Your home postcode, e.g. SW19 5AA" autocapitalize="characters">
+      <button class="btn" id="btnHomeSave">Save</button>
+    </div>
+    <label class="check"><input type="checkbox" id="tReturn"> Return trip (back to the start)</label>
+    <div class="routebox" id="tRoute">Enter where you started and where you went, and the miles are worked out for you.</div>
+    <label>Miles <span id="tMilesNote" class="lnote"></span></label>
+    <input id="tMiles" type="number" step="0.1" inputmode="decimal" placeholder="0">
     <label>Reason</label><input id="tReason" placeholder="e.g. Sourcing stock">
-    <label>Miles (one way)</label><input id="tMiles" type="number" step="0.1" inputmode="decimal" placeholder="0">
-    <label class="check"><input type="checkbox" id="tReturn"> Return trip (doubles the miles)</label>
     <label>Vehicle</label>
     <div class="seg" id="tVehicle">
       <button data-v="Car or van" class="on">🚗 Car or van</button><button data-v="Motorbike">🏍️ Motorbike</button><button data-v="Bicycle">🚲 Bicycle</button>
