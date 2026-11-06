@@ -1476,7 +1476,7 @@ function renderReturns(d) {
   $('slRet').innerHTML = r.map((x, i) => `<div class="card scard"><div class="sb">
     <div class="st">${esc(x.item)}${x.left > 1 ? ' <span class="sm">×' + x.left + ' left</span>' : ''}</div>
     <div class="sm">${esc(x.store)} · bought ${esc(x.date)} · ${money(x.each)} each</div>
-    <div class="tags"><span class="tag ${x.daysLeft <= 2 ? 'late' : 'soon'}">${x.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(x.lastDay))}</span></div>
+    <div class="tags"><span class="tag ${x.daysLeft <= 2 ? 'late' : 'soon'}">${x.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(x.lastDay))}</span><span class="tag">${x.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span></div>
     <div class="duo" style="margin-top:8px"><button class="btn sec" data-keep="${i}">Keep it</button>
       <button class="btn sec" data-ret="${i}">I'll return it</button></div></div></div>`).join('');
 }
