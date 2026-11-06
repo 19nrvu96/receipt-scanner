@@ -1388,7 +1388,7 @@ function renderTodo(w) {
   if (w.late) rows.push(['🔴', w.late + ' parcel' + s(w.late) + ' late. Post now']);
   if (w.postToday - (w.late || 0) > 0) { const n = w.postToday - (w.late || 0); rows.push(['📦', 'Post ' + n + ' parcel' + s(n) + ' today']); }
   else if (w.toPost && !w.postToday) rows.push(['📦', w.toPost + ' parcel' + s(w.toPost) + ' to post']);
-  if (w.returnsSoon) rows.push(['↩️', w.returnsSoon + ' thing' + s(w.returnsSoon) + ' to return soon?']);
+  if (w.returnsSoon) rows.push(['↩️', w.returnsSoon + ' receipt' + s(w.returnsSoon) + ': last days to return']);
   if (w.needs) rows.push(['⚠️', w.needs + ' sale' + s(w.needs) + ' need' + (w.needs === 1 ? 's' : '') + ' a check']);
   $('todo').classList.toggle('hide', !rows.length);
   $('todo').innerHTML = rows.slice(0, 3).map(r => `<button data-todo="1"><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`).join('');
@@ -1471,14 +1471,19 @@ function renderSales() {
 }
 
 function renderReturns(d) {
-  const r = d.returnsClosing || [];
+  const r = d.returnsClosing || [];   // one card per receipt (same shop and date)
   $('slRetWrap').classList.toggle('hide', !r.length);
-  $('slRet').innerHTML = r.map((x, i) => `<div class="card scard"><div class="sb">
-    <div class="st">${esc(x.item)}${x.left > 1 ? ' <span class="sm">×' + x.left + ' left</span>' : ''}</div>
-    <div class="sm">${esc(x.store)} · bought ${esc(x.date)} · ${money(x.each)} each</div>
-    <div class="tags"><span class="tag ${x.daysLeft <= 2 ? 'late' : 'soon'}">${x.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(x.lastDay))}</span><span class="tag">${x.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span></div>
-    <div class="duo" style="margin-top:8px"><button class="btn sec" data-keep="${i}">Keep it</button>
-      <button class="btn sec" data-ret="${i}">I'll return it</button></div></div></div>`).join('');
+  $('slRet').innerHTML = r.map((g, i) => {
+    const one = g.items.length === 1, it = g.items[0];
+    const title = one ? esc(it.item) + (it.left > 1 ? ' <span class="sm">×' + it.left + '</span>' : '') : esc(g.store || 'Receipt') + ' · ' + g.items.length + ' things';
+    return `<div class="card scard"><div class="sb">
+    <div class="st">${title}</div>
+    <div class="sm">${one ? esc(g.store) + ' · ' : ''}bought ${esc(g.date)} · ${money(g.total)}</div>
+    <div class="tags"><span class="tag ${g.daysLeft <= 2 ? 'late' : 'soon'}">${g.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(g.lastDay))}</span><span class="tag">${g.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span></div>
+    ${one ? '' : '<details class="more"><summary>See the ' + g.items.length + ' things</summary>' + g.items.map(x => '<div class="srow"><span>' + esc(x.item) + (x.left > 1 ? ' ×' + x.left : '') + '</span><span class="sm">' + money(x.each * x.left) + '</span></div>').join('') + '</details>'}
+    <div class="duo" style="margin-top:8px"><button class="btn sec" data-keep="${i}">${one ? 'Keep it' : 'Keep them'}</button>
+      <button class="btn sec" data-ret="${i}">${one ? 'I\'ll return it' : 'I\'ll return them'}</button></div></div></div>`;
+  }).join('');
 }
 const dayName = t => { const d = toDate(t); return d ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : t; };
 
@@ -1538,12 +1543,12 @@ $('vSales').addEventListener('click', async e => {
   const t = e.target, card = t.closest('[data-need],[data-rec]');
   if (t.dataset.lab !== undefined) return showLabel(SALES.toPost[Number(t.dataset.lab)]);
   if (t.dataset.keep !== undefined || t.dataset.ret !== undefined) {
-    const x = SALES.returnsClosing[Number(t.dataset.keep ?? t.dataset.ret)], choice = t.dataset.keep !== undefined ? 'keep' : 'return';
+    const g = SALES.returnsClosing[Number(t.dataset.keep ?? t.dataset.ret)], choice = t.dataset.keep !== undefined ? 'keep' : 'return';
     t.disabled = true;
     try {
-      await api('returnDecide', { row: x.row, item: x.item, choice });
-      SALES.returnsClosing = SALES.returnsClosing.filter(y => y !== x);
-      const st = SALES.stock && SALES.stock.items.find(y => y.row === x.row); if (st) st.decision = choice;
+      await api('returnDecide', { items: g.items.map(x => ({ row: x.row, item: x.item })), choice });
+      SALES.returnsClosing = SALES.returnsClosing.filter(y => y !== g);
+      g.items.forEach(x => { const st = SALES.stock && SALES.stock.items.find(y => y.row === x.row); if (st) st.decision = choice; });
       renderSales();
       toast(choice === 'keep' ? 'OK. We won\'t remind you again.' : 'OK. When the refund comes, scan or forward it.');
     } catch (err) { t.disabled = false; toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message, true); }
