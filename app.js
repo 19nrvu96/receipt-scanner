@@ -13,7 +13,7 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay'];
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale'];
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1362,6 +1362,239 @@ function refreshTrips() {
   $('btnTrip').innerHTML = '<span class="ico">🚗</span> Log a trip' + (n ? ' <span class="count">' + n + '</span>' : '');
 }
 
+/* ---------- sales ---------- */
+const ALL_PLATFORMS = ['eBay', 'Vinted', 'Amazon FBA', 'Amazon FBM', 'Depop', 'Etsy', 'Facebook Marketplace', 'In person', 'Other'];
+const LS_WHERE = 'rs_where';
+let SALES = null;            // last list from the Sheet
+let sale = null;             // the sale open in the form: { row, saleId, needs, linked }
+
+function setSalesCount(w) {
+  const n = w ? (w.needs || 0) + (w.toPost || 0) : 0;
+  $('salesLabel').innerHTML = 'Sales &amp; postage' + (n ? ' <span class="count">' + n + '</span>' : '');
+}
+
+const tagFor = st => st === 'Cancelled' || st === 'Refunded' ? 'no' : st === 'Completed' ? 'ok' : st === 'Part refunded' ? 'warn' : '';
+const num = v => v === '' || v === null || v === undefined || isNaN(Number(v)) ? null : Number(v);
+
+async function openSales() {
+  show('vSales');
+  if (!SALES) $('slRecent').innerHTML = '<p class="sub">Loading…</p>';
+  try {
+    SALES = await api('sales', {});
+    renderSales();
+  } catch (err) {
+    $('slRecent').innerHTML = '<p class="sub">' + esc(err.code === 'OFFLINE' ? 'No signal: sales load when you\'re back online.'
+      : /Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for sales.' : err.message) + '</p>';
+  }
+}
+
+function saleCard(o, i, list) {
+  const price = num(o['sale price']), net = num(o['net received']), profit = num(o.profit);
+  const bits = [esc(o.platform || ''), esc(o['sale date'] || '')].filter(Boolean).join(' · ');
+  return `<div class="card scard" data-${list}="${i}"><div class="sb">
+    <div class="st">${esc(o.item || o['order number'] || 'Sale')}</div>
+    <div class="sm">${bits}${o['order number'] ? ' · #' + esc(o['order number']) : ''}</div>
+    <div class="sm"><span class="tag ${tagFor(o.status)}">${esc(o.status || 'Sold')}</span>${o['counts in totals'] === 'No' ? '<span class="tag">not in totals</span>' : ''}
+      ${profit !== null ? '<span class="tag ok">profit ' + money(profit) + '</span>' : ''}${o.needs ? '<span class="tag warn">' + esc(o.needs) + '</span>' : ''}</div>
+  </div><div class="amt">${price !== null ? money(price) : net !== null ? money(net) : '—'}</div></div>`;
+}
+
+function renderSales() {
+  const d = SALES || { needs: [], recent: [], toPost: [] };
+  setSalesCount({ needs: d.needs.length, toPost: d.toPost.length });
+  $('slPostWrap').classList.toggle('hide', !d.toPost.length);
+  $('slPost').innerHTML = d.toPost.map((l, i) => `<div class="card scard"><div class="sb">
+    <div class="st">${esc(l.item || 'Postage label')}</div>
+    <div class="sm">${[l.platform, l.courier, l.order ? '#' + l.order : '', l.postBy ? 'post by ' + l.postBy : ''].filter(Boolean).map(esc).join(' · ')}</div>
+    <div class="duo" style="margin-top:8px"><button class="btn" data-lab="${i}">${l.files ? 'Show QR code' : 'Open label'}</button>
+      <button class="btn sec" data-posted="${i}">✓ Posted</button></div></div></div>`).join('');
+  $('slNeedsWrap').classList.toggle('hide', !d.needs.length);
+  $('slNeeds').innerHTML = d.needs.map((o, i) => saleCard(o, i, 'need')).join('');
+  $('slRecent').innerHTML = d.recent.length ? d.recent.map((o, i) => saleCard(o, i, 'rec')).join('')
+    : '<p class="sub">No sales yet. Forward a sale email, or tap ＋ Log a sale.</p>';
+}
+
+$('vSales').addEventListener('click', async e => {
+  const t = e.target, card = t.closest('[data-need],[data-rec]');
+  if (t.dataset.lab !== undefined) return showLabel(SALES.toPost[Number(t.dataset.lab)]);
+  if (t.dataset.posted !== undefined) {
+    const l = SALES.toPost[Number(t.dataset.posted)];
+    t.disabled = true;
+    try { SALES.toPost = await api('labelDone', { id: l.id }); renderSales(); toast('Ticked off: ' + (l.item || 'label')); }
+    catch (err) { t.disabled = false; toast(err.message, true); }
+    return;
+  }
+  if (card) openSale(card.dataset.need !== undefined ? SALES.needs[Number(card.dataset.need)] : SALES.recent[Number(card.dataset.rec)]);
+});
+
+// Full-screen QR code for the drop-off counter
+async function showLabel(l) {
+  const veil = document.createElement('div');
+  veil.className = 'veil';
+  veil.innerHTML = `<div class="sheet"><h3>${esc(l.item || 'Postage label')}</h3><p class="sub">Loading…</p></div>`;
+  veil.onclick = e => { if (e.target === veil || e.target.dataset.close) veil.remove(); };
+  document.body.appendChild(veil);
+  try {
+    const f = await api('labelFile', { id: l.id });
+    veil.querySelector('.sheet').innerHTML = `<h3>${esc(l.item || 'Postage label')}</h3>
+      <p class="sub">${[l.courier, l.order ? '#' + l.order : ''].filter(Boolean).map(esc).join(' · ')}. Turn your screen brightness up for the scanner.</p>
+      ${f.images.map(src => `<img class="qrimg" src="${src}" alt="Postage QR code">`).join('')}
+      ${f.pdfs.map(u => `<a class="btn sec" href="${esc(u)}" target="_blank" rel="noopener">Open the label PDF</a>`).join('')}
+      ${f.link ? `<a class="btn sec" href="${esc(f.link)}" target="_blank" rel="noopener">Open in ${esc(l.platform || 'the app')}</a>` : ''}
+      ${!f.images.length && !f.pdfs.length && !f.link ? '<p class="sub">This email had no code or label link. Open it in your email app.</p>' : ''}
+      <button class="btn ghost" data-close="1">Close</button>`;
+  } catch (err) {
+    veil.querySelector('.sheet').innerHTML = '<p class="sub">' + esc(err.message) + '</p><button class="btn ghost" data-close="1">Close</button>';
+  }
+}
+
+function segSet(id, v) { document.querySelectorAll('#' + id + ' button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
+function segGet(id) { const b = document.querySelector('#' + id + ' button.on'); return b ? b.dataset.v : ''; }
+['saPay', 'saStatus'].forEach(id => { $(id).onclick = e => { const b = e.target.closest('button'); if (b) { segSet(id, b.classList.contains('on') && id === 'saPay' ? '' : b.dataset.v); saleCalc(); } }; });
+
+function platformOptions(current) {
+  const list = (CFG.platforms && CFG.platforms.length ? CFG.platforms : ALL_PLATFORMS).slice();
+  ALL_PLATFORMS.forEach(p => { if (list.indexOf(p) < 0) list.push(p); });
+  if (current && list.indexOf(current) < 0) list.unshift(current);
+  return list.map(p => `<option ${p === current ? 'selected' : ''}>${esc(p)}</option>`).join('');
+}
+
+function saleWhereToggle() {
+  const inPerson = $('saPlatform').value === 'In person';
+  $('saWhereWrap').classList.toggle('hide', !inPerson);
+  $('saPayWrap').classList.toggle('hide', !inPerson);
+}
+
+function openSale(o) {
+  o = o || {};
+  const isNew = !o.row;
+  sale = { row: o.row || null, saleId: o._sale_id || null, needs: o.needs || '', linked: o['linked purchase'] || '' };
+  $('saTitle').textContent = isNew ? 'Log a sale' : 'Sale';
+  const plat = o.platform || (CFG.platforms && CFG.platforms.indexOf('In person') > -1 ? 'In person' : (CFG.platforms && CFG.platforms[0]) || 'In person');
+  $('saPlatform').innerHTML = platformOptions(plat);
+  $('saWhere').value = o.where || '';
+  $('whereList').innerHTML = lsList(LS_WHERE).map(w => `<option value="${esc(w)}">`).join('');
+  $('saDate').value = o['sale date'] || today();
+  $('saItem').value = o.item || '';
+  $('saQty').value = o.quantity || 1;
+  $('saPrice').value = num(o['sale price']) ?? '';
+  $('saPostIn').value = num(o['postage charged']) ?? '';
+  $('saFees').value = num(o['platform fees']) ?? '';
+  $('saPostOut').value = num(o['postage cost']) ?? '';
+  $('saOther').value = num(o['other costs']) ?? '';
+  $('saRefund').value = num(o['refund amount']) ?? '';
+  $('saPayout').value = o['payout date'] || '';
+  $('saOrder').value = o['order number'] || o['transaction id'] || '';
+  $('saBuyer').value = o.buyer || '';
+  $('saNotes').value = o.notes || '';
+  segSet('saPay', o['payment method'] || (isNew ? 'Cash' : ''));
+  segSet('saStatus', o.status || (isNew ? 'Completed' : 'Sold'));
+  $('saCounts').checked = o['counts in totals'] ? o['counts in totals'] === 'Yes' : !/^Amazon/.test(plat);
+  $('saFind').value = ''; $('saFound').innerHTML = '';
+  $('saLinked').classList.toggle('hide', !sale.linked);
+  $('saLinked').textContent = sale.linked ? 'Linked: ' + sale.linked + (num(o['item cost']) !== null ? ' · cost ' + money(o['item cost']) : '') : '';
+  sale.itemCost = num(o['item cost']);
+  $('saMore').open = !isNew && (num(o['platform fees']) === null || !!o.needs);
+  $('saNeeds').classList.toggle('hide', !o.needs);
+  $('saNeeds').textContent = o.needs ? '⚠️ ' + o.needs : '';
+  $('saMatch').classList.add('hide'); $('saMatch').innerHTML = '';
+  if (/^match/.test(o.needs || '')) loadMatches(o);
+  saleWhereToggle();
+  saleCalc();
+  show('vSale');
+}
+
+// A cancellation or refund that couldn't be matched: pick the sale it belongs to
+async function loadMatches(o) {
+  try {
+    const c = await api('saleCands', { row: o.row });
+    $('saMatch').classList.remove('hide');
+    $('saMatch').innerHTML = '<label>Which sale was it?</label>' + c.map(x =>
+      `<button class="found" data-to="${x.row}"><b>${esc(x.item || '')}</b><br><span class="sm">${esc(x.platform || '')} · ${esc(x['sale date'] || '')}${num(x['sale price']) !== null ? ' · ' + money(x['sale price']) : ''}${x['order number'] ? ' · #' + esc(x['order number']) : ''}</span></button>`).join('') +
+      '<p class="sub">Not listed? Fill in the details below and save it as its own row.</p>';
+  } catch (err) { toast(err.message, true); }
+}
+
+$('saMatch').onclick = async e => {
+  const b = e.target.closest('[data-to]');
+  if (!b || !confirm('Apply this ' + (/cancel/.test(sale.needs) ? 'cancellation' : 'refund') + ' to that sale?')) return;
+  try { SALES = await api('saleMatch', { from: sale.row, to: Number(b.dataset.to) }); toast('Matched'); renderSales(); show('vSales'); }
+  catch (err) { toast(err.message, true); }
+};
+
+let findTimer = null;
+$('saFind').oninput = () => {
+  clearTimeout(findTimer);
+  const q = $('saFind').value.trim();
+  if (q.length < 3) { $('saFound').innerHTML = ''; return; }
+  findTimer = setTimeout(async () => {
+    try {
+      const r = await api('purchaseSearch', { q });
+      $('saFound').innerHTML = r.length ? r.map(x => `<button class="found" data-pr="${x.row}" data-cost="${x.cost}" data-item="${esc(x.item)}">
+        <b>${esc(x.item)}</b><br><span class="sm">${esc(x.store)} · ${esc(x.date)} · ${money(x.cost)} each</span></button>`).join('')
+        : '<p class="sub">No purchases match. Try another word.</p>';
+    } catch (err) { $('saFound').innerHTML = '<p class="sub">' + esc(err.message) + '</p>'; }
+  }, 350);
+};
+$('saFound').onclick = e => {
+  const b = e.target.closest('[data-pr]');
+  if (!b) return;
+  sale.linked = 'Purchases row ' + b.dataset.pr + ': ' + b.dataset.item;
+  sale.itemCost = Number(b.dataset.cost) * (Number($('saQty').value) || 1);
+  $('saLinked').textContent = 'Linked: ' + sale.linked + ' · cost ' + money(sale.itemCost);
+  $('saLinked').classList.remove('hide');
+  $('saFound').innerHTML = ''; $('saFind').value = '';
+  saleCalc();
+};
+
+function saleCalc() {
+  const n = id => Number($(id).value) || 0;
+  const price = $('saPrice').value === '' ? null : n('saPrice');
+  if (price === null) { $('saCalc').textContent = ''; return; }
+  const net = price + n('saPostIn') - n('saFees') - n('saPostOut') - n('saOther') - n('saRefund');
+  $('saCalc').textContent = 'You keep ' + money(net) + (sale && sale.itemCost !== null && sale.itemCost !== undefined ? ' · profit ' + money(net - sale.itemCost) : '') +
+    ($('saFees').value === '' && $('saPlatform').value !== 'In person' ? ' (fees not added yet)' : '');
+}
+['saPrice', 'saPostIn', 'saFees', 'saPostOut', 'saOther', 'saRefund', 'saQty'].forEach(id => { $(id).oninput = saleCalc; });
+$('saPlatform').onchange = () => { saleWhereToggle(); if (!sale.row) $('saCounts').checked = !/^Amazon/.test($('saPlatform').value); saleCalc(); };
+
+async function saveSaleForm() {
+  const date = $('saDate').value.trim(), payout = $('saPayout').value.trim();
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) { toast('Date must be DD/MM/YYYY', true); return; }
+  if (payout && !/^\d{2}\/\d{2}\/\d{4}$/.test(payout)) { toast('Payout date must be DD/MM/YYYY', true); return; }
+  if (!$('saItem').value.trim() && !$('saOrder').value.trim()) { toast('Add what you sold', true); return; }
+  const v = id => $(id).value.trim();
+  const s = {
+    'sale date': date, platform: $('saPlatform').value, where: $('saPlatform').value === 'In person' ? v('saWhere') : '',
+    item: v('saItem'), quantity: Number($('saQty').value) || 1,
+    'sale price': v('saPrice'), 'postage charged': v('saPostIn'), 'platform fees': v('saFees'), 'postage cost': v('saPostOut'),
+    'other costs': v('saOther'), 'refund amount': v('saRefund'), 'payout date': payout,
+    'order number': v('saOrder'), buyer: v('saBuyer'), notes: v('saNotes'),
+    'payment method': $('saPlatform').value === 'In person' ? segGet('saPay') : '',
+    status: segGet('saStatus') || 'Sold', 'counts in totals': $('saCounts').checked ? 'Yes' : 'No',
+    'linked purchase': sale.linked || '', 'item cost': sale.itemCost !== null && sale.itemCost !== undefined ? sale.itemCost : '',
+    needs: sale.row && sale.needs && !/^match/.test(sale.needs) ? '' : (sale.needs || '')   // saving it yourself clears the flag
+  };
+  if (s['sale price'] === '' && !/^Amazon/.test(s.platform) && s.status !== 'Cancelled') { toast('Add the sale price', true); return; }
+  const b = $('btnSaleSave'); b.disabled = true; b.textContent = 'Saving…';
+  try {
+    await api('saleSave', { sale: s, row: sale.row, saleId: sale.saleId });
+    if (s.where) lsSet(LS_WHERE, [s.where].concat(lsList(LS_WHERE).filter(w => w !== s.where)).slice(0, 15));
+    toast(sale.row ? 'Sale updated' : 'Sale saved');
+    SALES = null;
+    openSales();
+  } catch (err) {
+    toast(err.code === 'OFFLINE' ? 'No signal — not saved yet. Try again when you have signal' : err.message, true);
+  }
+  b.disabled = false; b.textContent = 'Save sale';
+}
+
+$('btnSales').onclick = openSales;
+$('btnSlBack').onclick = () => show('vHome');
+$('btnNewSale').onclick = () => openSale(null);
+$('btnSaBack').onclick = () => show('vSales');
+$('btnSaleSave').onclick = saveSaleForm;
+
 /* ---------- paying back personal spending ---------- */
 function owedHtml(o) {
   if (o.owed != null) {
@@ -1421,6 +1654,8 @@ async function refreshConfig() {
     CFG.payments = d.payments || [];
     CFG.vat      = !!d.vat;
     CFG.business = d.business || '';
+    CFG.platforms = d.platforms || [];
+    setSalesCount(d.salesWaiting);
     saveCache(); fillStores(); fillPayPicker();
     setEmailCount(d.emails || 0);
     $('homeStatus').textContent = 'Ready · ' + CFG.purposes.length + ' purposes';

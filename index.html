@@ -220,6 +220,23 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
 .chip small{display:block;color:#888}
 .newhome{display:flex;gap:8px;margin-top:8px}
 .newhome .btn{width:auto;padding:0 18px;margin:0}
+
+/* ---------- sales ---------- */
+.sech{font-size:15px;margin:18px 0 8px}
+.scard{display:flex;gap:10px;align-items:flex-start}
+.scard .sb{flex:1;min-width:0}
+.scard .st{font-size:15px;font-weight:600;line-height:1.3;word-break:break-word}
+.scard .sm{font-size:13px;color:#666;margin-top:3px}
+.scard .amt{font-weight:700;white-space:nowrap}
+.tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:8px;background:#f1f3f4;color:#444;margin-right:4px}
+.tag.warn{background:#fff4e5;color:#7a4a00}.tag.no{background:#fdecea;color:#b71c1c}.tag.ok{background:#e8f6ee;color:#1b6b3a}
+details.more{margin-top:12px;background:#fff;border-radius:12px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+details.more summary{font-size:15px;font-weight:600;cursor:pointer}
+.form select{width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;font-size:16px;background:#fff;font-family:inherit}
+.duo>div{flex:1;min-width:0}
+.found{display:block;width:100%;text-align:left;padding:10px 12px;margin-top:6px;border:1px solid #e0e0e5;border-radius:10px;background:#fff;font-size:14px;font-family:inherit;cursor:pointer}
+a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box;margin-bottom:8px}
+.qrimg{width:100%;background:#fff;border-radius:12px;margin-bottom:10px;image-rendering:pixelated}
 </style>
 </head>
 <body>
@@ -243,6 +260,7 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
     <button class="big" id="btnCam"><span class="ico">📷</span> Scan Receipt</button>
     <button class="big" id="btnLib"><span class="ico">🖼️</span> From Photos</button>
     <button class="big" id="btnEmails"><span class="ico">📧</span> <span id="emailLabel">Emailed receipts</span></button>
+    <button class="big" id="btnSales"><span class="ico">🏷️</span> <span id="salesLabel">Sales &amp; postage</span></button>
     <button class="big hide" id="btnJobs"><span class="ico">📥</span> <span id="jobsLabel">Photos to review</span></button>
     <div class="mini">
       <button class="big" id="btnTrip"><span class="ico">🚗</span> Log a trip</button>
@@ -322,6 +340,56 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
     </div>
     <p class="sub" id="tCalc" style="margin-top:12px"></p>
     <div class="bar"><button class="btn" id="btnTripSave">Save trip</button></div>
+  </section>
+
+  <!-- SALES -->
+  <section id="vSales" class="hide">
+    <div class="hdr">
+      <button class="back" id="btnSlBack">‹</button>
+      <h2 style="margin:0;flex:1">Sales</h2>
+    </div>
+    <button class="btn" id="btnNewSale">＋ Log a sale</button>
+    <p class="sub" style="margin-top:10px">Forward sale, cancellation and postage-label emails to your receipts address: they file themselves here.</p>
+    <div id="slPostWrap" class="hide"><h3 class="sech">📦 To post</h3><div id="slPost"></div></div>
+    <div id="slNeedsWrap" class="hide"><h3 class="sech">⚠️ Needs your input</h3><div id="slNeeds"></div></div>
+    <h3 class="sech">Recent sales</h3><div id="slRecent"><p class="sub">Loading…</p></div>
+  </section>
+
+  <section id="vSale" class="hide form">
+    <div class="hdr">
+      <button class="back" id="btnSaBack">‹</button>
+      <h2 style="margin:0;flex:1" id="saTitle">Log a sale</h2>
+    </div>
+    <div id="saNeeds" class="banner dup hide"></div>
+    <div id="saMatch" class="hide"></div>
+    <label>Platform</label><select id="saPlatform"></select>
+    <div id="saWhereWrap"><label>Where</label><input id="saWhere" list="whereList" placeholder="e.g. Wimbledon car boot"><datalist id="whereList"></datalist></div>
+    <label>Date sold</label><input id="saDate" inputmode="numeric" placeholder="DD/MM/YYYY">
+    <label>Item</label><input id="saItem" placeholder="What you sold, or 'Day's takings'">
+    <div class="duo"><div><label>Quantity</label><input id="saQty" type="number" inputmode="numeric" value="1"></div>
+      <div><label>Sale price (£)</label><input id="saPrice" type="number" step="0.01" inputmode="decimal" placeholder="0.00"></div></div>
+    <div id="saPayWrap"><label>Paid by</label>
+      <div class="seg" id="saPay"><button data-v="Cash">Cash</button><button data-v="Bank transfer">Bank transfer</button><button data-v="Card reader">Card reader</button></div></div>
+    <details class="more" id="saMore"><summary>Fees, postage and payout</summary>
+      <div class="duo"><div><label>Postage paid by buyer</label><input id="saPostIn" type="number" step="0.01" inputmode="decimal"></div>
+        <div><label>Platform fees</label><input id="saFees" type="number" step="0.01" inputmode="decimal"></div></div>
+      <div class="duo"><div><label>Postage you paid</label><input id="saPostOut" type="number" step="0.01" inputmode="decimal"></div>
+        <div><label>Other costs</label><input id="saOther" type="number" step="0.01" inputmode="decimal" placeholder="e.g. promoted"></div></div>
+      <div class="duo"><div><label>Refunded to buyer</label><input id="saRefund" type="number" step="0.01" inputmode="decimal"></div>
+        <div><label>Date paid out</label><input id="saPayout" inputmode="numeric" placeholder="DD/MM/YYYY"></div></div>
+      <label>Order / transaction number</label><input id="saOrder" placeholder="Helps match emails later">
+      <label>Buyer (username, optional)</label><input id="saBuyer">
+    </details>
+    <label>Status</label>
+    <div class="seg" id="saStatus"><button data-v="Sold">Sold</button><button data-v="Posted">Posted</button><button data-v="Completed">Completed</button><button data-v="Cancelled">Cancelled</button><button data-v="Refunded">Refunded</button></div>
+    <label class="check"><input type="checkbox" id="saCounts" checked> Count in my totals</label>
+    <label>What it cost you (for profit)</label>
+    <div id="saLinked" class="sub hide"></div>
+    <input id="saFind" placeholder="Search your purchases, e.g. kettle" autocomplete="off">
+    <div id="saFound"></div>
+    <label>Notes</label><input id="saNotes">
+    <p class="sub" id="saCalc"></p>
+    <div class="bar"><button class="btn" id="btnSaleSave">Save sale</button></div>
   </section>
 
   <!-- REPAYMENT -->
@@ -409,6 +477,6 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="app.js?v=17"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>
