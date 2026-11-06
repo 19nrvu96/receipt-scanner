@@ -1369,7 +1369,7 @@ let sale = null;             // the sale open in the form: { row, saleId, needs,
 // What a flag means, in plain words
 function plainNeeds(n) {
   return String(n).split(/;\s*|,\s*(?=add|sale price|match|check)/).filter(Boolean).map(x =>
-    /^add postage cost/.test(x) ? 'eBay does not tell us the postage. Tap who paid, then add what it cost you.' :
+    /^add postage cost/.test(x) ? 'Who paid for postage? Tap one below.' :
     /^sale price/.test(x) ? 'Add how much it sold for.' :
     /^match/.test(x) ? 'Which sale was this? Tap it below.' :
     /^check/.test(x) ? 'We guessed which sale this is. Check it is right, then tap Save.' : x).join(' ');
@@ -1476,14 +1476,28 @@ function renderReturns(d) {
   $('slRet').innerHTML = r.map((g, i) => {
     const one = g.items.length === 1, it = g.items[0];
     const title = one ? esc(it.item) + (it.left > 1 ? ' <span class="sm">×' + it.left + '</span>' : '') : esc(g.store || 'Receipt') + ' · ' + g.items.length + ' things';
-    return `<div class="card scard"><div class="sb">
+    return `<div class="card scard" data-g="${i}"><div class="sb">
     <div class="st">${title}</div>
     <div class="sm">${one ? esc(g.store) + ' · ' : ''}bought ${esc(g.date)} · ${money(g.total)}</div>
     <div class="tags"><span class="tag ${g.daysLeft <= 2 ? 'late' : 'soon'}">${g.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(g.lastDay))}</span><span class="tag">${g.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span></div>
-    ${one ? '' : '<details class="more"><summary>See the ' + g.items.length + ' things</summary>' + g.items.map(x => '<div class="srow"><span>' + esc(x.item) + (x.left > 1 ? ' ×' + x.left : '') + '</span><span class="sm">' + money(x.each * x.left) + '</span></div>').join('') + '</details>'}
-    <div class="duo" style="margin-top:8px"><button class="btn sec" data-keep="${i}">${one ? 'Keep it' : 'Keep them'}</button>
-      <button class="btn sec" data-ret="${i}">${one ? 'I\'ll return it' : 'I\'ll return them'}</button></div></div></div>`;
+    ${one ? '' : `<p class="sub" style="margin:10px 0 0">Tick what you'll take back.</p>
+      <button class="selall" data-all="${i}">☑︎ Select all</button>
+      <div class="ritems">${g.items.map((x, j) => `<label class="ritem"><input type="checkbox" data-pick="${i}:${j}"><span>${esc(x.item)}${x.left > 1 ? ' ×' + x.left : ''}</span><span class="sm">${money(x.each * x.left)}</span></label>`).join('')}</div>`}
+    <div class="duo" style="margin-top:10px"><button class="btn sec" data-keep="${i}">${one ? 'Keep it' : 'Keep them all'}</button>
+      <button class="btn" data-ret="${i}" ${one ? '' : 'disabled'}>${one ? 'I\'ll return it' : 'Return ticked'}</button></div></div></div>`;
   }).join('');
+  const w = d.returnsWaiting || [];
+  $('slWaitWrap').classList.toggle('hide', !w.length);
+  $('slWait').innerHTML = w.map((g, i) => `<div class="card scard"><div class="sb">
+    <div class="st">${g.items.length === 1 ? esc(g.items[0].item) : esc(g.store) + ' · ' + g.items.length + ' things'}</div>
+    <div class="sm">${esc(g.store)} · bought ${esc(g.date)} · ${money(g.total)} to come back</div>
+    <div class="duo" style="margin-top:10px"><button class="btn" data-scanref="${i}">📷 Scan refund receipt</button>
+      <button class="btn sec" data-done="${i}">Already sorted</button></div></div></div>`).join('');
+}
+function pickChanged(gi) {
+  const n = [...document.querySelectorAll('[data-pick^="' + gi + ':"]')].filter(b => b.checked).length;
+  const b = document.querySelector('[data-ret="' + gi + '"]');
+  if (b) { b.disabled = !n; b.textContent = n ? 'Return ' + n + ' ticked' : 'Return ticked'; }
 }
 const dayName = t => { const d = toDate(t); return d ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : t; };
 
@@ -1542,16 +1556,39 @@ $('slEbay').addEventListener('click', () => setTimeout(async () => {
 $('vSales').addEventListener('click', async e => {
   const t = e.target, card = t.closest('[data-need],[data-rec]');
   if (t.dataset.lab !== undefined) return showLabel(SALES.toPost[Number(t.dataset.lab)]);
+  if (t.dataset.all !== undefined) {   // select all / none
+    const boxes = [...document.querySelectorAll('[data-pick^="' + t.dataset.all + ':"]')], on = boxes.some(b => !b.checked);
+    boxes.forEach(b => { b.checked = on; });
+    t.textContent = on ? '☐ Select none' : '☑︎ Select all';
+    pickChanged(t.dataset.all);
+    return;
+  }
+  if (t.dataset.pick !== undefined) { pickChanged(t.dataset.pick.split(':')[0]); return; }
   if (t.dataset.keep !== undefined || t.dataset.ret !== undefined) {
-    const g = SALES.returnsClosing[Number(t.dataset.keep ?? t.dataset.ret)], choice = t.dataset.keep !== undefined ? 'keep' : 'return';
+    const gi = t.dataset.keep ?? t.dataset.ret, g = SALES.returnsClosing[Number(gi)];
+    const picked = g.items.length === 1 ? (t.dataset.ret !== undefined ? [0] : [])
+      : t.dataset.keep !== undefined ? [] : [...document.querySelectorAll('[data-pick^="' + gi + ':"]')].filter(b => b.checked).map(b => Number(b.dataset.pick.split(':')[1]));
+    const ref = x => ({ row: x.row, item: x.item });
+    const ret = g.items.filter((x, j) => picked.indexOf(j) > -1), keep = g.items.filter((x, j) => picked.indexOf(j) < 0);
     t.disabled = true;
     try {
-      await api('returnDecide', { items: g.items.map(x => ({ row: x.row, item: x.item })), choice });
+      await api('returnDecide', { keep: keep.map(ref), ret: ret.map(ref) });
       SALES.returnsClosing = SALES.returnsClosing.filter(y => y !== g);
-      g.items.forEach(x => { const st = SALES.stock && SALES.stock.items.find(y => y.row === x.row); if (st) st.decision = choice; });
+      if (ret.length) (SALES.returnsWaiting = SALES.returnsWaiting || []).unshift(Object.assign({}, g, { items: ret, total: Math.round(ret.reduce((s, x) => s + x.each * x.left, 0) * 100) / 100 }));
+      g.items.forEach(x => { const st = SALES.stock && SALES.stock.items.find(y => y.row === x.row); if (st) st.decision = ret.indexOf(x) > -1 ? 'return' : 'keep'; });
       renderSales();
-      toast(choice === 'keep' ? 'OK. We won\'t remind you again.' : 'OK. When the refund comes, scan or forward it.');
+      toast(!ret.length ? 'OK. We won\'t remind you again.' : 'OK. When you get the refund, scan it or forward the email.');
     } catch (err) { t.disabled = false; toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message, true); }
+    return;
+  }
+  if (t.dataset.scanref !== undefined) { pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); return; }   // the refund is matched when you save it
+  if (t.dataset.done !== undefined) {
+    const g = SALES.returnsWaiting[Number(t.dataset.done)];
+    t.disabled = true;
+    try {
+      await api('returnDecide', { items: g.items.map(x => ({ row: x.row, item: x.item })), choice: 'done' });
+      SALES.returnsWaiting = SALES.returnsWaiting.filter(y => y !== g); renderSales(); toast('Ticked off');
+    } catch (err) { t.disabled = false; toast(err.message, true); }
     return;
   }
   if (t.dataset.posted !== undefined) {
@@ -1614,17 +1651,22 @@ function saleWhereToggle() {
 function postHint() {
   const plat = $('saPlatform').value, by = segGet('saPostBy');
   const vinted = plat === 'Vinted';
+  const own = $('saOwn').checked;
   $('saPostBy').classList.toggle('hide', vinted);
-  $('saPostInWrap').classList.toggle('hide', by === 'Seller' || vinted);
-  $('saOwnWrap').classList.toggle('hide', !$('saOwn').checked);
+  $('saOwnWrap').classList.toggle('hide', !own);
+  // The buyer paid: it doesn't change what you made, so no amounts are needed (unless you used your own courier)
+  const needCost = by === 'Seller' || own || vinted || (!by && !/^eBay/.test(plat));
+  $('saPostOutWrap').classList.toggle('hide', !needCost);
+  $('saPostOutLbl').textContent = by === 'Buyer' && own ? 'Extra you paid the courier (£, if any)' : vinted ? 'Extra you paid (£, if any)' : 'You paid to send it (£)';
   $('saPostHint').textContent = vinted ? 'On Vinted the buyer pays postage. Only add a cost if you paid extra.'
-    : by === 'Buyer' ? 'Put what the buyer paid for postage. Then what it cost you to send it.'
+    : by === 'Buyer' ? 'The buyer paid. Nothing comes off your money, so nothing to add.'
     : by === 'Seller' ? 'Free postage comes out of your money. Put what it cost you to send it.'
-    : /^eBay/.test(plat) ? 'eBay does not tell us the postage. Tap who paid, then add the cost.'
+    : /^eBay/.test(plat) ? 'eBay does not tell us who paid. Tap one.'
     : 'Tap who paid. Then put in what it cost you to send it.';
 }
 $('saPostBy').addEventListener('click', () => setTimeout(() => {
-  if (segGet('saPostBy') === 'Seller') $('saPostIn').value = '0';
+  $('saPostIn').value = '';   // the buyer's postage money isn't tracked: it cancels out the label
+  if (segGet('saPostBy') === 'Buyer' && !$('saOwn').checked) $('saPostOut').value = '';
   postHint(); saleCalc();
 }, 0));
 $('saOwn').onchange = postHint;
@@ -1649,6 +1691,7 @@ function openSale(o) {
   segSet('saPostBy', o['postage paid by'] || (pc > 0 ? 'Buyer' : pc === 0 && num(o['postage cost']) > 0 ? 'Seller' : ''));
   $('saOwn').checked = !!o.courier;
   $('saCourier').value = o.courier || '';
+  $('saTrack').value = o.tracking || '';
   $('saIns').value = num(o['insured for']) ?? '';
   $('saOther').value = num(o['other costs']) ?? '';
   $('saRefund').value = num(o['refund amount']) ?? '';
@@ -1680,13 +1723,20 @@ async function loadMatches(o) {
   try {
     const c = await api('saleCands', { row: o.row });
     $('saMatch').classList.remove('hide');
-    $('saMatch').innerHTML = '<label>Which sale was it?</label>' + c.map(x =>
-      `<button class="found" data-to="${x.row}"><b>${esc(x.item || '')}</b><br><span class="sm">${esc(x.platform || '')} · ${esc(x['sale date'] || '')}${num(x['sale price']) !== null ? ' · ' + money(x['sale price']) : ''}${x['order number'] ? ' · #' + esc(x['order number']) : ''}</span></button>`).join('') +
-      '<p class="sub">Not listed? Fill in the details below and save it as its own row.</p>';
+    const what = /cancel/.test(o.needs) ? 'cancelled' : 'refunded';
+    $('saMatch').innerHTML = (c.length ? '<label>Is it one of these?</label>' + c.map(x =>
+      `<button class="found" data-to="${x.row}"><b>${esc(x.item || '')}</b><br><span class="sm">${esc(x.platform || '')} · ${esc(x['sale date'] || '')}${num(x['sale price']) !== null ? ' · ' + money(x['sale price']) : ''}${x['order number'] ? ' · #' + esc(x['order number']) : ''}</span></button>`).join('')
+      : `<div class="empty">We can't find the sale this was ${what} for. It was probably sold before you used the app. That's fine.</div>`) +
+      `<button class="btn sec" id="btnOwnRow" style="margin-top:10px">${c.length ? 'None of these: keep it on its own' : 'OK, keep it on its own'}</button>`;
   } catch (err) { toast(err.message, true); }
 }
 
 $('saMatch').onclick = async e => {
+  if (e.target.id === 'btnOwnRow') {   // nothing to match: keep the row (not counted) and clear the flag
+    try { await api('saleSave', { sale: { needs: '' }, row: sale.row, saleId: sale.saleId }); SALES = null; toast('Done'); openSales(); }
+    catch (err) { toast(err.message, true); }
+    return;
+  }
   const b = e.target.closest('[data-to]');
   if (!b || !confirm('Apply this ' + (/cancel/.test(sale.needs) ? 'cancellation' : 'refund') + ' to that sale?')) return;
   try { SALES = await api('saleMatch', { from: sale.row, to: Number(b.dataset.to) }); toast('Matched'); renderSales(); show('vSales'); }
@@ -1746,10 +1796,11 @@ async function saveSaleForm() {
     'linked purchase': sale.linked || '', 'item cost': sale.itemCost !== null && sale.itemCost !== undefined ? sale.itemCost : '',
     'postage paid by': $('saPostWrap').classList.contains('hide') ? '' : (segGet('saPostBy') || ''),
     courier: $('saOwn').checked ? v('saCourier') : '',
+    tracking: $('saOwn').checked ? v('saTrack') : '',
     'insured for': v('saIns'),
     // Saving it yourself clears the flag, except eBay postage while it's still blank
     needs: /^match/.test(sale.needs || '') ? sale.needs
-      : /^eBay/.test($('saPlatform').value) && v('saPostOut') === '' && segGet('saStatus') !== 'Cancelled' ? 'add postage cost' : ''
+      : /^eBay/.test($('saPlatform').value) && !segGet('saPostBy') && v('saPostOut') === '' && segGet('saStatus') !== 'Cancelled' ? 'add postage cost' : ''
   };
   if (s['sale price'] === '' && !/^Amazon/.test(s.platform) && s.status !== 'Cancelled') { toast('Add the sale price', true); return; }
   const b = $('btnSaleSave'); b.disabled = true; b.textContent = 'Saving…';
@@ -1817,6 +1868,7 @@ function owedHtml(o) {
 
 async function openRepay() {
   $('rDate').value = today(); $('rAmount').value = ''; $('rNote').value = '';
+  try { const a = JSON.parse(localStorage.getItem('rcpt_repay_acc') || '{}'); $('rFrom').value = a.from || ''; $('rTo').value = a.to || ''; } catch (e) {}
   $('rOwed').textContent = 'Loading…';
   show('vRepay');
   try {
@@ -1830,7 +1882,9 @@ async function openRepay() {
 }
 
 async function saveRepay() {
-  const repayment = { date: $('rDate').value.trim(), amount: Number($('rAmount').value) || 0, note: $('rNote').value.trim() };
+  const repayment = { date: $('rDate').value.trim(), amount: Number($('rAmount').value) || 0, note: $('rNote').value.trim(),
+                      from: $('rFrom').value.trim(), to: $('rTo').value.trim() };
+  try { localStorage.setItem('rcpt_repay_acc', JSON.stringify({ from: repayment.from, to: repayment.to })); } catch (e) {}
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(repayment.date)) { toast('Date must be DD/MM/YYYY', true); return; }
   if (!(repayment.amount > 0)) { toast('Enter the amount you paid back', true); return; }
   const b = $('btnRepaySave'); b.disabled = true; b.textContent = 'Saving…';
@@ -1911,8 +1965,12 @@ $('btnReset').onclick = () => {
   }
 };
 
-$('btnCam').onclick = () => { pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); };
-$('btnLib').onclick = () => { pages = []; job = null; lastSource = 'lib'; $('inpLib').click(); };
+// Home: one "Add receipt" button that opens two choices in place
+function setAddOpen(open) { $('addBox').classList.toggle('open', open); $('btnAdd').setAttribute('aria-expanded', open); }
+$('btnAdd').onclick = () => setAddOpen(!$('addBox').classList.contains('open'));
+$('btnCam').onclick = () => { setAddOpen(false); pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); };
+$('btnLib').onclick = () => { setAddOpen(false); pages = []; job = null; lastSource = 'lib'; $('inpLib').click(); };
+$('homeDate').textContent = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 $('inpCam').onchange = e => { addPhotos(e.target.files); e.target.value = ''; };
 $('inpLib').onchange = e => { addPhotos(e.target.files); e.target.value = ''; };
 $('btnAddPage').onclick    = () => $('inpCam').click();

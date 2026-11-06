@@ -254,6 +254,46 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 .bar2 i.close{background:#f0a000}.bar2 i.reported{background:#d33}
 .srow{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eee;font-size:15px}
 .srow .sm{color:#777;font-size:13px}
+
+/* ---------- refresh (v24): calmer colours, one shadow, home tiles ---------- */
+:root{--bg:#f3f4f7;--card:#fff;--ink:#15171c;--muted:#6b7280;--line:#e7e8ec;--accent:#0a84ff;--accent-soft:#eaf3ff;
+      --shadow:0 1px 2px rgba(16,24,40,.04),0 2px 8px rgba(16,24,40,.06);--r:16px}
+body{background:var(--bg);color:var(--ink)}
+.wrap{padding:18px 16px 28px}
+.card,.meta,.owed,.usage,.todo,details.more,.routebox{box-shadow:var(--shadow);border-radius:var(--r)}
+.homehead{margin:6px 2px 14px}
+.homehead h1{font-size:30px;letter-spacing:-.5px;line-height:1.1}
+.homehead .sub{margin:4px 0 0}
+.addbox{background:var(--card);border-radius:20px;box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+.hero{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:20px;border:0;
+      background:var(--accent);color:#fff;font-size:19px;font-weight:700;line-height:1;font-family:inherit;cursor:pointer;border-radius:20px}
+.hero .plus{font-size:24px;font-weight:400}
+.hero:active{filter:brightness(.95)}
+.addopts{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 12px;max-height:0;visibility:hidden;transition:max-height .2s ease,padding .2s ease,visibility .2s}
+.addbox.open .addopts{max-height:140px;padding:12px;visibility:visible}
+.addbox.open .hero{border-radius:20px 20px 0 0}
+.addopts button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 8px;border:1px solid var(--line);
+      border-radius:14px;background:#fff;font-size:15px;font-weight:600;line-height:1.2;font-family:inherit;color:var(--ink);cursor:pointer}
+.addopts .ico{font-size:28px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.tiles .big{flex-direction:column;align-items:flex-start;gap:10px;margin:0;padding:16px;min-height:104px;
+      font-size:15px;line-height:1.25;position:relative;box-shadow:var(--shadow);border-radius:var(--r)}
+.tiles .big .ico{font-size:26px}
+.tiles .big .count{position:absolute;top:12px;right:12px;margin:0}
+.big.wide{box-shadow:var(--shadow)}
+.todo{padding:2px 16px}
+.todo button{font-weight:500}
+.sech{font-size:16px;margin:22px 2px 8px}
+.hint{background:var(--accent-soft);border-radius:12px}
+.ritems{margin:8px 0 2px;border-top:1px solid var(--line)}
+.ritem{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:15px}
+.ritem input{width:22px;height:22px;accent-color:var(--accent);flex-shrink:0}
+.ritem span{flex:1;min-width:0}
+.ritem .sm{flex:none;color:var(--muted);font-size:13px}
+.selall{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--accent);font-weight:600;padding:8px 0 0;background:none;border:0;font-family:inherit;cursor:pointer}
+.sm{font-size:13px;color:var(--muted)}
+.usage{padding:12px 14px}.usage .usub{font-size:12px}
+.empty{padding:14px;border-radius:12px;background:#f7f7f9;color:#444;font-size:14px;margin-top:8px}
 </style>
 </head>
 <body>
@@ -272,17 +312,21 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 
   <!-- HOME -->
   <section id="vHome" class="hide">
-    <h2>Receipts</h2>
-    <p class="sub">Capture a purchase</p>
+    <header class="homehead"><h1>Receipts</h1><p class="sub" id="homeDate"></p></header>
     <div id="todo" class="todo hide"></div>
-    <button class="big" id="btnCam"><span class="ico">📷</span> Scan Receipt</button>
-    <button class="big" id="btnLib"><span class="ico">🖼️</span> From Photos</button>
-    <button class="big" id="btnEmails"><span class="ico">📧</span> <span id="emailLabel">Emailed receipts</span></button>
-    <button class="big" id="btnSales"><span class="ico">🏷️</span> <span id="salesLabel">Sales &amp; postage</span></button>
-    <button class="big hide" id="btnJobs"><span class="ico">📥</span> <span id="jobsLabel">Photos to review</span></button>
-    <div class="mini">
-      <button class="big" id="btnTrip"><span class="ico">🚗</span> Log a trip</button>
-      <button class="big" id="btnRepay"><span class="ico">💷</span> Pay back</button>
+    <div class="addbox" id="addBox">
+      <button class="hero" id="btnAdd" aria-expanded="false"><span class="plus">＋</span> Add receipt</button>
+      <div class="addopts" id="addOpts">
+        <button id="btnCam"><span class="ico">📷</span>Take a photo</button>
+        <button id="btnLib"><span class="ico">🖼️</span>Choose from photos</button>
+      </div>
+    </div>
+    <button class="big wide hide" id="btnJobs"><span class="ico">📥</span> <span id="jobsLabel">Photos to review</span></button>
+    <div class="tiles">
+      <button class="big" id="btnSales"><span class="ico">🏷️</span> <span id="salesLabel">Sales &amp; postage</span></button>
+      <button class="big" id="btnEmails"><span class="ico">📧</span> <span id="emailLabel">Emailed receipts</span></button>
+      <button class="big" id="btnTrip"><span class="ico">🚗</span> <span>Log a trip</span></button>
+      <button class="big" id="btnRepay"><span class="ico">💷</span> <span>Pay back</span></button>
     </div>
     <div id="usage" class="usage hide" aria-live="polite"></div>
     <div class="status">
@@ -372,6 +416,9 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
     <div id="slRetWrap" class="hide"><h3 class="sech">↩️ Last days to return</h3>
       <p class="hint">Not sold yet. Not going to sell it? Send it back in time. Online orders: 14 days. Shop receipts: often 28 or 30 days. Check the shop's own rules.</p>
       <div id="slRet"></div></div>
+    <div id="slWaitWrap" class="hide"><h3 class="sech">🧾 Waiting for a refund</h3>
+      <p class="hint">Got your money back? Scan the refund receipt, or forward the refund email. We tick it off.</p>
+      <div id="slWait"></div></div>
     <div id="slNeedsWrap" class="hide"><h3 class="sech">⚠️ Needs your input</h3><p class="hint">These need a quick check. Tap one to fix it.</p><div id="slNeeds"></div></div>
     <h3 class="sech">Recent sales</h3><div id="slRecent"><p class="sub">Loading…</p></div>
     <details class="more" id="slRep"><summary>📊 Sales sites and HMRC</summary>
@@ -411,18 +458,19 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
       <div class="seg" id="saPay"><button data-v="Cash">Cash</button><button data-v="Bank transfer">Bank transfer</button><button data-v="Card reader">Card reader</button></div></div>
     <div id="saPostWrap">
       <label>Who paid for postage?</label>
-      <div class="seg" id="saPostBy"><button data-v="Buyer">The buyer</button><button data-v="Seller">Me (free postage)</button></div>
+      <div class="seg" id="saPostBy"><button data-v="Buyer">The buyer</button><button data-v="Seller">Me (free postage for the buyer)</button></div>
       <p class="hint" id="saPostHint">Tap who paid. Then put in what it cost you to send it.</p>
-      <div class="duo"><div id="saPostInWrap"><label>Buyer paid for postage (£)</label><input id="saPostIn" type="number" step="0.01" inputmode="decimal"></div>
-        <div><label>You paid to send it (£)</label><input id="saPostOut" type="number" step="0.01" inputmode="decimal"></div></div>
+      <input id="saPostIn" type="hidden">
+      <div id="saPostOutWrap"><label id="saPostOutLbl">You paid to send it (£)</label><input id="saPostOut" type="number" step="0.01" inputmode="decimal"></div>
       <label class="check"><input type="checkbox" id="saOwn"> I used my own courier (big or odd-sized item)</label>
       <div id="saOwnWrap" class="hide"><label>Which courier?</label><input id="saCourier" placeholder="e.g. Parcelforce, DPD, a man with a van">
+        <label>Tracking code (optional)</label><input id="saTrack" autocomplete="off" placeholder="Helps if it goes missing">
         <p class="hint">Put what you paid them in "You paid to send it".</p></div>
       <label>Insured for (£, optional)</label><input id="saIns" type="number" step="0.01" inputmode="decimal" placeholder="Handy if it gets lost">
     </div>
     <details class="more" id="saMore"><summary>Fees and payout</summary>
-      <div class="duo"><div><label>Platform fees</label><input id="saFees" type="number" step="0.01" inputmode="decimal"></div>
-        <div><label>Other costs</label><input id="saOther" type="number" step="0.01" inputmode="decimal" placeholder="e.g. promoted"></div></div>
+      <div class="duo"><div><label>Platform fees (if any)</label><input id="saFees" type="number" step="0.01" inputmode="decimal"></div>
+        <div><label>Other costs (if any)</label><input id="saOther" type="number" step="0.01" inputmode="decimal" placeholder="e.g. promoted"></div></div>
       <div class="duo"><div><label>Refunded to buyer</label><input id="saRefund" type="number" step="0.01" inputmode="decimal"></div>
         <div><label>Date paid out</label><input id="saPayout" inputmode="numeric" placeholder="DD/MM/YYYY"></div></div>
       <label>Order / transaction number</label><input id="saOrder" placeholder="Helps match emails later">
@@ -431,7 +479,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
     <label>Status</label>
     <div class="seg" id="saStatus"><button data-v="Sold">Sold</button><button data-v="Posted">Posted</button><button data-v="Completed">Completed</button><button data-v="Cancelled">Cancelled</button><button data-v="Refunded">Refunded</button></div>
     <label class="check"><input type="checkbox" id="saCounts" checked> Count in my totals</label>
-    <label>What it cost you (for profit)</label>
+    <label>What it cost you (for profit calculations)</label>
     <div id="saLinked" class="sub hide"></div>
     <input id="saFind" placeholder="Search your purchases, e.g. kettle" autocomplete="off">
     <div id="saFound"></div>
@@ -454,7 +502,9 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
     <div class="owed" id="rOwed">Loading…</div>
     <label>Date you paid it back</label><input id="rDate" inputmode="numeric" placeholder="DD/MM/YYYY">
     <label>Amount (£)</label><input id="rAmount" type="number" step="0.01" inputmode="decimal" placeholder="0.00">
-    <label>Note</label><input id="rNote" placeholder="Optional, e.g. bank transfer">
+    <div class="duo"><div><label>Paid from (optional)</label><input id="rFrom" placeholder="e.g. Monzo personal"></div>
+      <div><label>Paid to (optional)</label><input id="rTo" placeholder="e.g. Tide business"></div></div>
+    <label>Note</label><input id="rNote" placeholder="Optional">
     <div class="bar"><button class="btn" id="btnRepaySave">Record repayment</button></div>
   </section>
 
@@ -531,6 +581,6 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
