@@ -242,6 +242,18 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 .prow{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee}
 .tgl{min-width:64px;padding:8px 12px;border-radius:20px;border:1px solid #ccc;background:#f1f1f1;color:#555;font-weight:600}
 .tgl.on{background:#0a84ff;border-color:#0a84ff;color:#fff}
+.tags{margin-top:6px}
+.todo{background:#fff;border-radius:14px;padding:4px 14px;margin:4px 0 12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.todo button{display:flex;width:100%;align-items:center;gap:10px;border:0;background:none;padding:11px 0;font-size:16px;text-align:left;color:inherit;border-bottom:1px solid #eee}
+.todo button:last-child{border-bottom:0}
+.todo .go{margin-left:auto;color:#999}
+.tag.late{background:#ffe1e1;color:#b00020;font-weight:700}
+.tag.soon{background:#fff1d6;color:#8a5a00}
+.bar2{height:8px;border-radius:4px;background:#eee;overflow:hidden;margin:6px 0 2px}
+.bar2 i{display:block;height:100%;background:#0a84ff}
+.bar2 i.close{background:#f0a000}.bar2 i.reported{background:#d33}
+.srow{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eee;font-size:15px}
+.srow .sm{color:#777;font-size:13px}
 </style>
 </head>
 <body>
@@ -262,6 +274,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
   <section id="vHome" class="hide">
     <h2>Receipts</h2>
     <p class="sub">Capture a purchase</p>
+    <div id="todo" class="todo hide"></div>
     <button class="big" id="btnCam"><span class="ico">📷</span> Scan Receipt</button>
     <button class="big" id="btnLib"><span class="ico">🖼️</span> From Photos</button>
     <button class="big" id="btnEmails"><span class="ico">📧</span> <span id="emailLabel">Emailed receipts</span></button>
@@ -356,8 +369,19 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
     <button class="btn" id="btnNewSale">＋ Log a sale</button>
     <p class="hint" style="margin-top:10px">Forward your sale emails and postage labels. They file themselves here.</p>
     <div id="slPostWrap" class="hide"><h3 class="sech">📦 To post</h3><p class="hint">Show the code at the shop. Then tap Posted.</p><div id="slPost"></div></div>
+    <div id="slRetWrap" class="hide"><h3 class="sech">↩️ Last days to return</h3>
+      <p class="hint">Not sold yet. Not going to sell it? Take it back before the last day. Check the shop's own rules.</p>
+      <div id="slRet"></div></div>
     <div id="slNeedsWrap" class="hide"><h3 class="sech">⚠️ Needs your input</h3><p class="hint">These need a quick check. Tap one to fix it.</p><div id="slNeeds"></div></div>
     <h3 class="sech">Recent sales</h3><div id="slRecent"><p class="sub">Loading…</p></div>
+    <details class="more" id="slRep"><summary>📊 Sales sites and HMRC</summary>
+      <p class="hint">Sites tell HMRC about you at 30 sales or £1,700 in a year. That is normal. It does not mean you owe tax.</p>
+      <div id="slRepList"></div>
+    </details>
+    <details class="more" id="slStock"><summary id="slStockSum">📦 Not sold yet</summary>
+      <p class="hint">Things you bought to sell. Oldest at the top.</p>
+      <div id="slStockList"></div>
+    </details>
     <details class="more" id="slWhere"><summary>Where you sell</summary>
       <p class="hint">Stopped using one? Turn it off. Your old sales stay safe.</p>
       <div id="slPlats"></div>
@@ -507,6 +531,6 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

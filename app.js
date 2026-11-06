@@ -1376,9 +1376,41 @@ function plainNeeds(n) {
 }
 
 function setSalesCount(w) {
-  const n = w ? (w.needs || 0) + (w.toPost || 0) : 0;
+  const n = w ? (w.needs || 0) + (w.toPost || 0) + (w.returnsSoon || 0) : 0;
   $('salesLabel').innerHTML = 'Sales &amp; postage' + (n ? ' <span class="count">' + n + '</span>' : '');
+  renderTodo(w);
 }
+
+// Home screen: the few things that need doing today. Tap one to go to Sales.
+function renderTodo(w) {
+  w = w || {};
+  const s = n => n === 1 ? '' : 's', rows = [];
+  if (w.late) rows.push(['🔴', w.late + ' parcel' + s(w.late) + ' late. Post now']);
+  if (w.postToday - (w.late || 0) > 0) { const n = w.postToday - (w.late || 0); rows.push(['📦', 'Post ' + n + ' parcel' + s(n) + ' today']); }
+  else if (w.toPost && !w.postToday) rows.push(['📦', w.toPost + ' parcel' + s(w.toPost) + ' to post']);
+  if (w.returnsSoon) rows.push(['↩️', w.returnsSoon + ' thing' + s(w.returnsSoon) + ' to return soon?']);
+  if (w.needs) rows.push(['⚠️', w.needs + ' sale' + s(w.needs) + ' need' + (w.needs === 1 ? 's' : '') + ' a check']);
+  $('todo').classList.toggle('hide', !rows.length);
+  $('todo').innerHTML = rows.slice(0, 3).map(r => `<button data-todo="1"><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`).join('');
+}
+$('todo').onclick = e => { if (e.target.closest('[data-todo]')) openSales(); };
+
+// Counts from a loaded Sales screen, so home stays right after changes
+function countsFrom(d) {
+  const tp = d.toPost || [];
+  return { needs: (d.needs || []).length, toPost: tp.length, postToday: tp.filter(l => l.daysLeft !== null && l.daysLeft <= 0).length,
+           late: tp.filter(l => l.daysLeft !== null && l.daysLeft < 0).length, returnsSoon: (d.returnsClosing || []).length };
+}
+// "Post today" / "Late" / "Post by Thu"
+function postTag(l) {
+  if (l.daysLeft === null || l.daysLeft === undefined) return l.postBy ? '<span class="tag">post by ' + esc(l.postBy) + '</span>' : '';
+  if (l.daysLeft < 0) return '<span class="tag late">Late: post now</span>';
+  if (l.daysLeft === 0) return '<span class="tag late">Post today</span>';
+  if (l.daysLeft === 1) return '<span class="tag soon">Post tomorrow</span>';
+  const dd = toDate(l.postBy);
+  return '<span class="tag ' + (l.daysLeft <= 2 ? 'soon' : '') + '">post by ' + esc(dd ? dd.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : l.postBy) + '</span>';
+}
+function toDate(t) { const m = String(t || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? new Date(+m[3], m[2] - 1, +m[1]) : null; }
 
 const tagFor = st => st === 'Cancelled' || st === 'Refunded' ? 'no' : st === 'Completed' ? 'ok' : st === 'Part refunded' ? 'warn' : '';
 const num = v => v === '' || v === null || v === undefined || isNaN(Number(v)) ? null : Number(v);
@@ -1395,6 +1427,13 @@ async function openSales() {
   }
 }
 
+// eBay business accounts: buyers can change their mind for 14 days after it arrives
+function returnTag(o) {
+  const until = toDate(o.returnsUntil), today = toDate(SALES && SALES.today) || new Date();
+  if (!until || until < today) return '';
+  return '<span class="tag soon">buyer can return till ' + esc(dayName(o.returnsUntil)) + '</span>';
+}
+
 function saleCard(o, i, list) {
   const price = num(o['sale price']), net = num(o['net received']), profit = num(o.profit);
   const bits = [esc(o.platform || ''), esc(o['sale date'] || '')].filter(Boolean).join(' · ');
@@ -1402,29 +1441,65 @@ function saleCard(o, i, list) {
     <div class="st">${esc(o.item || o['order number'] || 'Sale')}</div>
     <div class="sm">${bits}${o['order number'] ? ' · #' + esc(o['order number']) : ''}</div>
     <div class="sm"><span class="tag ${tagFor(o.status)}">${esc(o.status || 'Sold')}</span>${o['counts in totals'] === 'No' ? '<span class="tag">not in totals</span>' : ''}
-      ${profit !== null ? '<span class="tag ok">profit ' + money(profit) + '</span>' : ''}${o.needs ? '<span class="tag warn">' + esc(/postage/.test(o.needs) ? 'add postage' : /match/.test(o.needs) ? 'pick the sale' : /check/.test(o.needs) ? 'check match' : o.needs) + '</span>' : ''}</div>
+      ${profit !== null ? '<span class="tag ok">profit ' + money(profit) + '</span>' : ''}${o.needs ? '<span class="tag warn">' + esc(/postage/.test(o.needs) ? 'add postage' : /match/.test(o.needs) ? 'pick the sale' : /check/.test(o.needs) ? 'check match' : o.needs) + '</span>' : ''}${returnTag(o)}</div>
   </div><div class="amt">${price !== null ? money(price) : net !== null ? money(net) : '—'}</div></div>`;
 }
 
 function renderSales() {
   const d = SALES || { needs: [], recent: [], toPost: [] };
-  setSalesCount({ needs: d.needs.length, toPost: d.toPost.length });
+  setSalesCount(countsFrom(d));
   $('slPostWrap').classList.toggle('hide', !d.toPost.length);
   $('slPost').innerHTML = d.toPost.map((l, i) => `<div class="card scard"><div class="sb">
     <div class="st">${esc(l.item || 'Postage label')}</div>
-    <div class="sm">${[l.platform, l.courier, l.order ? '#' + l.order : '', l.postBy ? 'post by ' + l.postBy : ''].filter(Boolean).map(esc).join(' · ')}</div>
+    <div class="sm">${[l.platform, l.courier, l.order ? '#' + l.order : ''].filter(Boolean).map(esc).join(' · ')}</div>
+    <div class="tags">${postTag(l)}</div>
     <div class="duo" style="margin-top:8px"><button class="btn" data-lab="${i}">${l.files ? 'Show QR code' : 'Open label'}</button>
       <button class="btn sec" data-posted="${i}">✓ Posted</button></div></div></div>`).join('');
   $('slNeedsWrap').classList.toggle('hide', !d.needs.length);
   $('slNeeds').innerHTML = d.needs.map((o, i) => saleCard(o, i, 'need')).join('');
   $('slRecent').innerHTML = d.recent.length ? d.recent.map((o, i) => saleCard(o, i, 'rec')).join('')
     : '<p class="sub">No sales yet. Forward a sale email, or tap ＋ Log a sale.</p>';
+  renderReturns(d);
+  renderReporting(d);
+  renderStock(d);
   renderWhere();
   if (d.backOn) {   // an email came in from a platform that was off
     toast(d.backOn + ' is back on. You sent a ' + d.backOn + ' email.');
     api('sellerSet', { seenBackOn: true }).catch(() => {});
     d.backOn = '';
   }
+}
+
+function renderReturns(d) {
+  const r = d.returnsClosing || [];
+  $('slRetWrap').classList.toggle('hide', !r.length);
+  $('slRet').innerHTML = r.map((x, i) => `<div class="card scard"><div class="sb">
+    <div class="st">${esc(x.item)}${x.left > 1 ? ' <span class="sm">×' + x.left + ' left</span>' : ''}</div>
+    <div class="sm">${esc(x.store)} · bought ${esc(x.date)} · ${money(x.each)} each</div>
+    <div class="tags"><span class="tag ${x.daysLeft <= 2 ? 'late' : 'soon'}">${x.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(x.lastDay))}</span></div>
+    <div class="duo" style="margin-top:8px"><button class="btn sec" data-keep="${i}">Keep it</button>
+      <button class="btn sec" data-ret="${i}">I'll return it</button></div></div></div>`).join('');
+}
+const dayName = t => { const d = toDate(t); return d ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : t; };
+
+function renderReporting(d) {
+  const r = d.reporting || [];
+  $('slRep').classList.toggle('hide', !r.length);
+  $('slRepList').innerHTML = r.map(x => `<div style="padding:8px 0"><div class="srow" style="border:0;padding:0">
+      <b>${esc(x.platform)}</b><span class="sm">${x.sales} of 30 sales · ${money(x.value)} of £1,700</span></div>
+    <div class="bar2"><i class="${x.status}" style="width:${x.pct}%"></i></div>
+    <div class="sm">${x.status === 'reported' ? 'This site will tell HMRC about your sales this year.' : x.status === 'close' ? 'Nearly there. This site may tell HMRC soon.' : 'Under the limits this year.'}</div></div>`).join('');
+}
+
+function renderStock(d) {
+  const s = d.stock || { count: 0, items: [] };
+  $('slStock').classList.toggle('hide', !s.count);
+  $('slStockSum').textContent = '📦 Not sold yet (' + s.count + (s.value ? ' · ' + money(s.value) : '') + ')';
+  $('slStockList').innerHTML = s.items.map(x => `<div class="srow"><div>${esc(x.item)}<br>
+      <span class="sm">${esc(x.store)} · ${x.left > 1 ? x.left + ' left · ' : ''}${money(x.each)} each${x.decision === 'return' ? ' · returning' : ''}</span></div>
+      <div style="text-align:right;white-space:nowrap"><span class="tag ${x.days >= 90 ? 'late' : x.days >= 45 ? 'soon' : ''}">${x.days} day${x.days === 1 ? '' : 's'}</span></div></div>`).join('') +
+    (s.count > s.items.length ? '<p class="sub">And ' + (s.count - s.items.length) + ' more in your Sheet.</p>' : '') +
+    '<p class="sub">Sold one? Link it in Log a sale so it leaves this list.</p>';
 }
 
 function renderWhere() {
@@ -1462,10 +1537,22 @@ $('slEbay').addEventListener('click', () => setTimeout(async () => {
 $('vSales').addEventListener('click', async e => {
   const t = e.target, card = t.closest('[data-need],[data-rec]');
   if (t.dataset.lab !== undefined) return showLabel(SALES.toPost[Number(t.dataset.lab)]);
+  if (t.dataset.keep !== undefined || t.dataset.ret !== undefined) {
+    const x = SALES.returnsClosing[Number(t.dataset.keep ?? t.dataset.ret)], choice = t.dataset.keep !== undefined ? 'keep' : 'return';
+    t.disabled = true;
+    try {
+      await api('returnDecide', { row: x.row, item: x.item, choice });
+      SALES.returnsClosing = SALES.returnsClosing.filter(y => y !== x);
+      const st = SALES.stock && SALES.stock.items.find(y => y.row === x.row); if (st) st.decision = choice;
+      renderSales();
+      toast(choice === 'keep' ? 'OK. We won\'t remind you again.' : 'OK. When the refund comes, scan or forward it.');
+    } catch (err) { t.disabled = false; toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message, true); }
+    return;
+  }
   if (t.dataset.posted !== undefined) {
     const l = SALES.toPost[Number(t.dataset.posted)];
     t.disabled = true;
-    try { SALES.toPost = await api('labelDone', { id: l.id }); renderSales(); toast('Ticked off: ' + (l.item || 'label')); }
+    try { SALES.toPost = await api('labelDone', { id: l.id }); renderSales(); toast('Posted. We saved today\'s date.'); }
     catch (err) { t.disabled = false; toast(err.message, true); }
     return;
   }
