@@ -237,6 +237,8 @@ details.more summary{font-size:15px;font-weight:600;cursor:pointer}
 .found{display:block;width:100%;text-align:left;padding:10px 12px;margin-top:6px;border:1px solid #e0e0e5;border-radius:10px;background:#fff;font-size:14px;font-family:inherit;cursor:pointer}
 a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box;margin-bottom:8px}
 .qrimg{width:100%;background:#fff;border-radius:12px;margin-bottom:10px;image-rendering:pixelated}
+.hint{font-size:14px;line-height:1.4;color:#0a3d7a;background:#eef5ff;border-radius:10px;padding:9px 12px;margin:8px 0 10px}
+.hint::before{content:"💡 "}
 </style>
 </head>
 <body>
@@ -279,7 +281,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
       <button class="back" id="btnQBack">‹</button>
       <h2 style="margin:0;flex:1">Emailed receipts</h2>
     </div>
-    <p class="sub" id="qSub"></p>
+    <p class="hint" id="qSub"></p>
     <div id="qList"></div>
     <button class="btn sec" id="btnQRefresh">↻ Refresh</button>
   </section>
@@ -290,7 +292,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
       <button class="back" id="btnPBack">‹</button>
       <h2 style="margin:0;flex:1">Receipt photos</h2>
     </div>
-    <p class="sub" id="pSub">Long receipt? Add a photo for each part. All photos are read together as one receipt.</p>
+    <p class="hint" id="pSub">Take a photo of the whole receipt. Long receipt? Add more photos. Then tap Done.</p>
     <div class="thumbs" id="thumbs"></div>
     <div class="duo">
       <button class="btn sec" id="btnAddPage">＋ Add another photo</button>
@@ -305,7 +307,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
       <button class="back" id="btnJBack">‹</button>
       <h2 style="margin:0;flex:1">Photos to review</h2>
     </div>
-    <p class="sub" id="jSub"></p>
+    <p class="hint" id="jSub"></p>
     <div id="jList"></div>
   </section>
 
@@ -315,7 +317,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
       <button class="back" id="btnTBack">‹</button>
       <h2 style="margin:0;flex:1">Log a business trip</h2>
     </div>
-    <p class="sub" id="tSub">Claimed at HMRC's mileage rates. Don't also claim fuel for the same car.</p>
+    <p class="hint" id="tSub">Type where you went. We work out the miles.</p>
     <div id="tRepeatWrap" class="hide"><label>Repeat a recent trip</label><div class="chips" id="tRepeat"></div></div>
     <label>Date</label><input id="tDate" inputmode="numeric" placeholder="DD/MM/YYYY">
     <label>Route</label>
@@ -349,9 +351,9 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
       <h2 style="margin:0;flex:1">Sales</h2>
     </div>
     <button class="btn" id="btnNewSale">＋ Log a sale</button>
-    <p class="sub" style="margin-top:10px">Forward sale, cancellation and postage-label emails to your receipts address: they file themselves here.</p>
-    <div id="slPostWrap" class="hide"><h3 class="sech">📦 To post</h3><div id="slPost"></div></div>
-    <div id="slNeedsWrap" class="hide"><h3 class="sech">⚠️ Needs your input</h3><div id="slNeeds"></div></div>
+    <p class="hint" style="margin-top:10px">Forward your sale emails and postage labels. They file themselves here.</p>
+    <div id="slPostWrap" class="hide"><h3 class="sech">📦 To post</h3><p class="hint">Show the code at the shop. Then tap Posted.</p><div id="slPost"></div></div>
+    <div id="slNeedsWrap" class="hide"><h3 class="sech">⚠️ Needs your input</h3><p class="hint">These need a quick check. Tap one to fix it.</p><div id="slNeeds"></div></div>
     <h3 class="sech">Recent sales</h3><div id="slRecent"><p class="sub">Loading…</p></div>
   </section>
 
@@ -360,6 +362,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
       <button class="back" id="btnSaBack">‹</button>
       <h2 style="margin:0;flex:1" id="saTitle">Log a sale</h2>
     </div>
+    <p class="hint">Fill in what you know. You can add more later.</p>
     <div id="saNeeds" class="banner dup hide"></div>
     <div id="saMatch" class="hide"></div>
     <label>Platform</label><select id="saPlatform"></select>
@@ -387,6 +390,10 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
     <div id="saLinked" class="sub hide"></div>
     <input id="saFind" placeholder="Search your purchases, e.g. kettle" autocomplete="off">
     <div id="saFound"></div>
+    <label>Receipt photo (optional)</label>
+    <button class="btn sec" id="btnSalePhoto">📷 Add a photo of the receipt</button>
+    <img id="saPhoto" class="hide" style="width:96px;border-radius:8px;margin-top:8px" alt="Receipt photo">
+    <input type="file" id="inpSale" accept="image/*" capture="environment" class="hide">
     <label>Notes</label><input id="saNotes">
     <p class="sub" id="saCalc"></p>
     <div class="bar"><button class="btn" id="btnSaleSave">Save sale</button></div>
@@ -398,6 +405,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
       <button class="back" id="btnRBack">‹</button>
       <h2 style="margin:0;flex:1">Pay back personal spending</h2>
     </div>
+    <p class="hint">Did you pay the company back? Put in how much.</p>
     <div class="owed" id="rOwed">Loading…</div>
     <label>Date you paid it back</label><input id="rDate" inputmode="numeric" placeholder="DD/MM/YYYY">
     <label>Amount (£)</label><input id="rAmount" type="number" step="0.01" inputmode="decimal" placeholder="0.00">
@@ -434,6 +442,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
       <datalist id="pctList"><option value="25"><option value="33.33"><option value="50"><option value="66.67"><option value="75"></datalist>
       <input class="date" id="fDate" placeholder="DD/MM/YYYY" inputmode="numeric">
     </div>
+    <p class="hint">Check each line. Pick what it is for. Then tap Save.</p>
     <div class="pills">
       <button class="pill" id="pChannel">In person</button>
       <button class="pill" id="pMethod">Collection</button>
@@ -477,6 +486,6 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

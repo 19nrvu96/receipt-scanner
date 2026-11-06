@@ -293,8 +293,8 @@ function renderPages() {
     ${pg.blurry || pg.dark ? `<div class="bad">${pg.dark ? 'Too dark' : 'Looks blurry'} — retake?</div>` : ''}</div>`).join('');
   const bad = pages.filter(pg => pg.blurry || pg.dark).length;
   $('pSub').textContent = bad
-    ? 'A photo looks ' + (pages.some(pg => pg.dark) ? 'too dark or blurry' : 'blurry') + '. Retake it for a better read: nothing has been sent yet.'
-    : 'Long receipt? Add a photo for each part. All photos are read together as one receipt.';
+    ? 'A photo is ' + (pages.some(pg => pg.dark) ? 'too dark or blurry' : 'blurry') + '. Tap ↺ Retake last to take it again.'
+    : 'Take a photo of the whole receipt. Long receipt? Add more photos. Then tap Done.';
   $('btnPagesDone').textContent = '✓ Done — read ' + (pages.length > 1 ? pages.length + ' photos' : 'receipt');
   show('vPages');
 }
@@ -430,8 +430,8 @@ async function renderJobs() {
   if (!all.length) { show('vHome'); return; }
   const when = t => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   $('jSub').textContent = navigator.onLine === false
-    ? 'No signal. Photos are kept on this phone and read when you\'re back online, while the app is open.'
-    : 'Photos are kept on this phone until you save or delete them.';
+    ? 'No signal right now. We will read these when you have signal. Keep the app open.'
+    : 'These photos are safe on your phone. Tap Review to check one.';
   $('jList').innerHTML = all.map(j => {
     const res = j.result || {}, rows = res.rows || [];
     const stat = j.status === 'ready'
@@ -1075,8 +1075,8 @@ function renderQueue(d) {
   const waiting = d.processing
     ? d.processing + ' more being read — check back within 15 minutes.' : '';
   $('qSub').textContent = queueItems.length
-    ? queueItems.length + ' to review. ' + waiting
-    : (waiting || 'Nothing to review. Forwarded emails appear here within 15 minutes.');
+    ? 'These came from your emails. Check each one, then tap Save. ' + waiting
+    : (waiting || 'Nothing to check. Emails you forward show up here within 15 minutes.');
 
   $('qList').innerHTML = queueItems.map((q, i) => {
     const res = q.result || {};
@@ -1156,9 +1156,7 @@ function openTrip() {
   renderRepeat();
   $('homeWrap').classList.add('hide');
   $('btnHome').textContent = homeAddr() ? '🏠 ' + homeAddr() : '🏠 Set home';
-  $('tSub').textContent = CFG.business === 'ltd'
-    ? 'The company owes you this at HMRC\'s rates, and it\'s a business expense. Don\'t also claim fuel for the same car.'
-    : 'Claimed at HMRC\'s rates instead of fuel and running costs for this vehicle.';
+  $('tSub').textContent = 'Type where you went. We work out the miles. Don\'t claim fuel for this car as well.';
   routeIdle();
   tripCalc();
   show('vTrip');
@@ -1368,6 +1366,15 @@ const LS_WHERE = 'rs_where';
 let SALES = null;            // last list from the Sheet
 let sale = null;             // the sale open in the form: { row, saleId, needs, linked }
 
+// What a flag means, in plain words
+function plainNeeds(n) {
+  return String(n).split(/;\s*|,\s*(?=add|sale price|match|check)/).filter(Boolean).map(x =>
+    /^add postage cost/.test(x) ? 'eBay does not tell us the postage. Add what you paid.' :
+    /^sale price/.test(x) ? 'Add how much it sold for.' :
+    /^match/.test(x) ? 'Which sale was this? Tap it below.' :
+    /^check/.test(x) ? 'We guessed which sale this is. Check it is right, then tap Save.' : x).join(' ');
+}
+
 function setSalesCount(w) {
   const n = w ? (w.needs || 0) + (w.toPost || 0) : 0;
   $('salesLabel').innerHTML = 'Sales &amp; postage' + (n ? ' <span class="count">' + n + '</span>' : '');
@@ -1395,7 +1402,7 @@ function saleCard(o, i, list) {
     <div class="st">${esc(o.item || o['order number'] || 'Sale')}</div>
     <div class="sm">${bits}${o['order number'] ? ' · #' + esc(o['order number']) : ''}</div>
     <div class="sm"><span class="tag ${tagFor(o.status)}">${esc(o.status || 'Sold')}</span>${o['counts in totals'] === 'No' ? '<span class="tag">not in totals</span>' : ''}
-      ${profit !== null ? '<span class="tag ok">profit ' + money(profit) + '</span>' : ''}${o.needs ? '<span class="tag warn">' + esc(o.needs) + '</span>' : ''}</div>
+      ${profit !== null ? '<span class="tag ok">profit ' + money(profit) + '</span>' : ''}${o.needs ? '<span class="tag warn">' + esc(/postage/.test(o.needs) ? 'add postage' : /match/.test(o.needs) ? 'pick the sale' : /check/.test(o.needs) ? 'check match' : o.needs) + '</span>' : ''}</div>
   </div><div class="amt">${price !== null ? money(price) : net !== null ? money(net) : '—'}</div></div>`;
 }
 
@@ -1437,12 +1444,18 @@ async function showLabel(l) {
   try {
     const f = await api('labelFile', { id: l.id });
     veil.querySelector('.sheet').innerHTML = `<h3>${esc(l.item || 'Postage label')}</h3>
-      <p class="sub">${[l.courier, l.order ? '#' + l.order : ''].filter(Boolean).map(esc).join(' · ')}. Turn your screen brightness up for the scanner.</p>
+      <p class="hint">Show this code at the shop. Turn your screen brightness up.</p>
+      <p class="sub">${[l.courier, l.order ? '#' + l.order : '', l.tracking ? 'tracking ' + l.tracking : ''].filter(Boolean).map(esc).join(' · ')}</p>
       ${f.images.map(src => `<img class="qrimg" src="${src}" alt="Postage QR code">`).join('')}
-      ${f.pdfs.map(u => `<a class="btn sec" href="${esc(u)}" target="_blank" rel="noopener">Open the label PDF</a>`).join('')}
+      <div class="pdfs"></div>
+      ${f.pdfs.map(p => `<a class="btn sec" href="${esc(p.url || p)}" target="_blank" rel="noopener">Open the label PDF</a>`).join('')}
       ${f.link ? `<a class="btn sec" href="${esc(f.link)}" target="_blank" rel="noopener">Open in ${esc(l.platform || 'the app')}</a>` : ''}
       ${!f.images.length && !f.pdfs.length && !f.link ? '<p class="sub">This email had no code or label link. Open it in your email app.</p>' : ''}
       <button class="btn ghost" data-close="1">Close</button>`;
+    if (!f.images.length) {   // no QR image: draw the PDF label itself
+      const holder = veil.querySelector('.pdfs');
+      for (const p of f.pdfs) if (p.data) { try { await drawPdf(p.data, holder); } catch (e) { holder.innerHTML = '<p class="sub">Tap below to open the label.</p>'; } }
+    }
   } catch (err) {
     veil.querySelector('.sheet').innerHTML = '<p class="sub">' + esc(err.message) + '</p><button class="btn ghost" data-close="1">Close</button>';
   }
@@ -1496,7 +1509,9 @@ function openSale(o) {
   sale.itemCost = num(o['item cost']);
   $('saMore').open = !isNew && (num(o['platform fees']) === null || !!o.needs);
   $('saNeeds').classList.toggle('hide', !o.needs);
-  $('saNeeds').textContent = o.needs ? '⚠️ ' + o.needs : '';
+  $('saNeeds').textContent = o.needs ? '⚠️ ' + plainNeeds(o.needs) : '';
+  sale.photo = null; $('saPhoto').classList.add('hide');
+  $('btnSalePhoto').textContent = o['document link'] ? '📷 Replace the receipt photo' : '📷 Add a photo of the receipt';
   $('saMatch').classList.add('hide'); $('saMatch').innerHTML = '';
   if (/^match/.test(o.needs || '')) loadMatches(o);
   saleWhereToggle();
@@ -1578,7 +1593,8 @@ async function saveSaleForm() {
   if (s['sale price'] === '' && !/^Amazon/.test(s.platform) && s.status !== 'Cancelled') { toast('Add the sale price', true); return; }
   const b = $('btnSaleSave'); b.disabled = true; b.textContent = 'Saving…';
   try {
-    await api('saleSave', { sale: s, row: sale.row, saleId: sale.saleId });
+    await api('saleSave', { sale: s, row: sale.row, saleId: sale.saleId,
+      image: sale.photo ? { base64: sale.photo.split(',')[1], mimeType: 'image/jpeg' } : null });
     if (s.where) lsSet(LS_WHERE, [s.where].concat(lsList(LS_WHERE).filter(w => w !== s.where)).slice(0, 15));
     toast(sale.row ? 'Sale updated' : 'Sale saved');
     SALES = null;
@@ -1594,6 +1610,38 @@ $('btnSlBack').onclick = () => show('vHome');
 $('btnNewSale').onclick = () => openSale(null);
 $('btnSaBack').onclick = () => show('vSales');
 $('btnSaleSave').onclick = saveSaleForm;
+$('btnSalePhoto').onclick = () => $('inpSale').click();
+$('inpSale').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try { sale.photo = await enhance(await readFile(f)); $('saPhoto').src = sale.photo; $('saPhoto').classList.remove('hide'); $('btnSalePhoto').textContent = '📷 Retake the photo'; }
+  catch (err) { toast('Couldn\'t open that photo', true); }
+};
+
+// Draws page 1 of a label PDF on screen (Vinted sends the QR code only as a PDF). pdf.js loads only when needed.
+let pdfjsP = null;
+function pdfjs() {
+  if (!pdfjsP) pdfjsP = new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; resolve(window.pdfjsLib); };
+    sc.onerror = () => { pdfjsP = null; reject(new Error('Could not load the PDF viewer')); };
+    document.head.appendChild(sc);
+  });
+  return pdfjsP;
+}
+async function drawPdf(base64, holder) {
+  const lib = await pdfjs();
+  const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  const doc = await lib.getDocument({ data: bytes }).promise;
+  const page = await doc.getPage(1);
+  const w = Math.min(holder.clientWidth || 340, 600) * (window.devicePixelRatio || 1);
+  const v1 = page.getViewport({ scale: 1 });
+  const vp = page.getViewport({ scale: w / v1.width });
+  const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; c.className = 'qrimg';
+  await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+  holder.appendChild(c);
+}
 
 /* ---------- paying back personal spending ---------- */
 function owedHtml(o) {
