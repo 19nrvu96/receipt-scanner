@@ -13,7 +13,7 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale'];
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings'];
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1462,7 +1462,6 @@ function renderSales() {
   renderReturns(d);
   renderReporting(d);
   renderStock(d);
-  renderWhere();
   if (d.backOn) {   // an email came in from a platform that was off
     toast(d.backOn + ' is back on. You sent a ' + d.backOn + ' email.');
     api('sellerSet', { seenBackOn: true }).catch(() => {});
@@ -1480,9 +1479,9 @@ function renderReturns(d) {
     <div class="st">${title}</div>
     <div class="sm">${one ? esc(g.store) + ' · ' : ''}bought ${esc(g.date)} · ${money(g.total)}</div>
     <div class="tags"><span class="tag ${g.daysLeft <= 2 ? 'late' : 'soon'}">${g.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(g.lastDay))}</span><span class="tag">${g.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span></div>
-    ${one ? '' : `<p class="sub" style="margin:10px 0 0">Tick what you'll take back.</p>
+    ${one ? '' : `<details class="picks"><summary>Pick which to return (${g.items.length})</summary>
       <button class="selall" data-all="${i}">☑︎ Select all</button>
-      <div class="ritems">${g.items.map((x, j) => `<label class="ritem"><input type="checkbox" data-pick="${i}:${j}"><span>${esc(x.item)}${x.left > 1 ? ' ×' + x.left : ''}</span><span class="sm">${money(x.each * x.left)}</span></label>`).join('')}</div>`}
+      <div class="ritems">${g.items.map((x, j) => `<label class="ritem"><input type="checkbox" data-pick="${i}:${j}"><span>${esc(x.item)}${x.left > 1 ? ' ×' + x.left : ''}</span><span class="sm">${money(x.each * x.left)}</span></label>`).join('')}</div></details>`}
     <div class="duo" style="margin-top:10px"><button class="btn sec" data-keep="${i}">${one ? 'Keep it' : 'Keep them all'}</button>
       <button class="btn" data-ret="${i}" ${one ? '' : 'disabled'}>${one ? 'I\'ll return it' : 'Return ticked'}</button></div></div></div>`;
   }).join('');
@@ -1492,7 +1491,8 @@ function renderReturns(d) {
     <div class="st">${g.items.length === 1 ? esc(g.items[0].item) : esc(g.store) + ' · ' + g.items.length + ' things'}</div>
     <div class="sm">${esc(g.store)} · bought ${esc(g.date)} · ${money(g.total)} to come back</div>
     <div class="duo" style="margin-top:10px"><button class="btn" data-scanref="${i}">📷 Scan refund receipt</button>
-      <button class="btn sec" data-done="${i}">Already sorted</button></div></div></div>`).join('');
+      <button class="btn sec" data-done="${i}">Already sorted</button></div>
+    <button class="link" data-undo="${i}" style="margin-top:8px">↩︎ Undo: I'm not returning ${g.items.length === 1 ? 'it' : 'these'}</button></div></div>`).join('');
 }
 function pickChanged(gi) {
   const n = [...document.querySelectorAll('[data-pick^="' + gi + ':"]')].filter(b => b.checked).length;
@@ -1521,8 +1521,9 @@ function renderStock(d) {
     '<p class="sub">Sold one? Link it in Log a sale so it leaves this list.</p>';
 }
 
+let SETTINGS = null;   // Settings screen data
 function renderWhere() {
-  const d = SALES || {};
+  const d = SETTINGS || SALES || {};
   const all = d.allPlatforms || ALL_PLATFORMS.filter(p => p !== 'Other'), on = d.platforms || CFG.platforms || [];
   $('slPlats').innerHTML = all.map(p => `<div class="prow"><span>${esc(p)}${/^Amazon/.test(p) ? ' <span class="sm">(not in totals)</span>' : ''}</span>
     <button class="tgl ${on.indexOf(p) > -1 ? 'on' : ''}" data-plat="${esc(p)}">${on.indexOf(p) > -1 ? 'On' : 'Off'}</button></div>`).join('');
@@ -1530,7 +1531,7 @@ function renderWhere() {
   $('slEbayWrap').classList.toggle('hide', !ebayOn);
   segSet('slEbay', d.ebayAccount || '');
   $('slEbayHint').textContent = !d.ebayAccount ? 'Pick one. The app works with one eBay account.'
-    : d.ebayAccount === 'private' && d.business === 'ltd' ? '⚠️ You sell as a company. eBay wants companies to use a business account.'
+    : d.ebayAccount === 'private' && (d.business || d.type) === 'ltd' ? '⚠️ You sell as a company. eBay wants companies to use a business account.'
     : d.ebayAccount === 'private' ? 'Buyers pay eBay\'s Buyer Protection fee. It is not your money, so it is not in your sales.'
     : 'You pay eBay fees on each sale. Buyers can send things back within 14 days.';
 }
@@ -1542,14 +1543,15 @@ $('slPlats').onclick = async e => {
   b.disabled = true;
   try {
     const r = await api('sellerSet', { platform: p, on });
-    SALES.platforms = CFG.platforms = r.platforms; saveCache(); renderWhere();
+    CFG.platforms = r.platforms; if (SALES) SALES.platforms = r.platforms; if (SETTINGS) SETTINGS.platforms = r.platforms; saveCache(); renderWhere();
     toast(on ? p + ' is on' : p + ' is off. Old sales stay. A ' + p + ' email turns it back on.');
   } catch (err) { b.disabled = false; toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message, true); }
 };
 $('slEbay').addEventListener('click', () => setTimeout(async () => {
   const v = segGet('slEbay');
-  if (!v || v === SALES.ebayAccount) return;
-  try { const r = await api('sellerSet', { ebayAccount: v }); SALES.ebayAccount = r.ebayAccount; renderWhere(); toast('Saved'); }
+  const d = SETTINGS || SALES || {};
+  if (!v || v === d.ebayAccount) return;
+  try { const r = await api('sellerSet', { ebayAccount: v }); d.ebayAccount = r.ebayAccount; if (SALES) SALES.ebayAccount = r.ebayAccount; renderWhere(); toast('Saved'); }
   catch (err) { toast(err.message, true); }
 }, 0));
 
@@ -1582,6 +1584,13 @@ $('vSales').addEventListener('click', async e => {
     return;
   }
   if (t.dataset.scanref !== undefined) { pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); return; }   // the refund is matched when you save it
+  if (t.dataset.undo !== undefined) {   // changed your mind: back to "last days to return"
+    const g = SALES.returnsWaiting[Number(t.dataset.undo)];
+    t.disabled = true;
+    try { await api('returnDecide', { items: g.items.map(x => ({ row: x.row, item: x.item })), choice: 'undo' }); SALES = null; toast('Undone'); openSales(); }
+    catch (err) { t.disabled = false; toast(err.message, true); }
+    return;
+  }
   if (t.dataset.done !== undefined) {
     const g = SALES.returnsWaiting[Number(t.dataset.done)];
     t.disabled = true;
@@ -1630,7 +1639,7 @@ async function showLabel(l) {
 
 function segSet(id, v) { document.querySelectorAll('#' + id + ' button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
 function segGet(id) { const b = document.querySelector('#' + id + ' button.on'); return b ? b.dataset.v : ''; }
-['saPay', 'saStatus', 'saPostBy', 'slEbay'].forEach(id => { $(id).onclick = e => { const b = e.target.closest('button'); if (b) { segSet(id, b.classList.contains('on') && id === 'saPay' ? '' : b.dataset.v); saleCalc(); } }; });
+['saPay', 'saStatus', 'saPostBy', 'slEbay'].forEach(id => { $(id).onclick = e => { const b = e.target.closest('button'); if (b) { segSet(id, b.classList.contains('on') && (id === 'saPay' || id === 'saPostBy') ? '' : b.dataset.v); saleCalc(); if (id === 'saPay') cardToggle(); } }; });
 
 function platformOptions(current) {
   const list = (CFG.platforms && CFG.platforms.length ? CFG.platforms : ALL_PLATFORMS).slice();   // turned-off platforms aren't offered
@@ -1644,8 +1653,37 @@ function saleWhereToggle() {
   $('saWhereWrap').classList.toggle('hide', !inPerson);
   $('saPayWrap').classList.toggle('hide', !inPerson);
   $('saPostWrap').classList.toggle('hide', inPerson || plat === 'Amazon FBA');   // Amazon posts FBA orders itself
+  // In person there's usually no order number: "n/a", which you can change
+  if (inPerson && !$('saOrder').value.trim()) $('saOrder').value = 'n/a';
+  if (!inPerson && /^n\/?a$/i.test($('saOrder').value.trim())) $('saOrder').value = '';
+  cardToggle();
   postHint();
 }
+
+// Card reader: fee per tap + % of the sale, remembered for next time
+function cardToggle() {
+  const on = $('saPlatform').value === 'In person' && segGet('saPay') === 'Card reader';
+  $('saCardWrap').classList.toggle('hide', !on);
+  if (!on && sale && sale.autoFee && $('saFees').value === sale.autoFee) { $('saFees').value = ''; sale.autoFee = ''; saleCalc(); }   // no card, no card fee
+  if (on && $('saTap').value === '' && $('saPct').value === '') {
+    const f = CFG.cardFee || {};
+    if (f.perTap) $('saTap').value = f.perTap;
+    if (f.pct) $('saPct').value = f.pct;
+  }
+  cardCalc();
+}
+function cardCalc() {
+  const on = !$('saCardWrap').classList.contains('hide');
+  if (!on) return;
+  const tap = Number($('saTap').value) || 0, pct = Number($('saPct').value) || 0, price = Number($('saPrice').value) || 0;
+  const fee = Math.round((tap / 100 + price * pct / 100) * 100) / 100;
+  if (tap || pct) { $('saFees').value = price ? fee.toFixed(2) : ''; if (sale) sale.autoFee = $('saFees').value; }
+  $('saCardCalc').textContent = (tap || pct)
+    ? 'Card fee ' + money(fee) + (tap ? ' (' + tap + 'p' + (pct ? ' + ' + pct + '%' : '') + ')' : ' (' + pct + '%)') + '. It goes in fees. HMRC still counts the full ' + money(price) + ' as your sales.'
+    : 'Put in your card reader\'s fees. We save them for next time.';
+  saleCalc();
+}
+['saTap', 'saPct'].forEach(id => { $(id).oninput = cardCalc; });
 
 // Postage: who paid decides what comes off your money
 function postHint() {
@@ -1692,6 +1730,7 @@ function openSale(o) {
   $('saOwn').checked = !!o.courier;
   $('saCourier').value = o.courier || '';
   $('saTrack').value = o.tracking || '';
+  $('saTap').value = ''; $('saPct').value = '';
   $('saIns').value = num(o['insured for']) ?? '';
   $('saOther').value = num(o['other costs']) ?? '';
   $('saRefund').value = num(o['refund amount']) ?? '';
@@ -1777,6 +1816,7 @@ function saleCalc() {
     ($('saFees').value === '' && $('saPlatform').value !== 'In person' ? ' (fees not added yet)' : '');
 }
 ['saPrice', 'saPostIn', 'saFees', 'saPostOut', 'saOther', 'saRefund', 'saQty'].forEach(id => { $(id).oninput = saleCalc; });
+$('saPrice').addEventListener('input', cardCalc);
 $('saPlatform').onchange = () => { saleWhereToggle(); if (!sale.row) $('saCounts').checked = !/^Amazon/.test($('saPlatform').value); saleCalc(); };
 
 async function saveSaleForm() {
@@ -1805,6 +1845,10 @@ async function saveSaleForm() {
   if (s['sale price'] === '' && !/^Amazon/.test(s.platform) && s.status !== 'Cancelled') { toast('Add the sale price', true); return; }
   const b = $('btnSaleSave'); b.disabled = true; b.textContent = 'Saving…';
   try {
+    if (!$('saCardWrap').classList.contains('hide')) {   // remember the card reader's fees
+      const f = { perTap: Number($('saTap').value) || 0, pct: Number($('saPct').value) || 0 }, c = CFG.cardFee || {};
+      if (f.perTap !== (c.perTap || 0) || f.pct !== (c.pct || 0)) { CFG.cardFee = f; saveCache(); api('settingsSet', { settings: { cardFee: f } }).catch(() => {}); }
+    }
     await api('saleSave', { sale: s, row: sale.row, saleId: sale.saleId,
       image: sale.photo ? { base64: sale.photo.split(',')[1], mimeType: 'image/jpeg' } : null });
     if (s.where) lsSet(LS_WHERE, [s.where].concat(lsList(LS_WHERE).filter(w => w !== s.where)).slice(0, 15));
@@ -1918,6 +1962,7 @@ async function refreshConfig() {
     CFG.vat      = !!d.vat;
     CFG.business = d.business || '';
     CFG.platforms = d.platforms || [];
+    CFG.cardFee = d.cardFee || CFG.cardFee || { perTap: 0, pct: 0 };
     setSalesCount(d.salesWaiting);
     saveCache(); fillStores(); fillPayPicker();
     setEmailCount(d.emails || 0);
@@ -2106,3 +2151,47 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+
+/* ---------- Settings ---------- */
+const MONTHS_UK = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+async function openSettings() {
+  show('vSettings');
+  $('stYe').innerHTML = MONTHS_UK.map((m, i) => `<option value="${i + 1}">End of ${m}</option>`).join('');
+  try {
+    SETTINGS = await api('settings', {});
+    const d = SETTINGS;
+    segSet('stType', d.type || ''); $('stVat').checked = !!d.vat; $('stYe').value = String(d.yearEnd || 3); $('stInc').value = d.income || '';
+    $('stTap').value = d.cardFee && d.cardFee.perTap ? d.cardFee.perTap : ''; $('stPct').value = d.cardFee && d.cardFee.pct ? d.cardFee.pct : '';
+    $('stHist').innerHTML = (d.history || []).map(h => `<p class="hist">Before ${esc(h.until)}: ${esc(h.label)}${h.tab ? ' · saved in the "' + esc(h.tab) + '" tab' : ''}</p>`).join('');
+    stSync(); renderWhere();
+  } catch (err) { toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for Settings.' : err.message, true); }
+}
+function stSync() {
+  const t = segGet('stType'), d = SETTINGS || {};
+  $('stIncWrap').classList.toggle('hide', t !== 'sole');
+  $('stYeWrap').classList.toggle('hide', t !== 'ltd');
+  const changed = d.type && (t !== d.type || $('stVat').checked !== !!d.vat);
+  $('stChangeHint').classList.toggle('hide', !changed);
+}
+$('stType').onclick = e => { const b = e.target.closest('button'); if (b) { segSet('stType', b.dataset.v); stSync(); } };
+$('stVat').onchange = stSync;
+$('btnSettings').onclick = openSettings;
+$('btnSlSettings').onclick = openSettings;
+$('btnStBack').onclick = () => show('vHome');
+$('btnStSave').onclick = async () => {
+  const d = SETTINGS || {}, type = segGet('stType');
+  if (!type) { toast('Pick your business type', true); return; }
+  const settings = { type, vat: $('stVat').checked, yearEnd: Number($('stYe').value) || 3, income: $('stInc').value,
+                     cardFee: { perTap: Number($('stTap').value) || 0, pct: Number($('stPct').value) || 0 } };
+  if (d.type && (type !== d.type || settings.vat !== !!d.vat) &&
+      !confirm('Change your business details from today? Your old records stay as they are, and we keep a copy of your old tax summary.')) return;
+  const b = $('btnStSave'); b.disabled = true; b.textContent = 'Saving…';
+  try {
+    SETTINGS = await api('settingsSet', { settings });
+    CFG.business = SETTINGS.type; CFG.vat = SETTINGS.vat; CFG.cardFee = SETTINGS.cardFee; saveCache();
+    toast(SETTINGS.note || 'Settings saved');
+    openSettings();
+  } catch (err) { toast(err.message, true); }
+  finally { b.disabled = false; b.textContent = 'Save settings'; }
+};
