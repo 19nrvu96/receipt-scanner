@@ -1369,7 +1369,7 @@ let sale = null;             // the sale open in the form: { row, saleId, needs,
 // What a flag means, in plain words
 function plainNeeds(n) {
   return String(n).split(/;\s*|,\s*(?=add|sale price|match|check)/).filter(Boolean).map(x =>
-    /^add postage cost/.test(x) ? 'eBay does not tell us the postage. Add what you paid.' :
+    /^add postage cost/.test(x) ? 'eBay does not tell us the postage. Tap who paid, then add what it cost you.' :
     /^sale price/.test(x) ? 'Add how much it sold for.' :
     /^match/.test(x) ? 'Which sale was this? Tap it below.' :
     /^check/.test(x) ? 'We guessed which sale this is. Check it is right, then tap Save.' : x).join(' ');
@@ -1419,7 +1419,45 @@ function renderSales() {
   $('slNeeds').innerHTML = d.needs.map((o, i) => saleCard(o, i, 'need')).join('');
   $('slRecent').innerHTML = d.recent.length ? d.recent.map((o, i) => saleCard(o, i, 'rec')).join('')
     : '<p class="sub">No sales yet. Forward a sale email, or tap ＋ Log a sale.</p>';
+  renderWhere();
+  if (d.backOn) {   // an email came in from a platform that was off
+    toast(d.backOn + ' is back on. You sent a ' + d.backOn + ' email.');
+    api('sellerSet', { seenBackOn: true }).catch(() => {});
+    d.backOn = '';
+  }
 }
+
+function renderWhere() {
+  const d = SALES || {};
+  const all = d.allPlatforms || ALL_PLATFORMS.filter(p => p !== 'Other'), on = d.platforms || CFG.platforms || [];
+  $('slPlats').innerHTML = all.map(p => `<div class="prow"><span>${esc(p)}${/^Amazon/.test(p) ? ' <span class="sm">(not in totals)</span>' : ''}</span>
+    <button class="tgl ${on.indexOf(p) > -1 ? 'on' : ''}" data-plat="${esc(p)}">${on.indexOf(p) > -1 ? 'On' : 'Off'}</button></div>`).join('');
+  const ebayOn = on.indexOf('eBay') > -1;
+  $('slEbayWrap').classList.toggle('hide', !ebayOn);
+  segSet('slEbay', d.ebayAccount || '');
+  $('slEbayHint').textContent = !d.ebayAccount ? 'Pick one. The app works with one eBay account.'
+    : d.ebayAccount === 'private' && d.business === 'ltd' ? '⚠️ You sell as a company. eBay wants companies to use a business account.'
+    : d.ebayAccount === 'private' ? 'Buyers pay eBay\'s Buyer Protection fee. It is not your money, so it is not in your sales.'
+    : 'You pay eBay fees on each sale. Buyers can send things back within 14 days.';
+}
+
+$('slPlats').onclick = async e => {
+  const b = e.target.closest('[data-plat]');
+  if (!b) return;
+  const p = b.dataset.plat, on = !b.classList.contains('on');
+  b.disabled = true;
+  try {
+    const r = await api('sellerSet', { platform: p, on });
+    SALES.platforms = CFG.platforms = r.platforms; saveCache(); renderWhere();
+    toast(on ? p + ' is on' : p + ' is off. Old sales stay. A ' + p + ' email turns it back on.');
+  } catch (err) { b.disabled = false; toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message, true); }
+};
+$('slEbay').addEventListener('click', () => setTimeout(async () => {
+  const v = segGet('slEbay');
+  if (!v || v === SALES.ebayAccount) return;
+  try { const r = await api('sellerSet', { ebayAccount: v }); SALES.ebayAccount = r.ebayAccount; renderWhere(); toast('Saved'); }
+  catch (err) { toast(err.message, true); }
+}, 0));
 
 $('vSales').addEventListener('click', async e => {
   const t = e.target, card = t.closest('[data-need],[data-rec]');
@@ -1463,20 +1501,41 @@ async function showLabel(l) {
 
 function segSet(id, v) { document.querySelectorAll('#' + id + ' button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
 function segGet(id) { const b = document.querySelector('#' + id + ' button.on'); return b ? b.dataset.v : ''; }
-['saPay', 'saStatus'].forEach(id => { $(id).onclick = e => { const b = e.target.closest('button'); if (b) { segSet(id, b.classList.contains('on') && id === 'saPay' ? '' : b.dataset.v); saleCalc(); } }; });
+['saPay', 'saStatus', 'saPostBy', 'slEbay'].forEach(id => { $(id).onclick = e => { const b = e.target.closest('button'); if (b) { segSet(id, b.classList.contains('on') && id === 'saPay' ? '' : b.dataset.v); saleCalc(); } }; });
 
 function platformOptions(current) {
-  const list = (CFG.platforms && CFG.platforms.length ? CFG.platforms : ALL_PLATFORMS).slice();
-  ALL_PLATFORMS.forEach(p => { if (list.indexOf(p) < 0) list.push(p); });
+  const list = (CFG.platforms && CFG.platforms.length ? CFG.platforms : ALL_PLATFORMS).slice();   // turned-off platforms aren't offered
+  if (list.indexOf('Other') < 0) list.push('Other');
   if (current && list.indexOf(current) < 0) list.unshift(current);
   return list.map(p => `<option ${p === current ? 'selected' : ''}>${esc(p)}</option>`).join('');
 }
 
 function saleWhereToggle() {
-  const inPerson = $('saPlatform').value === 'In person';
+  const plat = $('saPlatform').value, inPerson = plat === 'In person';
   $('saWhereWrap').classList.toggle('hide', !inPerson);
   $('saPayWrap').classList.toggle('hide', !inPerson);
+  $('saPostWrap').classList.toggle('hide', inPerson || plat === 'Amazon FBA');   // Amazon posts FBA orders itself
+  postHint();
 }
+
+// Postage: who paid decides what comes off your money
+function postHint() {
+  const plat = $('saPlatform').value, by = segGet('saPostBy');
+  const vinted = plat === 'Vinted';
+  $('saPostBy').classList.toggle('hide', vinted);
+  $('saPostInWrap').classList.toggle('hide', by === 'Seller' || vinted);
+  $('saOwnWrap').classList.toggle('hide', !$('saOwn').checked);
+  $('saPostHint').textContent = vinted ? 'On Vinted the buyer pays postage. Only add a cost if you paid extra.'
+    : by === 'Buyer' ? 'Put what the buyer paid for postage. Then what it cost you to send it.'
+    : by === 'Seller' ? 'Free postage comes out of your money. Put what it cost you to send it.'
+    : /^eBay/.test(plat) ? 'eBay does not tell us the postage. Tap who paid, then add the cost.'
+    : 'Tap who paid. Then put in what it cost you to send it.';
+}
+$('saPostBy').addEventListener('click', () => setTimeout(() => {
+  if (segGet('saPostBy') === 'Seller') $('saPostIn').value = '0';
+  postHint(); saleCalc();
+}, 0));
+$('saOwn').onchange = postHint;
 
 function openSale(o) {
   o = o || {};
@@ -1494,6 +1553,11 @@ function openSale(o) {
   $('saPostIn').value = num(o['postage charged']) ?? '';
   $('saFees').value = num(o['platform fees']) ?? '';
   $('saPostOut').value = num(o['postage cost']) ?? '';
+  const pc = num(o['postage charged']);
+  segSet('saPostBy', o['postage paid by'] || (pc > 0 ? 'Buyer' : pc === 0 && num(o['postage cost']) > 0 ? 'Seller' : ''));
+  $('saOwn').checked = !!o.courier;
+  $('saCourier').value = o.courier || '';
+  $('saIns').value = num(o['insured for']) ?? '';
   $('saOther').value = num(o['other costs']) ?? '';
   $('saRefund').value = num(o['refund amount']) ?? '';
   $('saPayout').value = o['payout date'] || '';
@@ -1588,7 +1652,12 @@ async function saveSaleForm() {
     'payment method': $('saPlatform').value === 'In person' ? segGet('saPay') : '',
     status: segGet('saStatus') || 'Sold', 'counts in totals': $('saCounts').checked ? 'Yes' : 'No',
     'linked purchase': sale.linked || '', 'item cost': sale.itemCost !== null && sale.itemCost !== undefined ? sale.itemCost : '',
-    needs: sale.row && sale.needs && !/^match/.test(sale.needs) ? '' : (sale.needs || '')   // saving it yourself clears the flag
+    'postage paid by': $('saPostWrap').classList.contains('hide') ? '' : (segGet('saPostBy') || ''),
+    courier: $('saOwn').checked ? v('saCourier') : '',
+    'insured for': v('saIns'),
+    // Saving it yourself clears the flag, except eBay postage while it's still blank
+    needs: /^match/.test(sale.needs || '') ? sale.needs
+      : /^eBay/.test($('saPlatform').value) && v('saPostOut') === '' && segGet('saStatus') !== 'Cancelled' ? 'add postage cost' : ''
   };
   if (s['sale price'] === '' && !/^Amazon/.test(s.platform) && s.status !== 'Cancelled') { toast('Add the sale price', true); return; }
   const b = $('btnSaleSave'); b.disabled = true; b.textContent = 'Saving…';
