@@ -318,21 +318,21 @@ async function pagesDone() {
 /* ---------- offline queue: photos are kept on the phone until they're saved ---------- */
 // Every photo is stored here first, so capture always works. Reading happens now if there's
 // signal, otherwise automatically when signal returns (while the app is open).
-const DB_NAME = 'receipts', DB_STORE = 'jobs';
+const DB_NAME = 'receipts', DB_STORE = 'jobs', LABEL_STORE = 'labels';
 let dbp = null;
 function db() {
   if (!dbp) dbp = new Promise((resolve, reject) => {
-    const r = indexedDB.open(DB_NAME, 1);
-    r.onupgradeneeded = () => r.result.createObjectStore(DB_STORE, { keyPath: 'id' });
+    const r = indexedDB.open(DB_NAME, 2);   // v2 adds "labels": QR codes kept on the phone
+    r.onupgradeneeded = () => [DB_STORE, LABEL_STORE].forEach(n => { if (!r.result.objectStoreNames.contains(n)) r.result.createObjectStore(n, { keyPath: 'id' }); });
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
   });
   return dbp;
 }
-async function dbDo(mode, fn) {
+async function dbDo(mode, fn, store = DB_STORE) {
   const d = await db();
   return new Promise((resolve, reject) => {
-    const tx = d.transaction(DB_STORE, mode), st = tx.objectStore(DB_STORE);
+    const tx = d.transaction(store, mode), st = tx.objectStore(store);
     const req = fn(st);
     tx.oncomplete = () => resolve(req && req.result);
     tx.onerror = () => reject(tx.error);
@@ -1061,8 +1061,10 @@ async function openQueue() {
   show('vWork');
   $('workMsg').textContent = 'Checking emails…';
   try {
-    renderQueue(await api('queue', {}));
+    const d = await api('queue', {});
+    renderQueue(d);
     show('vQueue');
+    if (d.now && d.now - (d.lastRun || 0) > 120000) checkInboxNow(0, true);   // not looked for 2+ min: look now, in the background
   } catch (err) {
     show('vHome');
     toast('Couldn\'t load emails: ' + err.message, true);
@@ -1072,11 +1074,10 @@ async function openQueue() {
 function renderQueue(d) {
   queueItems = d.items || [];
   setEmailCount(queueItems.length);
-  const waiting = d.processing
-    ? d.processing + ' more being read — check back within 15 minutes.' : '';
-  $('qSub').textContent = queueItems.length
-    ? 'These came from your emails. Check each one, then tap Save. ' + waiting
-    : (waiting || 'Nothing to check. Emails you forward show up here within 15 minutes.');
+  const waiting = d.processing ? d.processing + ' more being read now. ' : '';
+  $('qSub').textContent = (queueItems.length ? 'These came from your emails. Check each one, then tap Save. ' : 'Nothing to check yet. ')
+    + waiting + 'We look for new emails every 15 minutes. In a hurry? Tap Check inbox now. Gmail can take 1–2 minutes to pass an email on.';
+  $('qLast').textContent = lastCheckText(d);
 
   $('qList').innerHTML = queueItems.map((q, i) => {
     const res = q.result || {};
@@ -1096,6 +1097,43 @@ function renderQueue(d) {
     return `<div class="card qcard"><h3>${esc(q.subject || '(no subject)')}</h3>
       <div class="qmeta">${esc(sender)} · ${esc(q.received)}</div>${body}</div>`;
   }).join('');
+}
+
+// "Last checked 4 min ago · next check in about 11 min" (uses the server's clock)
+function lastCheckText(d) {
+  if (!d.lastRun || !d.now) return '';
+  const ago = Math.max(0, Math.round((d.now - d.lastRun) / 60000)), next = 15 - (ago % 15);
+  return 'Last checked ' + (ago < 1 ? 'just now' : ago + ' min ago') + ' · next check in about ' + next + ' min';
+}
+
+// Check inbox now: the same check the app does every 15 minutes, straight away (no extra cost).
+// If nothing has arrived yet, look again a few times while this screen is open, since Gmail can be slow.
+let qTimer = null;
+async function checkInboxNow(tries = 0, auto = false) {
+  clearTimeout(qTimer);
+  const b = $('btnQRefresh');
+  b.disabled = true; b.textContent = tries ? 'Looking again…' : 'Looking in your inbox…';
+  if (auto) tries = 4;   // a look when the screen opens: no follow-ups
+  let d;
+  try { d = await api('checkEmails', {}); }
+  catch (err) {
+    if (/Unknown action/.test(err.message)) { d = await api('queue', {}).catch(() => null); }   // older script: just reload
+    else { toast(err.message, true); }
+  }
+  b.disabled = false; b.textContent = '↻ Check inbox now';
+  if (!d) return;
+  renderQueue(d);
+  if (d.found) { toast('Found ' + d.found + ' new email' + (d.found === 1 ? '' : 's')); return; }
+  if (d.ran !== undefined && tries < 4 && !$('vQueue').classList.contains('hide')) {   // up to 2 more minutes
+    let left = 30;
+    const tick = () => {
+      if ($('vQueue').classList.contains('hide')) return;
+      if (left <= 0) return checkInboxNow(tries + 1);
+      b.textContent = 'Nothing yet. Looking again in ' + left + 's (tap to look now)';
+      left -= 5; qTimer = setTimeout(tick, 5000);
+    };
+    tick();
+  }
 }
 
 // Extraction errors are worded for photos; reword them for emails
@@ -1455,6 +1493,7 @@ function renderSales() {
     <div class="tags">${postTag(l)}</div>
     <div class="duo" style="margin-top:8px"><button class="btn" data-lab="${i}">${l.files ? 'Show QR code' : 'Open label'}</button>
       <button class="btn sec" data-posted="${i}">✓ Posted</button></div></div></div>`).join('');
+  if (d.toPost.length) setTimeout(() => prefetchLabels(d.toPost), 300);   // codes ready before you tap
   $('slNeedsWrap').classList.toggle('hide', !d.needs.length);
   $('slNeeds').innerHTML = d.needs.map((o, i) => saleCard(o, i, 'need')).join('');
   $('slRecent').innerHTML = d.recent.length ? d.recent.map((o, i) => saleCard(o, i, 'rec')).join('')
@@ -1603,7 +1642,7 @@ $('vSales').addEventListener('click', async e => {
   if (t.dataset.posted !== undefined) {
     const l = SALES.toPost[Number(t.dataset.posted)];
     t.disabled = true;
-    try { SALES.toPost = await api('labelDone', { id: l.id }); renderSales(); toast('Posted. We saved today\'s date.'); }
+    try { SALES.toPost = await api('labelDone', { id: l.id }); labDel(l.id); renderSales(); toast('Posted. We saved today\'s date.'); }
     catch (err) { t.disabled = false; toast(err.message, true); }
     return;
   }
@@ -1611,6 +1650,34 @@ $('vSales').addEventListener('click', async e => {
 });
 
 // Full-screen QR code for the drop-off counter
+/* Postage labels are kept on the phone (IndexedDB) once fetched, so the code opens at once and
+   works with no signal at the counter. PDFs (Vinted) are turned into a picture once, so pdf.js is
+   only loaded the first time. Fetching happens in the background when Sales opens. */
+const labGet = id => dbDo('readonly', st => st.get(id), LABEL_STORE).catch(() => null);
+const labPut = o => dbDo('readwrite', st => st.put(o), LABEL_STORE).catch(() => {});
+const labDel = id => dbDo('readwrite', st => st.delete(id), LABEL_STORE).catch(() => {});
+const labKeys = () => dbDo('readonly', st => st.getAllKeys(), LABEL_STORE).catch(() => []);
+
+async function fetchLabel(l) {
+  const f = await api('labelFile', { id: l.id });
+  const images = f.images.slice();
+  if (!images.length) for (const p of f.pdfs) if (p.data) { try { images.push(await pdfToPng(p.data)); } catch (e) {} }
+  const o = { id: l.id, images, pdfs: f.pdfs.map(p => ({ url: p.url || p })), link: f.link, saved: Date.now() };
+  if (images.length) labPut(o);   // only keep it once there's something to show
+  return o;
+}
+
+let prefetching = false;
+async function prefetchLabels(list) {
+  if (prefetching || !navigator.onLine) return;
+  prefetching = true;
+  try {
+    const want = new Set(list.map(l => l.id));
+    (await labKeys()).forEach(k => { if (!want.has(k)) labDel(k); });   // posted or gone: free the space
+    for (const l of list) if (l.files && !(await labGet(l.id))) { try { await fetchLabel(l); } catch (e) {} }   // one at a time, in the background
+  } finally { prefetching = false; }
+}
+
 async function showLabel(l) {
   const veil = document.createElement('div');
   veil.className = 'veil';
@@ -1618,20 +1685,16 @@ async function showLabel(l) {
   veil.onclick = e => { if (e.target === veil || e.target.dataset.close) veil.remove(); };
   document.body.appendChild(veil);
   try {
-    const f = await api('labelFile', { id: l.id });
+    const cached = await labGet(l.id);
+    const f = cached || await fetchLabel(l);
     veil.querySelector('.sheet').innerHTML = `<h3>${esc(l.item || 'Postage label')}</h3>
-      <p class="hint">Show this code at the shop. Turn your screen brightness up.</p>
+      <p class="hint">Show this code at the shop. Turn your screen brightness up.${cached ? ' Saved on this phone, so it works with no signal.' : ''}</p>
       <p class="sub">${[l.courier, l.order ? '#' + l.order : '', l.tracking ? 'tracking ' + l.tracking : ''].filter(Boolean).map(esc).join(' · ')}</p>
       ${f.images.map(src => `<img class="qrimg" src="${src}" alt="Postage QR code">`).join('')}
-      <div class="pdfs"></div>
       ${f.pdfs.map(p => `<a class="btn sec" href="${esc(p.url || p)}" target="_blank" rel="noopener">Open the label PDF</a>`).join('')}
       ${f.link ? `<a class="btn sec" href="${esc(f.link)}" target="_blank" rel="noopener">Open in ${esc(l.platform || 'the app')}</a>` : ''}
       ${!f.images.length && !f.pdfs.length && !f.link ? '<p class="sub">This email had no code or label link. Open it in your email app.</p>' : ''}
       <button class="btn ghost" data-close="1">Close</button>`;
-    if (!f.images.length) {   // no QR image: draw the PDF label itself
-      const holder = veil.querySelector('.pdfs');
-      for (const p of f.pdfs) if (p.data) { try { await drawPdf(p.data, holder); } catch (e) { holder.innerHTML = '<p class="sub">Tap below to open the label.</p>'; } }
-    }
   } catch (err) {
     veil.querySelector('.sheet').innerHTML = '<p class="sub">' + esc(err.message) + '</p><button class="btn ghost" data-close="1">Close</button>';
   }
@@ -1886,17 +1949,15 @@ function pdfjs() {
   });
   return pdfjsP;
 }
-async function drawPdf(base64, holder) {
+// Page 1 of a label PDF as a PNG picture, sharp enough for the shop's scanner
+async function pdfToPng(base64) {
   const lib = await pdfjs();
   const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-  const doc = await lib.getDocument({ data: bytes }).promise;
-  const page = await doc.getPage(1);
-  const w = Math.min(holder.clientWidth || 340, 600) * (window.devicePixelRatio || 1);
-  const v1 = page.getViewport({ scale: 1 });
-  const vp = page.getViewport({ scale: w / v1.width });
-  const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; c.className = 'qrimg';
+  const page = await (await lib.getDocument({ data: bytes }).promise).getPage(1);
+  const v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: 1200 / v1.width });
+  const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
   await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
-  holder.appendChild(c);
+  return c.toDataURL('image/png');
 }
 
 /* ---------- paying back personal spending ---------- */
@@ -2100,7 +2161,7 @@ $('btnBack').onclick      = () => {
 };
 $('btnEmails').onclick    = openQueue;
 $('btnQBack').onclick     = () => show('vHome');
-$('btnQRefresh').onclick  = openQueue;
+$('btnQRefresh').onclick  = () => checkInboxNow(0);
 
 $('pChannel').onclick = () => {
   state.channel = state.channel === 'In person' ? 'Email' : 'In person';
