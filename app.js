@@ -1076,7 +1076,7 @@ function renderQueue(d) {
   setEmailCount(queueItems.length);
   const waiting = d.processing ? d.processing + ' more being read now. ' : '';
   $('qSub').textContent = (queueItems.length ? 'These came from your emails. Check each one, then tap Save. ' : 'Nothing to check yet. ')
-    + waiting + 'We look for new emails every 15 minutes. In a hurry? Tap Check inbox now. Gmail can take 1–2 minutes to pass an email on.';
+    + waiting + 'We look for new emails every ' + (d.every || 15) + ' minutes. In a hurry? Tap Check inbox now. Gmail can take 1–2 minutes to pass an email on.';
   $('qLast').textContent = lastCheckText(d);
 
   $('qList').innerHTML = queueItems.map((q, i) => {
@@ -1102,11 +1102,11 @@ function renderQueue(d) {
 // "Last checked 4 min ago · next check in about 11 min" (uses the server's clock)
 function lastCheckText(d) {
   if (!d.lastRun || !d.now) return '';
-  const ago = Math.max(0, Math.round((d.now - d.lastRun) / 60000)), next = 15 - (ago % 15);
+  const every = d.every || 15, ago = Math.max(0, Math.round((d.now - d.lastRun) / 60000)), next = every - (ago % every);
   return 'Last checked ' + (ago < 1 ? 'just now' : ago + ' min ago') + ' · next check in about ' + next + ' min';
 }
 
-// Check inbox now: the same check the app does every 15 minutes, straight away (no extra cost).
+// Check inbox now: the same check the app does every few minutes, straight away (no extra cost).
 // If nothing has arrived yet, look again a few times while this screen is open, since Gmail can be slow.
 let qTimer = null;
 async function checkInboxNow(tries = 0, auto = false) {
