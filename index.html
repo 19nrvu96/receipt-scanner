@@ -125,7 +125,7 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
 /* ---------- Action bar ---------- */
 .bar.review{position:static}   /* long receipts: the 4-button bar used to float over the lines */
 .minibar{position:sticky;bottom:0;padding:8px 0 12px;background:linear-gradient(rgba(243,244,247,0),#f3f4f7 40%)}
-.minibar .btn{padding:13px;font-size:16px;box-shadow:var(--shadow)}
+.minibar .btn{padding:13px;font-size:16px;box-shadow:var(--shadow);margin:0}
 .bar{position:sticky;bottom:0;background:#f5f5f7;padding:12px 0 16px;
      border-top:1px solid #e0e0e0;margin-top:14px}
 .btn{width:100%;padding:16px;border:none;border-radius:12px;font-size:17px;
@@ -319,9 +319,38 @@ details.picks{margin-top:10px;border:1px solid var(--line);border-radius:12px;pa
 details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--accent)}
 .hist{font-size:13px;color:var(--muted);margin-top:8px}
 :focus-visible{outline:3px solid #4f46e5;outline-offset:2px}
+
+/* ---------- v30: splash, help, perks, settings sections ---------- */
+#splash{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  background:linear-gradient(160deg,#0866d6,#4f46e5);color:#fff;transition:opacity .25s ease;pointer-events:none}
+#splash .logo{font-size:56px}#splash .name{font-size:24px;font-weight:700;letter-spacing:-.3px}
+#splash.gone{opacity:0}
+.mailpreview{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:8px;background:#fafbfc;font-size:14px}
+.mp-h{font-weight:700;margin-bottom:6px}.mp-r{display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid var(--line)}
+textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;font:inherit;font-size:16px;resize:vertical;background:#fff}
+#helpSearch{width:100%;padding:13px 14px;border:1px solid #d0d0d5;border-radius:12px;font-size:16px;font-family:inherit;margin-bottom:10px;background:#fff}
+.help{margin-bottom:10px}.help summary{font-weight:600;font-size:15px;padding:12px 14px;cursor:pointer;list-style:none}
+.help summary::before{content:"›";display:inline-block;margin-right:8px;color:var(--muted);transition:transform .15s}
+.help[open] summary::before{transform:rotate(90deg)}
+.help .body{padding:0 14px 14px;font-size:15px;line-height:1.5}
+.help ol{padding-left:20px;margin:6px 0}.help li{margin:4px 0}
+.help .step{display:flex;gap:10px;align-items:flex-start;margin:8px 0}
+.help .step .k{flex:none;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.help .ui{display:inline-block;border:1px solid #c9c9ce;border-radius:6px;padding:1px 7px;background:#f4f4f6;font-size:13px}
+.perk{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}
+.perk .pl{flex:none;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:18px}
+.perk b{display:block}.perk .sm{display:block;margin:2px 0 6px}
+.veil .close{position:absolute;top:10px;right:12px;width:40px;height:40px;border-radius:50%;border:0;background:#f1f1f3;font-size:18px;cursor:pointer}
+.veil .sheet{position:relative}
+.thumb img{cursor:zoom-in}
+.zoom{position:fixed;inset:0;z-index:60;background:#000;display:flex;align-items:center;justify-content:center}
+.zoom img{max-width:100%;max-height:100%;object-fit:contain;touch-action:pinch-zoom}
+.zoom .close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,.9)}
+.zoom .cap{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:#fff;font-size:14px;text-shadow:0 1px 2px #000}
 </style>
 </head>
 <body>
+<div id="splash" aria-hidden="true"><div class="logo">🧾</div><div class="name">Receipts</div></div>
 <div class="wrap">
 
   <!-- SETUP -->
@@ -361,17 +390,38 @@ details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--
   <!-- SETTINGS -->
   <section id="vSettings" class="hide form">
     <div class="hdr"><button class="back" id="btnStBack">‹</button><h2 style="margin:0;flex:1">Settings</h2></div>
+
+    <h3 class="sech">Account</h3>
     <div class="card scard2" id="stAcct">
-      <h3>Your account</h3>
-      <div class="krow"><span>Google account</span><b id="stEmail">…</b></div>
+      <div class="krow"><span>Signed up with</span><b id="stEmail">…</b></div>
+      <div class="krow"><span>Your Google account (where the app and Sheet live)</span><b id="stGoogle">…</b></div>
+      <div class="krow"><span>Your data</span><button class="link" id="btnOpenSheet">Open your Sheet ↗</button></div>
+      <div class="krow"><span>Plan</span><b>Free · founding member</b></div>
+      <p class="sub">Payment and cards come with paid plans.</p>
+    </div>
+
+    <h3 class="sech">Your emails</h3>
+    <div class="card scard2">
+      <label>Where do your order and sale emails arrive?</label>
+      <select id="stSrc">
+        <option value="">Choose…</option>
+        <option value="gmail">This Gmail account</option>
+        <option value="gmail-other">A different Gmail</option>
+        <option value="outlook">Outlook / Hotmail</option>
+        <option value="icloud">iCloud (Apple)</option>
+        <option value="yahoo">Yahoo</option>
+        <option value="other">Somewhere else</option>
+      </select>
+      <div id="stOrderWrap" class="hide"><label>That email address</label><input id="stOrderEmail" type="email" inputmode="email" autocapitalize="off" placeholder="e.g. you@outlook.com"></div>
       <div class="krow"><span>Forward receipts to</span><b id="stFwd">…</b></div>
       <button class="btn sec" id="btnCopyFwd">Copy the forwarding address</button>
-      <p class="hint">Forward order and sale emails to this address. They show up in the app within a few minutes.</p>
-      <div class="krow"><span>Your data</span><a id="stSheet" href="#" target="_blank" rel="noopener">Open your Sheet</a></div>
+      <p class="hint" id="stSrcHint">Forward order and sale emails to this address. They show up in the app within a few minutes.</p>
+      <button class="btn sec" id="btnFwdGuide">How to set up forwarding ↗</button>
       <div class="krow"><span>Email pick-up</span><b id="stEmailsOn">…</b></div>
     </div>
+
+    <h3 class="sech">Business and tax</h3>
     <div class="card scard2">
-      <h3>Your business</h3>
       <div class="seg" id="stType"><button data-v="sole">Sole trader</button><button data-v="ltd">Limited company</button><button data-v="other">Not sure</button></div>
       <div id="stIncWrap"><label>Income from self-employment, per year</label>
         <select id="stInc"><option value="">Choose…</option><option value="u20">Under £20,000</option><option value="20-30">£20,000 – £30,000</option><option value="30-50">£30,000 – £50,000</option><option value="o50">Over £50,000</option></select></div>
@@ -381,14 +431,10 @@ details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--
       <p class="hint hide" id="stChangeHint">Changing this keeps all your old records. We save a copy of your old tax summary and start a new one from today.</p>
       <div id="stHist"></div>
     </div>
-    <div class="card scard2">
-      <h3>Card reader fees</h3>
-      <p class="hint">For card sales in person. Check your card reader's app for the fees.</p>
-      <div class="duo"><div><label>Fee per tap (p)</label><input id="stTap" type="number" step="0.1" inputmode="decimal" placeholder="e.g. 20"></div>
-        <div><label>Fee % of each sale</label><input id="stPct" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 1.69"></div></div>
-    </div>
-    <button class="btn" id="btnStSave">Save settings</button>
-    <div class="card scard2" id="slWhere"><h3>Where you sell</h3>
+
+    <h3 class="sech">Selling</h3>
+    <div class="card scard2" id="slWhere">
+      <label>Where you sell</label>
       <p class="hint">Stopped using one? Turn it off. Your old sales stay safe.</p>
       <div id="slPlats"></div>
       <div id="slEbayWrap" class="hide">
@@ -397,8 +443,67 @@ details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--
         <p class="hint" id="slEbayHint"></p>
       </div>
     </div>
-    <div class="card scard2"><h3>This phone</h3>
-      <button class="link" id="btnReset">Change sheet connection</button></div>
+    <div class="card scard2">
+      <label>Card reader fees</label>
+      <p class="hint">For card sales in person. Check your card reader's app for the fees.</p>
+      <div class="duo"><div><label>Fee per tap (p)</label><input id="stTap" type="number" step="0.1" inputmode="decimal" placeholder="e.g. 20"></div>
+        <div><label>Fee % of each sale</label><input id="stPct" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 1.69"></div></div>
+    </div>
+
+    <h3 class="sech">Preferences</h3>
+    <div class="card scard2">
+      <label class="check"><input type="checkbox" id="stMonthly"> Monthly summary email</label>
+      <p class="sub">On the 1st of each month: what you spent, sold and made, with your tax pot. Most people keep this on.</p>
+      <div class="mailpreview">
+        <div class="mp-h">🧾 Your October in one page</div>
+        <div class="mp-r"><span>Sales</span><b>£1,240</b></div>
+        <div class="mp-r"><span>Spent on stock</span><b>£610</b></div>
+        <div class="mp-r"><span>Profit</span><b>£470</b></div>
+        <div class="mp-r"><span>Set aside for tax</span><b>£94</b></div>
+      </div>
+    </div>
+
+    <button class="btn" id="btnStSave">Save settings</button>
+
+    <h3 class="sech">Help</h3>
+    <div class="card scard2">
+      <button class="link" id="btnHelp">Help and how-to guides</button><br>
+      <button class="link" id="btnReport">Report a bug or send an idea</button><br>
+      <button class="link" id="btnPerks">Make your money go further</button>
+    </div>
+
+    <h3 class="sech">This phone</h3>
+    <div class="card scard2">
+      <div class="krow"><span>Connected Sheet</span><b id="stSheetName">…</b></div>
+      <p class="sub">The app reads and writes one Google Sheet. Changing it points the app at a different Sheet; nothing is deleted or copied.</p>
+      <button class="link" id="btnReset">Change sheet connection</button>
+      <p class="sub" id="stVersion"></p>
+    </div>
+  </section>
+
+  <!-- HELP -->
+  <section id="vHelp" class="hide form">
+    <div class="hdr"><button class="back" id="btnHelpBack">‹</button><h2 style="margin:0;flex:1">Help</h2></div>
+    <input id="helpSearch" type="search" placeholder="Search, e.g. forward from Outlook" autocomplete="off">
+    <div id="helpList"></div>
+  </section>
+
+  <!-- REPORT -->
+  <section id="vReport" class="hide form">
+    <div class="hdr"><button class="back" id="btnRepBack">‹</button><h2 style="margin:0;flex:1">Report a bug</h2></div>
+    <p class="hint">Tell us what you tapped and what went wrong. We read every one.</p>
+    <div class="seg" id="repType"><button data-v="bug">Something broke</button><button data-v="idea">An idea</button></div>
+    <label>What happened?</label>
+    <textarea id="repText" rows="5" placeholder="e.g. On the Sales page the QR code took a long time to open"></textarea>
+    <p class="sub">We'll include which screen you were on and the app version.</p>
+    <button class="btn" id="btnRepSend">Send</button>
+  </section>
+
+  <!-- PERKS -->
+  <section id="vPerks" class="hide form">
+    <div class="hdr"><button class="back" id="btnPerksBack">‹</button><h2 style="margin:0;flex:1">Make your money go further</h2></div>
+    <p class="hint">Cashback and coupon tools resellers use when buying stock. Some links give us a small thank-you; it never costs you more.</p>
+    <div id="perksList"></div>
   </section>
 
   <!-- EMAIL QUEUE -->
@@ -640,7 +745,7 @@ details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--
       </div>
       <button class="btn" id="btnSave">Save to Sheet</button>
     </div>
-    <div class="minibar hide" id="miniBar"><button class="btn" id="btnSaveMini">Save to Sheet</button></div>
+    <div class="minibar hide" id="miniBar"><div class="duo"><button class="btn sec" id="btnBulkMini">Set purpose</button><button class="btn" id="btnSaveMini">Save to Sheet</button></div></div>
   </section>
 
 </div>
@@ -648,6 +753,7 @@ details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="app.js?v=29"></script>
+<script src="help.js?v=30"></script>
+<script src="app.js?v=30"></script>
 </body>
 </html>

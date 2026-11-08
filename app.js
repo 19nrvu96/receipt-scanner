@@ -13,7 +13,8 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings'];
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks'];
+const APP_VERSION = 'v30';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1698,7 +1699,7 @@ async function showLabel(l) {
   try {
     const cached = await labGet(l.id);
     const f = cached || await fetchLabel(l);
-    veil.querySelector('.sheet').innerHTML = `<h3>${esc(l.item || 'Postage label')}</h3>
+    veil.querySelector('.sheet').innerHTML = `<button class="close" data-close="1" aria-label="Close">✕</button><h3>${esc(l.item || 'Postage label')}</h3>
       <p class="hint">Show this code at the shop. Turn your screen brightness up.${cached ? ' Saved on this phone, so it works with no signal.' : ''}</p>
       <p class="sub">${[l.courier, l.order ? '#' + l.order : '', l.tracking ? 'tracking ' + l.tracking : ''].filter(Boolean).map(esc).join(' · ')}</p>
       ${f.images.map(src => `<img class="qrimg" src="${src}" alt="Postage QR code">`).join('')}
@@ -2236,8 +2237,12 @@ async function openSettings() {
     segSet('stType', d.type || ''); $('stVat').checked = !!d.vat; $('stYe').value = String(d.yearEnd || 3); $('stInc').value = d.income || '';
     $('stTap').value = d.cardFee && d.cardFee.perTap ? d.cardFee.perTap : ''; $('stPct').value = d.cardFee && d.cardFee.pct ? d.cardFee.pct : '';
     const a = d.account || {};
-    $('stEmail').textContent = a.email || '—'; $('stFwd').textContent = a.forwardTo || '—';
-    $('stSheet').href = a.sheetUrl || '#'; $('stEmailsOn').textContent = a.emailsOn ? 'On, every 5 minutes' : 'Not set up yet';
+    SETTINGS.sheetUrl = a.sheetUrl || '';
+    $('stEmail').textContent = a.email || '—'; $('stGoogle').textContent = a.email || '—';
+    $('stFwd').textContent = a.forwardTo || '—';
+    $('stEmailsOn').textContent = a.emailsOn ? 'On, every 5 minutes' : 'Not set up yet';
+    $('stSrc').value = d.emailSource || ''; $('stOrderEmail').value = d.orderEmail || ''; $('stMonthly').checked = !!d.monthlyEmail;
+    srcSync();
     $('stHist').innerHTML = (d.history || []).map(h => `<p class="hist">Before ${esc(h.until)}: ${esc(h.label)}${h.tab ? ' · saved in the "' + esc(h.tab) + '" tab' : ''}</p>`).join('');
     stSync(); renderWhere();
   } catch (err) { toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for Settings.' : err.message, true); }
@@ -2254,6 +2259,89 @@ $('stVat').onchange = stSync;
 $('btnSettings').onclick = openSettings;
 $('btnSlSettings').onclick = openSettings;
 $('btnStBack').onclick = () => show('vHome');
+$('stSheetName').textContent = (localStorage.getItem(LS_URL) || '').replace(/^https:\/\/script\.google\.com\/macros\/s\//, '').replace(/\/exec$/, '').slice(0, 10) + '…';
+$('stVersion').textContent = 'App ' + APP_VERSION;
+
+/* ---------- Help: searchable topics (help.js) ---------- */
+let helpFrom = 'vSettings';
+function openHelp(id) {
+  helpFrom = views.find(v => !$(v).classList.contains('hide')) || 'vSettings';
+  show('vHelp'); $('helpSearch').value = ''; renderHelp('', id);
+}
+function renderHelp(q, openId) {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hit = t => !words.length || words.every(w => (t.title + ' ' + t.keys + ' ' + t.body.replace(/<[^>]+>/g, ' ')).toLowerCase().includes(w));
+  const list = HELP.filter(hit);
+  $('helpList').innerHTML = list.length ? list.map(t => `<details class="card help" id="help-${t.id}"${t.id === openId ? ' open' : ''}><summary>${esc(t.title)}</summary><div class="body">${t.body}</div></details>`).join('')
+    : '<div class="empty">No match. Try another word, or <button class="link" id="helpAsk">report it</button>.</div>';
+  if (openId) { const el = $('help-' + openId); if (el) el.scrollIntoView({ block: 'start' }); }
+}
+$('helpSearch').oninput = () => renderHelp($('helpSearch').value);
+$('helpList').onclick = e => { if (e.target.id === 'helpAsk') openReport(); };
+$('btnHelp').onclick = () => openHelp();
+$('btnHelpBack').onclick = () => show(helpFrom === 'vHelp' ? 'vSettings' : helpFrom);
+
+/* ---------- Report a bug or idea ---------- */
+let reportFrom = 'vSettings';
+function openReport() { reportFrom = views.find(v => !$(v).classList.contains('hide')) || 'vSettings'; show('vReport'); segSet('repType', 'bug'); $('repText').value = ''; }
+$('btnReport').onclick = openReport;
+$('btnRepBack').onclick = () => show(reportFrom === 'vReport' ? 'vSettings' : reportFrom);
+$('btnRepSend').onclick = async () => {
+  const text = $('repText').value.trim();
+  if (!text) { toast('Tell us what happened', true); return; }
+  const b = $('btnRepSend'); b.disabled = true; b.textContent = 'Sending…';
+  try {
+    await api('report', { report: { type: segGet('repType') || 'bug', text, screen: reportFrom, version: APP_VERSION } });
+    toast('Thank you. We read every report.'); show('vSettings');
+  } catch (err) { toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message, true); }
+  finally { b.disabled = false; b.textContent = 'Send'; }
+};
+
+/* ---------- Make your money go further (links to be filled in) ---------- */
+const PERKS = [
+  { name: 'TopCashback', col: '#1a9e5c', what: 'Cashback on most big UK shops, paid to your bank. Use it when buying stock online.', url: '' },
+  { name: 'Quidco', col: '#7b3fe4', what: 'The other big UK cashback site. Check both: rates differ by shop.', url: '' },
+  { name: 'Honey', col: '#f5a623', what: 'Browser extension that tries coupon codes at checkout for you.', url: '' },
+  { name: 'Coupert', col: '#ff5a5f', what: 'Coupons plus cashback in one extension.', url: '' },
+  { name: 'Capital One Shopping', col: '#0a4b9c', what: 'Compares prices and applies codes while you shop.', url: '' },
+  { name: 'JamDoughnut', col: '#e8335a', what: 'Buy gift cards at a discount for shops you use anyway (Argos, Tesco, Amazon).', url: '' },
+  { name: 'Shoppix', col: '#2bb673', what: 'Points for snapping receipts you already have. Small, but free.', url: '' },
+  { name: 'Everup', col: '#6c47ff', what: 'Savings and rewards app with prize draws.', url: '' }
+];
+$('btnPerks').onclick = () => {
+  show('vPerks');
+  $('perksList').innerHTML = PERKS.map(p => `<div class="perk"><div class="pl" style="background:${p.col}">${esc(p.name[0])}</div>
+    <div><b>${esc(p.name)}</b><span class="sm">${esc(p.what)}</span>${p.url ? `<a class="btn sec" style="display:inline-block;width:auto;padding:8px 14px;font-size:14px" href="${esc(p.url)}" target="_blank" rel="noopener">Get it</a>` : '<span class="tag">link coming soon</span>'}</div></div>`).join('');
+};
+$('btnPerksBack').onclick = () => show('vSettings');
+
+/* ---------- Photo check: tap a photo to see it full size ---------- */
+$('thumbs').addEventListener('click', e => {
+  const img = e.target.closest('img');
+  if (!img || e.target.dataset.x !== undefined) return;
+  const i = [...$('thumbs').querySelectorAll('img')].indexOf(img);
+  const z = document.createElement('div'); z.className = 'zoom';
+  z.innerHTML = `<img src="${img.src}" alt="Photo ${i + 1}"><button class="close" aria-label="Close">✕</button><div class="cap">Pinch to zoom. Can you read the lines? If not, retake it.</div>`;
+  z.onclick = ev => { if (ev.target.tagName !== 'IMG') z.remove(); };
+  document.body.appendChild(z);
+});
+
+/* ---------- Splash: name and logo while the home screen loads behind it ---------- */
+setTimeout(() => { const sp = $('splash'); if (sp) { sp.classList.add('gone'); setTimeout(() => sp.remove(), 300); } }, 700);
+$('btnOpenSheet').onclick = () => {
+  const u = SETTINGS && SETTINGS.sheetUrl;
+  if (u) window.open(u, '_blank', 'noopener'); else toast('Your Sheet\'s script needs updating to show this link.', true);
+};
+$('stSrc').onchange = srcSync;
+function srcSync() {
+  const v = $('stSrc').value;
+  $('stOrderWrap').classList.toggle('hide', !v || v === 'gmail');
+  $('stSrcHint').textContent = v === 'gmail' ? 'Your orders arrive here already. Forward any from other shops to this address.'
+    : v ? 'Set up forwarding once and new orders arrive by themselves. Tap the guide below.'
+    : 'Forward order and sale emails to this address. They show up in the app within a few minutes.';
+  $('btnFwdGuide').classList.toggle('hide', !v || v === 'gmail');
+}
+$('btnFwdGuide').onclick = () => openHelp({ gmail: 'fwd-gmail', 'gmail-other': 'fwd-gmail-other', outlook: 'fwd-outlook', icloud: 'fwd-icloud', yahoo: 'fwd-yahoo', other: 'fwd-manual' }[$('stSrc').value] || 'fwd-manual');
 $('btnCopyFwd').onclick = async () => {
   const t = $('stFwd').textContent;
   try { await navigator.clipboard.writeText(t); toast('Copied: ' + t); } catch (e) { prompt('Copy this address', t); }
@@ -2262,7 +2350,9 @@ $('btnStSave').onclick = async () => {
   const d = SETTINGS || {}, type = segGet('stType');
   if (!type) { toast('Pick your business type', true); return; }
   const settings = { type, vat: $('stVat').checked, yearEnd: Number($('stYe').value) || 3, income: $('stInc').value,
-                     cardFee: { perTap: Number($('stTap').value) || 0, pct: Number($('stPct').value) || 0 } };
+                     cardFee: { perTap: Number($('stTap').value) || 0, pct: Number($('stPct').value) || 0 },
+                     emailSource: $('stSrc').value, orderEmail: $('stSrc').value === 'gmail' ? '' : $('stOrderEmail').value.trim(),
+                     monthlyEmail: $('stMonthly').checked };
   if (d.type && (type !== d.type || settings.vat !== !!d.vat) &&
       !confirm('Change your business details from today? Your old records stay as they are, and we keep a copy of your old tax summary.')) return;
   const b = $('btnStSave'); b.disabled = true; b.textContent = 'Saving…';
@@ -2277,6 +2367,7 @@ $('btnStSave').onclick = async () => {
 
 $('fExtRet').onchange = () => { $('fRetWrap').classList.toggle('hide', !$('fExtRet').checked); if ($('fExtRet').checked) $('fRetBy').focus(); };
 $('btnSaveMini').onclick = () => $('btnSave').click();
+$('btnBulkMini').onclick = () => $('btnBulk').click();   // works on the ticked lines, like the main button
 // The slim Save strip shows only while the real button bar is off-screen (long receipts)
 if ('IntersectionObserver' in window) new IntersectionObserver(es => {
   $('miniBar').classList.toggle('hide', es[0].isIntersecting || $('vReview').classList.contains('hide'));
