@@ -7,12 +7,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Receipts">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%230a84ff'/%3E%3Ctext x='90' y='120' font-size='90' text-anchor='middle'%3E%F0%9F%A7%BE%3C/text%3E%3C/svg%3E">
 <title>Receipts</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+body{font:17px/1.45 "Atkinson Hyperlegible",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
      background:#f5f5f7;color:#1a1a1a;
      padding-bottom:env(safe-area-inset-bottom);
      padding-top:env(safe-area-inset-top)}
@@ -241,7 +243,7 @@ details.more summary{font-size:15px;font-weight:600;cursor:pointer}
 a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box;margin-bottom:8px}
 .qrimg{width:100%;background:#fff;border-radius:12px;margin-bottom:10px;image-rendering:pixelated}
 .hint{font-size:14px;line-height:1.4;color:#0a3d7a;background:#eef5ff;border-radius:10px;padding:9px 12px;margin:8px 0 10px}
-.hint::before{content:"💡 "}
+.hint::before{content:none}
 .prow{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee}
 .tgl{min-width:64px;padding:8px 12px;border-radius:20px;border:1px solid #ccc;background:#f1f1f1;color:#555;font-weight:600}
 .tgl.on{background:#0a84ff;border-color:#0a84ff;color:#fff}
@@ -305,7 +307,7 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
              radial-gradient(55% 40% at 100% 8%,#e8e0ff 0,rgba(232,224,255,0) 70%),
              radial-gradient(70% 45% at 50% 105%,#dcf3ec 0,rgba(220,243,236,0) 70%),#f3f4f7}
 .homehead{display:flex;align-items:flex-start;justify-content:space-between}
-.gear{width:46px;height:46px;border-radius:14px;border:0;background:rgba(255,255,255,.85);box-shadow:var(--shadow);font-size:22px;cursor:pointer}
+.gear{display:flex;align-items:center;justify-content:center;color:#3a3f4b;width:46px;height:46px;border-radius:14px;border:0;background:rgba(255,255,255,.85);box-shadow:var(--shadow);font-size:22px;cursor:pointer}
 .hero{background:linear-gradient(135deg,#0866d6,#4f46e5)}
 .tiles .big .ico{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px}
 #btnSales .ico{background:#fff1d6}#btnEmails .ico{background:#e3efff}#btnTrip .ico{background:#dcf3ec}#btnRepay .ico{background:#ede7ff}
@@ -347,6 +349,40 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 .zoom img{max-width:100%;max-height:100%;object-fit:contain;touch-action:pinch-zoom}
 .zoom .close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,.9)}
 .zoom .cap{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:#fff;font-size:14px;text-shadow:0 1px 2px #000}
+
+/* ---------- v31: calmer look, numbers, intro ---------- */
+.tiles .big .ico svg,.big.wide .ico svg{width:24px;height:24px}
+#btnSales .ico{color:#9a5b00}#btnEmails .ico{color:#0a5bc4}#btnTrip .ico{color:#08775a}#btnRepay .ico{color:#5b3cc4}
+#btnNumbers .ico{background:#e6f4ea;color:#08775a;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.big small{display:block;font-size:13px;font-weight:400;color:var(--muted);margin-top:2px}
+.addopts .ico svg{width:28px;height:28px;color:var(--accent)}
+.sech{text-transform:none;letter-spacing:0;font-size:17px;font-weight:700;color:var(--ink)}
+.btn.sec{border-color:#c9ccd3}
+.guide{margin:10px 0;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fafbfc;font-size:15px;line-height:1.5}
+.guide .step{display:flex;gap:10px;align-items:flex-start;margin:8px 0}
+.guide .step .k{flex:none;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.guide .ui{display:inline-block;border:1px solid #c9c9ce;border-radius:6px;padding:1px 7px;background:#f4f4f6;font-size:13px}
+.ncard{background:rgba(255,255,255,.96);border-radius:var(--r);box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
+.ncard h3{font-size:15px;color:var(--muted);font-weight:700;margin-bottom:6px}
+.nbig{font-size:30px;font-weight:700;letter-spacing:-.5px}
+.nrow{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line);font-size:15px}
+.nrow:first-of-type{border-top:0}
+.nbar{height:10px;border-radius:5px;background:#eceef2;overflow:hidden;margin:8px 0 4px}
+.nbar i{display:block;height:100%;background:var(--accent)}
+.mchart{display:flex;align-items:flex-end;gap:10px;height:130px;margin-top:10px}
+.mcol{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+.mbars{flex:1;min-height:0;width:100%;display:flex;align-items:flex-end;justify-content:center;gap:3px}
+.mbars i{height:100%}
+.mbars i{width:40%;border-radius:4px 4px 0 0;min-height:2px}
+.mbars i.s{background:#0a84ff}.mbars i.p{background:#b8c0cc}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.warnnote{font-size:13px;color:#6b4e00;background:#fff6dd;border-radius:10px;padding:8px 10px;margin-top:10px}
+.intro{min-height:85vh;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center;padding:20px 8px}
+.intro .pic{width:96px;height:96px;border-radius:28px;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0866d6,#4f46e5);color:#fff}
+.intro .pic svg{width:48px;height:48px}
+.intro h2{font-size:26px;letter-spacing:-.3px}.intro p{font-size:18px;color:#444;line-height:1.45}
+.dots{display:flex;gap:6px;justify-content:center}.dots i{width:8px;height:8px;border-radius:50%;background:#cfd3da}.dots i.on{background:var(--accent);width:22px;border-radius:4px}
 </style>
 </head>
 <body>
@@ -367,22 +403,23 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
   <!-- HOME -->
   <section id="vHome" class="hide">
     <header class="homehead"><div><h1>Receipts</h1><p class="sub" id="homeDate"></p></div>
-      <button class="gear" id="btnSettings" aria-label="Settings">⚙️</button></header>
+      <button class="gear" id="btnSettings" aria-label="Settings"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></header>
     <div id="todo" class="todo hide"></div>
     <div class="addbox" id="addBox">
       <button class="hero" id="btnAdd" aria-expanded="false"><span class="plus">＋</span> Add receipt</button>
       <div class="addopts" id="addOpts">
-        <button id="btnCam"><span class="ico">📷</span>Take a photo</button>
-        <button id="btnLib"><span class="ico">🖼️</span>Choose from photos</button>
+        <button id="btnCam"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>Take a photo</button>
+        <button id="btnLib"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg></span>Choose from photos</button>
       </div>
     </div>
     <button class="big wide hide" id="btnJobs"><span class="ico">📥</span> <span id="jobsLabel">Photos to review</span></button>
     <div class="tiles">
-      <button class="big" id="btnSales"><span class="ico">🏷️</span> <span id="salesLabel">Sales &amp; postage</span></button>
-      <button class="big" id="btnEmails"><span class="ico">📧</span> <span id="emailLabel">Emailed receipts</span></button>
-      <button class="big" id="btnTrip"><span class="ico">🚗</span> <span>Log a trip</span></button>
-      <button class="big" id="btnRepay"><span class="ico">💷</span> <span>Pay back</span></button>
+      <button class="big" id="btnSales"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span> <span id="salesLabel">Sales &amp; postage</span></button>
+      <button class="big" id="btnEmails"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span> <span id="emailLabel">Emailed receipts</span></button>
+      <button class="big" id="btnTrip"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14M6 17v2M18 17v2M4 13l2-6h12l2 6v4H4z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg></span> <span>Log a trip</span></button>
+      <button class="big" id="btnRepay"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 19H7c2-2 2-5 1-8M6 11h8M15 6.5A3.5 3.5 0 0 0 8.5 8c0 1 .3 2 .7 3"/></svg></span> <span>Pay back</span></button>
     </div>
+    <button class="big wide" id="btnNumbers"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span> <span>Your numbers<small id="numHint">Profit, tax pot and stock</small></span></button>
     <div id="usage" class="usage hide" aria-live="polite"></div>
     <div class="status"><span id="homeStatus">Ready</span></div>
   </section>
@@ -416,7 +453,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <div class="krow"><span>Forward receipts to</span><b id="stFwd">…</b></div>
       <button class="btn sec" id="btnCopyFwd">Copy the forwarding address</button>
       <p class="hint" id="stSrcHint">Forward order and sale emails to this address. They show up in the app within a few minutes.</p>
-      <button class="btn sec" id="btnFwdGuide">How to set up forwarding ↗</button>
+      <div id="stGuide" class="guide hide"></div>
       <div class="krow"><span>Email pick-up</span><b id="stEmailsOn">…</b></div>
     </div>
 
@@ -478,6 +515,23 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <p class="sub">The app reads and writes one Google Sheet. Changing it points the app at a different Sheet; nothing is deleted or copied.</p>
       <button class="link" id="btnReset">Change sheet connection</button>
       <p class="sub" id="stVersion"></p>
+    </div>
+  </section>
+
+  <!-- YOUR NUMBERS -->
+  <section id="vNumbers" class="hide">
+    <div class="hdr"><button class="back" id="btnNumBack">‹</button><h2 style="margin:0;flex:1">Your numbers</h2></div>
+    <p class="sub" id="numPeriod"></p>
+    <div id="numBody"><p class="sub">Loading…</p></div>
+  </section>
+
+  <!-- FIRST RUN -->
+  <section id="vIntro" class="hide">
+    <div class="intro">
+      <div class="dots" id="introDots"></div>
+      <div id="introCard"></div>
+      <button class="btn" id="btnIntroNext">Next</button>
+      <button class="link" id="btnIntroSkip">Skip</button>
     </div>
   </section>
 
@@ -584,14 +638,14 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     </div>
     <button class="btn" id="btnNewSale">＋ Log a sale</button>
     <p class="hint" style="margin-top:10px">Forward your sale emails and postage labels. They file themselves here.</p>
-    <div id="slPostWrap" class="hide"><h3 class="sech">📦 To post</h3><p class="hint">Show the code at the shop. Then tap Posted.</p><div id="slPost"></div></div>
-    <div id="slRetWrap" class="hide"><h3 class="sech">↩️ Last days to return</h3>
+    <div id="slPostWrap" class="hide"><h3 class="sech">To post</h3><p class="hint">Show the code at the shop. Then tap Posted.</p><div id="slPost"></div></div>
+    <div id="slRetWrap" class="hide"><h3 class="sech">Last days to return</h3>
       <p class="hint">Not sold yet. Not going to sell it? Send it back in time. Online orders: 14 days. Shop receipts: often 28 or 30 days. Check the shop's own rules.</p>
       <div id="slRet"></div></div>
-    <div id="slWaitWrap" class="hide"><h3 class="sech">🧾 Waiting for a refund</h3>
+    <div id="slWaitWrap" class="hide"><h3 class="sech">Waiting for a refund</h3>
       <p class="hint">Got your money back? Scan the refund receipt, or forward the refund email. We tick it off.</p>
       <div id="slWait"></div></div>
-    <div id="slNeedsWrap" class="hide"><h3 class="sech">⚠️ Needs your input</h3><p class="hint">These need a quick check. Tap one to fix it.</p><div id="slNeeds"></div></div>
+    <div id="slNeedsWrap" class="hide"><h3 class="sech">Needs your input</h3><p class="hint">These need a quick check. Tap one to fix it.</p><div id="slNeeds"></div></div>
     <h3 class="sech">Recent sales</h3><div id="slRecent"><p class="sub">Loading…</p></div>
     <details class="more" id="slRep"><summary>📊 Sales sites and HMRC</summary>
       <p class="hint">Sites tell HMRC about you at 30 sales or £1,700 in a year. That is normal. It does not mean you owe tax.</p>
@@ -732,9 +786,10 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       </div>
       <label>Notes (applies to all lines)</label>
       <input id="fNotes" placeholder="Optional">
-      <label class="check"><input type="checkbox" id="fExtRet"> Longer returns (e.g. Christmas or seasonal)</label>
+      <label class="check"><input type="checkbox" id="fExtRet"> <span id="fExtRetLbl">This shop gives longer than the usual 28 days to return</span></label>
+      <p class="sub" style="margin:-4px 0 8px">For example Christmas returns until January. Leave it unticked and we use the usual time.</p>
       <div id="fRetWrap" class="hide"><label>Return by</label><input id="fRetBy" placeholder="DD/MM/YYYY" inputmode="numeric">
-        <p class="hint">The shop's own date, from the receipt or email. We remind you a week before.</p></div>
+        <p class="hint">The last return date from the receipt or the shop's website. We remind you a week before.</p></div>
     </div>
 
     <div class="bar review" id="reviewBar">
@@ -753,7 +808,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=30"></script>
-<script src="app.js?v=30"></script>
+<script src="help.js?v=31"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>

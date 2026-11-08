@@ -13,8 +13,8 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks'];
-const APP_VERSION = 'v30';
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro'];
+const APP_VERSION = 'v31';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -32,7 +32,8 @@ function toast(msg, isErr) {
 }
 
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
-const money = n => (r2(n) < 0 ? '−£' : '£') + Math.abs(r2(n)).toFixed(2);
+const money = n => (r2(n) < 0 ? '−£' : '£') + Math.abs(r2(n)).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const TRIP_ICO = "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 17h14M6 17v2M18 17v2M4 13l2-6h12l2 6v4H4z\"/><circle cx=\"8\" cy=\"14\" r=\"1\"/><circle cx=\"16\" cy=\"14\" r=\"1\"/></svg>";
 // Your share of a shared amount, worked in pennies. Odd pennies round up (you take the extra 1p).
 const sharePart = (n, pct) => Math.round(Math.round((Number(n) || 0) * 100) * pct / 100) / 100;
 const clampPct = p => { p = Number(p); return p > 0 && p < 100 ? Math.round(p * 100) / 100 : 50; };
@@ -566,6 +567,7 @@ function buildReview(result, source) {
   $('fPay').value   = rows[0]?.['payment method'] || '';
   $('fNotes').value = '';   $('fFees').value = state.meta.feeTotal || '';
   $('fExtRet').checked = false; $('fRetBy').value = ''; $('fRetWrap').classList.add('hide');
+  setTimeout(retLabel, 0);
   $('fEmail').value = meta.orderEmail || rememberedEmail(rows[0]?.store) || '';
   fillEmails();
   showEmailField();
@@ -1402,7 +1404,7 @@ async function tripTick() {
 
 function refreshTrips() {
   const n = lsList(LS_PENDING_TRIPS).length;
-  $('btnTrip').innerHTML = '<span class="ico">🚗</span> Log a trip' + (n ? ' <span class="count">' + n + '</span>' : '');
+  $('btnTrip').innerHTML = '<span class="ico">' + TRIP_ICO + '</span> <span>Log a trip</span>' + (n ? ' <span class="count">' + n + '</span>' : '');
 }
 
 /* ---------- sales ---------- */
@@ -2066,7 +2068,7 @@ $('btnConnect').onclick = async () => {
   try {
     await refreshConfig();
     if (!CFG.purposes.length) throw new Error('Connected but no purposes found');
-    show('vHome');
+    if (localStorage.getItem('rs_intro')) show('vHome'); else showIntro();
     toast('Connected');
   } catch (e) {
     localStorage.removeItem(LS_URL);
@@ -2175,8 +2177,14 @@ $('btnEmails').onclick    = openQueue;
 $('btnQBack').onclick     = () => show('vHome');
 $('btnQRefresh').onclick  = () => checkInboxNow(0);
 
+// "Longer returns" says what the usual time is for this kind of purchase
+function retLabel() {
+  const online = state && (state.channel === 'Email' || /deliver/i.test(state.method || ''));
+  $('fExtRetLbl').textContent = 'This shop gives longer than the usual ' + (online ? '14 days (online)' : '28 days (in store)') + ' to return';
+}
 $('pChannel').onclick = () => {
   state.channel = state.channel === 'In person' ? 'Email' : 'In person';
+  setTimeout(retLabel, 0);
   $('pChannel').textContent = state.channel;
   $('pChannel').classList.toggle('on', state.channel === 'Email');
   showEmailField();
@@ -2211,6 +2219,7 @@ document.addEventListener('visibilitychange', () => {
 });
 if (localStorage.getItem(LS_URL)) { show('vHome'); if (CFG.waiting) renderTodo(CFG.waiting); refreshConfig(); }
 else { show('vSetup'); }
+setTimeout(() => { try { if (localStorage.getItem(LS_URL) && !localStorage.getItem('rs_intro')) showIntro(); } catch (e) {} }, 0);
 
 // Offline queue: a photo left "reading" when the app closed is waiting again
 jobAll().then(all => Promise.all(all.filter(j => j.status === 'reading').map(j => { j.status = 'pending'; return jobPut(j); })))
@@ -2285,6 +2294,7 @@ $('btnHelpBack').onclick = () => show(helpFrom === 'vHelp' ? 'vSettings' : helpF
 let reportFrom = 'vSettings';
 function openReport() { reportFrom = views.find(v => !$(v).classList.contains('hide')) || 'vSettings'; show('vReport'); segSet('repType', 'bug'); $('repText').value = ''; }
 $('btnReport').onclick = openReport;
+$('repType').onclick = e => { const b = e.target.closest('button'); if (b) { segSet('repType', b.dataset.v); $('repText').placeholder = b.dataset.v === 'idea' ? 'e.g. It would help if the app could…' : 'e.g. On the Sales page the QR code took a long time to open'; } };
 $('btnRepBack').onclick = () => show(reportFrom === 'vReport' ? 'vSettings' : reportFrom);
 $('btnRepSend').onclick = async () => {
   const text = $('repText').value.trim();
@@ -2333,15 +2343,19 @@ $('btnOpenSheet').onclick = () => {
   if (u) window.open(u, '_blank', 'noopener'); else toast('Your Sheet\'s script needs updating to show this link.', true);
 };
 $('stSrc').onchange = srcSync;
+const SRC_EG = { 'gmail-other': 'you@gmail.com', outlook: 'you@outlook.com', icloud: 'you@icloud.com', yahoo: 'you@yahoo.co.uk', other: 'you@yourbusiness.co.uk' };
+const SRC_GUIDE = { gmail: 'fwd-gmail', 'gmail-other': 'fwd-gmail-other', outlook: 'fwd-outlook', icloud: 'fwd-icloud', yahoo: 'fwd-yahoo', other: 'fwd-manual' };
 function srcSync() {
   const v = $('stSrc').value;
+  $('stOrderEmail').placeholder = 'e.g. ' + (SRC_EG[v] || 'you@example.com');
+  const g = typeof HELP !== 'undefined' && HELP.find(t => t.id === SRC_GUIDE[v]);
+  $('stGuide').classList.toggle('hide', !g);
+  $('stGuide').innerHTML = g ? '<b>' + esc(g.title) + '</b>' + g.body : '';
   $('stOrderWrap').classList.toggle('hide', !v || v === 'gmail');
   $('stSrcHint').textContent = v === 'gmail' ? 'Your orders arrive here already. Forward any from other shops to this address.'
     : v ? 'Set up forwarding once and new orders arrive by themselves. Tap the guide below.'
     : 'Forward order and sale emails to this address. They show up in the app within a few minutes.';
-  $('btnFwdGuide').classList.toggle('hide', !v || v === 'gmail');
 }
-$('btnFwdGuide').onclick = () => openHelp({ gmail: 'fwd-gmail', 'gmail-other': 'fwd-gmail-other', outlook: 'fwd-outlook', icloud: 'fwd-icloud', yahoo: 'fwd-yahoo', other: 'fwd-manual' }[$('stSrc').value] || 'fwd-manual');
 $('btnCopyFwd').onclick = async () => {
   const t = $('stFwd').textContent;
   try { await navigator.clipboard.writeText(t); toast('Copied: ' + t); } catch (e) { prompt('Copy this address', t); }
@@ -2372,3 +2386,66 @@ $('btnBulkMini').onclick = () => $('btnBulk').click();   // works on the ticked 
 if ('IntersectionObserver' in window) new IntersectionObserver(es => {
   $('miniBar').classList.toggle('hide', es[0].isIntersecting || $('vReview').classList.contains('hide'));
 }, { threshold: 0 }).observe($('reviewBar'));
+
+
+/* ---------- Your numbers: progress, tax pot, stock (Insights.gs numbers_) ---------- */
+async function openNumbers() {
+  show('vNumbers');
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem('rs_numbers')); } catch (e) {}
+  if (d) renderNumbers(d);
+  try {
+    d = await api('numbers', {});
+    try { localStorage.setItem('rs_numbers', JSON.stringify(d)); } catch (e) {}
+    renderNumbers(d);
+  } catch (err) {
+    if (!d) $('numBody').innerHTML = '<p class="sub">' + esc(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message) + '</p>';
+  }
+}
+function renderNumbers(d) {
+  $('numPeriod').textContent = 'This ' + (d.type === 'ltd' ? 'company year' : 'tax year') + ' so far: ' + d.from + ' to ' + d.to;
+  const max = Math.max(1, ...d.months.map(m => Math.max(m.sales, m.spent)));
+  const soldPct = d.stock.bought ? Math.round((d.stock.bought - d.stock.left) / d.stock.bought * 100) : 0;
+  $('numBody').innerHTML = `
+    <div class="ncard"><h3>Profit so far</h3><div class="nbig">${money(d.profit)}</div>
+      <div class="nrow"><span>Sales</span><b>${money(d.sales)}</b></div>
+      <div class="nrow"><span>Selling costs (fees, postage)</span><b>−${money(d.sellingCosts)}</b></div>
+      <div class="nrow"><span>Business spending${d.mileage ? ' (incl. mileage)' : ''}</span><b>−${money(d.spent)}</b></div></div>
+    <div class="ncard"><h3>Tax pot: set this aside</h3><div class="nbig">${money(d.taxPot)}</div>
+      <p class="sub" style="margin:4px 0 0">${esc(d.taxLabel)} on your profit.</p>
+      <div class="warnnote">A rough guide only. It's only as right as what you've recorded${d.unset ? ' (' + d.unset + ' line' + (d.unset === 1 ? ' has' : 's have') + ' no purpose yet)' : ''}, and it ignores your personal allowance and other income, so it usually errs high. Check with an accountant before you pay HMRC.</div></div>
+    <div class="ncard"><h3>Last 6 months</h3>
+      <div class="mchart">${d.months.map(m => `<div class="mcol"><div class="mbars"><i class="s" style="height:${Math.round(m.sales / max * 100)}%" title="Sales ${money(m.sales)}"></i><i class="p" style="height:${Math.round(m.spent / max * 100)}%" title="Spent ${money(m.spent)}"></i></div>${esc(m.label)}</div>`).join('')}</div>
+      <div class="legend"><span><i style="background:#0a84ff"></i>Sales</span><span><i style="background:#b8c0cc"></i>Spent</span></div></div>
+    <div class="ncard"><h3>Stock bought this year</h3>
+      <div class="nrow"><span>Sold</span><b>${soldPct}%</b></div>
+      <div class="nbar"><i style="width:${soldPct}%"></i></div>
+      <div class="nrow"><span>Still to sell</span><b>${d.stock.left} · ${money(d.stock.value)}</b></div>
+      ${d.avgDaysToSell !== null ? `<div class="nrow"><span>Average days to sell</span><b>${d.avgDaysToSell}</b></div>` : ''}</div>
+    ${d.streak > 1 ? `<div class="ncard"><h3>Records up to date</h3><div class="nbig">${d.streak} weeks</div><p class="sub" style="margin:4px 0 0">in a row with something logged. Nice.</p></div>` : ''}`;
+}
+$('btnNumbers').onclick = openNumbers;
+$('btnNumBack').onclick = () => show('vHome');
+
+/* ---------- First run: four short screens, once ---------- */
+const INTRO = [
+  { ico: "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 8h3l2-3h6l2 3h3v11H4z\"/><circle cx=\"12\" cy=\"13\" r=\"3.5\"/></svg>", h: 'Snap a receipt', p: 'Take a photo. We read every line and file it in your Google Sheet.' },
+  { ico: "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 13h5l1 3h6l1-3h5M5 5h14l2 8v6H3v-6z\"/></svg>", h: 'Forward your emails', p: 'Order, sale and refund emails file themselves. No typing.' },
+  { ico: "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z\"/><circle cx=\"7.5\" cy=\"7.5\" r=\"1.5\"/></svg>", h: 'Show the code at the shop', p: 'Postage labels wait in the app, ready to scan. Even with no signal.' },
+  { ico: "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 20V10M10 20V4M16 20v-7M22 20H2\"/></svg>", h: 'Your tax builds as you go', p: 'Profit, a tax pot to set aside, and tidy records for HMRC.' }
+];
+let introAt = 0;
+function showIntro() { introAt = 0; show('vIntro'); drawIntro(); }
+function drawIntro() {
+  const c = INTRO[introAt];
+  $('introDots').innerHTML = INTRO.map((x, i) => `<i class="${i === introAt ? 'on' : ''}"></i>`).join('');
+  $('introCard').innerHTML = `<div class="pic">${c.ico}</div><h2>${esc(c.h)}</h2><p>${esc(c.p)}</p>`;
+  $('btnIntroNext').textContent = introAt === INTRO.length - 1 ? 'Scan my first receipt' : 'Next';
+}
+function endIntro(scan) {
+  try { localStorage.setItem('rs_intro', '1'); } catch (e) {}
+  show('vHome');
+  if (scan) { setAddOpen(true); }
+}
+$('btnIntroNext').onclick = () => { if (introAt < INTRO.length - 1) { introAt++; drawIntro(); } else endIntro(true); };
+$('btnIntroSkip').onclick = () => endIntro(false);
