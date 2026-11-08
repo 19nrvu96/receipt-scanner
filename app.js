@@ -17,6 +17,7 @@ const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJ
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
+  if (v !== 'vReview') $('miniBar').classList.add('hide');
   window.scrollTo(0, 0);
 }
 
@@ -24,6 +25,7 @@ function toast(msg, isErr) {
   const t = document.createElement('div');
   t.className = 'toast' + (isErr ? ' err' : '');
   t.textContent = msg;
+  document.querySelectorAll('.toast').forEach(x => x.remove());   // one message at a time, never on top of each other
   document.body.appendChild(t);
   setTimeout(() => t.remove(), isErr ? 4200 : 2400);
 }
@@ -562,6 +564,7 @@ function buildReview(result, source) {
   $('fOrder').value = rows[0]?.['order number'] || '';
   $('fPay').value   = rows[0]?.['payment method'] || '';
   $('fNotes').value = '';   $('fFees').value = state.meta.feeTotal || '';
+  $('fExtRet').checked = false; $('fRetBy').value = ''; $('fRetWrap').classList.add('hide');
   $('fEmail').value = meta.orderEmail || rememberedEmail(rows[0]?.store) || '';
   fillEmails();
   showEmailField();
@@ -956,6 +959,8 @@ async function saveToSheet(force) {
   const order = $('fOrder').value.trim();
   const notes = $('fNotes').value.trim();
   const email = state.channel === 'Email' ? $('fEmail').value.trim() : '';
+  const retBy = $('fExtRet').checked ? $('fRetBy').value.trim() : '';
+  if (retBy && !/^\d{2}\/\d{2}\/\d{4}$/.test(retBy)) { toast('Return by: use DD/MM/YYYY', true); $('fRetBy').focus(); return; }
 
   // Shared lines record only your share. The full price goes in that line's notes for the audit trail.
   const payload = state.rows.map(r => {
@@ -981,7 +986,8 @@ async function saveToSheet(force) {
     'order number':       order,
     'payment method':     pay,
     'order email':        email,
-    'VAT':                CFG.vat ? (s ? sharePart(r.VAT, p) : r2(r.VAT)) : ''
+    'VAT':                CFG.vat ? (s ? sharePart(r.VAT, p) : r2(r.VAT)) : '',
+    'return by':          retBy
     };
     if (c) { row._matchRow = c.row; row._matchItem = c.item; }
     return row;
@@ -1414,6 +1420,7 @@ function plainNeeds(n) {
 }
 
 function setSalesCount(w) {
+  if (w) { CFG.waiting = w; saveCache(); }   // shown at once next time, before the server answers
   const n = w ? (w.needs || 0) + (w.toPost || 0) + (w.returnsSoon || 0) : 0;
   $('salesLabel').innerHTML = 'Sales &amp; postage' + (n ? ' <span class="count">' + n + '</span>' : '');
   renderTodo(w);
@@ -1453,13 +1460,17 @@ function toDate(t) { const m = String(t || '').match(/^(\d{2})\/(\d{2})\/(\d{4})
 const tagFor = st => st === 'Cancelled' || st === 'Refunded' ? 'no' : st === 'Completed' ? 'ok' : st === 'Part refunded' ? 'warn' : '';
 const num = v => v === '' || v === null || v === undefined || isNaN(Number(v)) ? null : Number(v);
 
+const LS_SALES = 'rs_sales';
 async function openSales() {
   show('vSales');
-  if (!SALES) $('slRecent').innerHTML = '<p class="sub">Loading…</p>';
+  if (!SALES) { try { SALES = JSON.parse(localStorage.getItem(LS_SALES)); } catch (e) {} }   // last copy, shown at once
+  if (SALES) renderSales(); else $('slRecent').innerHTML = '<p class="sub">Loading…</p>';
   try {
     SALES = await api('sales', {});
+    try { localStorage.setItem(LS_SALES, JSON.stringify(SALES)); } catch (e) {}
     renderSales();
   } catch (err) {
+    if (SALES) return;   // the saved copy is already on screen
     $('slRecent').innerHTML = '<p class="sub">' + esc(err.code === 'OFFLINE' ? 'No signal: sales load when you\'re back online.'
       : /Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for sales.' : err.message) + '</p>';
   }
@@ -2197,7 +2208,7 @@ setInterval(() => { if (!$('vHome').classList.contains('hide')) renderUsage(); }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && localStorage.getItem(LS_URL)) refreshConfig();
 });
-if (localStorage.getItem(LS_URL)) { show('vHome'); refreshConfig(); }
+if (localStorage.getItem(LS_URL)) { show('vHome'); if (CFG.waiting) renderTodo(CFG.waiting); refreshConfig(); }
 else { show('vSetup'); }
 
 // Offline queue: a photo left "reading" when the app closed is waiting again
@@ -2224,6 +2235,9 @@ async function openSettings() {
     const d = SETTINGS;
     segSet('stType', d.type || ''); $('stVat').checked = !!d.vat; $('stYe').value = String(d.yearEnd || 3); $('stInc').value = d.income || '';
     $('stTap').value = d.cardFee && d.cardFee.perTap ? d.cardFee.perTap : ''; $('stPct').value = d.cardFee && d.cardFee.pct ? d.cardFee.pct : '';
+    const a = d.account || {};
+    $('stEmail').textContent = a.email || '—'; $('stFwd').textContent = a.forwardTo || '—';
+    $('stSheet').href = a.sheetUrl || '#'; $('stEmailsOn').textContent = a.emailsOn ? 'On, every 5 minutes' : 'Not set up yet';
     $('stHist').innerHTML = (d.history || []).map(h => `<p class="hist">Before ${esc(h.until)}: ${esc(h.label)}${h.tab ? ' · saved in the "' + esc(h.tab) + '" tab' : ''}</p>`).join('');
     stSync(); renderWhere();
   } catch (err) { toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for Settings.' : err.message, true); }
@@ -2240,6 +2254,10 @@ $('stVat').onchange = stSync;
 $('btnSettings').onclick = openSettings;
 $('btnSlSettings').onclick = openSettings;
 $('btnStBack').onclick = () => show('vHome');
+$('btnCopyFwd').onclick = async () => {
+  const t = $('stFwd').textContent;
+  try { await navigator.clipboard.writeText(t); toast('Copied: ' + t); } catch (e) { prompt('Copy this address', t); }
+};
 $('btnStSave').onclick = async () => {
   const d = SETTINGS || {}, type = segGet('stType');
   if (!type) { toast('Pick your business type', true); return; }
@@ -2256,3 +2274,10 @@ $('btnStSave').onclick = async () => {
   } catch (err) { toast(err.message, true); }
   finally { b.disabled = false; b.textContent = 'Save settings'; }
 };
+
+$('fExtRet').onchange = () => { $('fRetWrap').classList.toggle('hide', !$('fExtRet').checked); if ($('fExtRet').checked) $('fRetBy').focus(); };
+$('btnSaveMini').onclick = () => $('btnSave').click();
+// The slim Save strip shows only while the real button bar is off-screen (long receipts)
+if ('IntersectionObserver' in window) new IntersectionObserver(es => {
+  $('miniBar').classList.toggle('hide', es[0].isIntersecting || $('vReview').classList.contains('hide'));
+}, { threshold: 0 }).observe($('reviewBar'));

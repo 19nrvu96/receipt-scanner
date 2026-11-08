@@ -123,6 +123,9 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
 .recon.warn{background:#ffebee;color:#b71c1c}
 
 /* ---------- Action bar ---------- */
+.bar.review{position:static}   /* long receipts: the 4-button bar used to float over the lines */
+.minibar{position:sticky;bottom:0;padding:8px 0 12px;background:linear-gradient(rgba(243,244,247,0),#f3f4f7 40%)}
+.minibar .btn{padding:13px;font-size:16px;box-shadow:var(--shadow)}
 .bar{position:sticky;bottom:0;background:#f5f5f7;padding:12px 0 16px;
      border-top:1px solid #e0e0e0;margin-top:14px}
 .btn{width:100%;padding:16px;border:none;border-radius:12px;font-size:17px;
@@ -142,7 +145,7 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
 .spin p{color:#666;font-size:15px}
 
 /* ---------- Toast ---------- */
-.toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:92vw;text-align:center;
        background:#1a1a1a;color:#fff;padding:12px 20px;border-radius:24px;
        font-size:14px;z-index:99;max-width:90%;text-align:center;
        box-shadow:0 4px 14px rgba(0,0,0,.25)}
@@ -310,6 +313,8 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
 .scard2 h3{font-size:16px;margin:0 0 10px}
 .seg.two button{display:flex;flex-direction:column;gap:2px;line-height:1.2;padding:10px 6px}
 .seg.two button small{font-size:12px;opacity:.85}
+.krow{display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid var(--line);font-size:15px}
+.krow span{color:var(--muted);font-size:13px}.krow b{word-break:break-all;font-weight:600}
 details.picks{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:#fafbfc}
 details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--accent)}
 .hist{font-size:13px;color:var(--muted);margin-top:8px}
@@ -356,6 +361,15 @@ details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--
   <!-- SETTINGS -->
   <section id="vSettings" class="hide form">
     <div class="hdr"><button class="back" id="btnStBack">‹</button><h2 style="margin:0;flex:1">Settings</h2></div>
+    <div class="card scard2" id="stAcct">
+      <h3>Your account</h3>
+      <div class="krow"><span>Google account</span><b id="stEmail">…</b></div>
+      <div class="krow"><span>Forward receipts to</span><b id="stFwd">…</b></div>
+      <button class="btn sec" id="btnCopyFwd">Copy the forwarding address</button>
+      <p class="hint">Forward order and sale emails to this address. They show up in the app within a few minutes.</p>
+      <div class="krow"><span>Your data</span><a id="stSheet" href="#" target="_blank" rel="noopener">Open your Sheet</a></div>
+      <div class="krow"><span>Email pick-up</span><b id="stEmailsOn">…</b></div>
+    </div>
     <div class="card scard2">
       <h3>Your business</h3>
       <div class="seg" id="stType"><button data-v="sole">Sole trader</button><button data-v="ltd">Limited company</button><button data-v="other">Not sure</button></div>
@@ -613,9 +627,12 @@ details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--
       </div>
       <label>Notes (applies to all lines)</label>
       <input id="fNotes" placeholder="Optional">
+      <label class="check"><input type="checkbox" id="fExtRet"> Longer returns (e.g. Christmas or seasonal)</label>
+      <div id="fRetWrap" class="hide"><label>Return by</label><input id="fRetBy" placeholder="DD/MM/YYYY" inputmode="numeric">
+        <p class="hint">The shop's own date, from the receipt or email. We remind you a week before.</p></div>
     </div>
 
-    <div class="bar">
+    <div class="bar review" id="reviewBar">
       <button class="btn sec" id="btnSelAll">Select all</button>
       <div class="duo">
         <button class="btn sec" id="btnBulk">Set purpose</button>
@@ -623,6 +640,7 @@ details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--
       </div>
       <button class="btn" id="btnSave">Save to Sheet</button>
     </div>
+    <div class="minibar hide" id="miniBar"><button class="btn" id="btnSaveMini">Save to Sheet</button></div>
   </section>
 
 </div>
@@ -630,6 +648,6 @@ details.picks summary{font-weight:600;font-size:14px;cursor:pointer;color:var(--
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="app.js?v=28"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>
