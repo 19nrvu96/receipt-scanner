@@ -12,15 +12,15 @@ const HELP = [
     <div class="step"><span class="k">3</span><span>Send it to your forwarding address. Find it in <span class="ui">Settings</span> → <span class="ui">Your emails</span> → <span class="ui">Copy the forwarding address</span>.</span></div>
     <p>Tip: save that address as a contact called <b>Receipts</b>. Then you just type "Rec…".</p>
     <p>It shows in <span class="ui">Emailed receipts</span> within a few minutes. In a hurry? Tap <span class="ui">Check inbox now</span>.</p>` },
-  { id: 'fwd-outlook', title: 'Auto-forward from Outlook or Hotmail', keys: 'outlook hotmail microsoft live rule automatic forwarding',
-    body: `<p><b>On a computer</b> (outlook.com or outlook.live.com):</p>
-    <div class="step"><span class="k">1</span><span>Click ⚙️ <span class="ui">Settings</span> (top right) → <span class="ui">Mail</span> → <span class="ui">Rules</span>.</span></div>
-    <div class="step"><span class="k">2</span><span><span class="ui">Add new rule</span>. Name it <b>Receipts</b>.</span></div>
-    <div class="step"><span class="k">3</span><span>Condition: <span class="ui">From</span> → add the shops' addresses, e.g. <i>ebay@ebay.co.uk</i>, <i>no-reply@vinted.co.uk</i>, <i>auto-confirm@amazon.co.uk</i>. Or use <span class="ui">Subject includes</span> with words like <i>order</i>, <i>sold</i>, <i>label</i>.</span></div>
-    <div class="step"><span class="k">4</span><span>Action: <span class="ui">Forward to</span> → paste your forwarding address from the app.</span></div>
-    <div class="step"><span class="k">5</span><span><span class="ui">Save</span>. New emails are forwarded as they arrive.</span></div>
-    <p><b>Work or school Microsoft 365 account?</b> Forwarding outside the company is often blocked by the admin. Use "Forward by hand" instead, or ask your admin.</p>
-    <p>The Outlook phone app can't make rules; use a computer once.</p>` },
+  { id: 'fwd-outlook', title: 'Auto-forward from Outlook or Hotmail', keys: 'outlook hotmail microsoft live rule automatic forwarding verify not working',
+    body: `<p><b>Do this once, on a computer</b> (outlook.com). The phone app can't make rules.</p>
+    <div class="step"><span class="k">1</span><span><b>Verify your account first.</b> Outlook won't forward until you do. Go to ⚙️ <span class="ui">Settings</span> → <span class="ui">Mail</span> → <span class="ui">Forwarding</span>. If you see <i>"Sign in and verify your account"</i>, click <span class="ui">Sign in</span> and enter the code Microsoft sends you.</span></div>
+    <div class="step"><span class="k">2</span><span>⚙️ <span class="ui">Settings</span> → <span class="ui">Mail</span> → <span class="ui">Rules</span> → <span class="ui">Add new rule</span>. Name it <b>Receipts</b>.</span></div>
+    <div class="step"><span class="k">3</span><span>Add <b>one</b> condition: <span class="ui">From</span> → <i>ebay@ebay.co.uk</i>, <i>ebay@ebay.com</i>, <i>no-reply@vinted.co.uk</i>, and any shops you buy from. <b>Don't add a second condition</b>: Outlook only forwards emails that match <i>every</i> condition, so extra ones (like "Subject includes") stop most emails.</span></div>
+    <div class="step"><span class="k">4</span><span>Action: <span class="ui">Forward to</span> → paste your forwarding address from the app. <span class="ui">Save</span>.</span></div>
+    <div class="step"><span class="k">5</span><span>Rules only work on <b>new</b> emails. Old ones won't be forwarded: forward those by hand.</span></div>
+    <p>Want subject words too (e.g. "You made the sale for")? Make a <b>second rule</b> with just that condition.</p>
+    <p><b>Work or school Microsoft 365 account?</b> Your admin may block forwarding outside the company. Forward by hand instead.</p>` },
   { id: 'fwd-icloud', title: 'Auto-forward from iCloud Mail (Apple)', keys: 'icloud apple mail me.com rule forwarding',
     body: `<div class="step"><span class="k">1</span><span>On a computer go to <b>icloud.com/mail</b> and sign in.</span></div>
     <div class="step"><span class="k">2</span><span>Click ⚙️ (top) → <span class="ui">Settings</span> → <span class="ui">Rules</span> → <span class="ui">Add a Rule</span>.</span></div>

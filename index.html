@@ -383,6 +383,13 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 .intro .pic svg{width:48px;height:48px}
 .intro h2{font-size:26px;letter-spacing:-.3px}.intro p{font-size:18px;color:#444;line-height:1.45}
 .dots{display:flex;gap:6px;justify-content:center}.dots i{width:8px;height:8px;border-radius:50%;background:#cfd3da}.dots i.on{background:var(--accent);width:22px;border-radius:4px}
+.suggest{border:1px solid var(--line);border-radius:12px;background:#fff;margin:-4px 0 10px;box-shadow:var(--shadow);overflow:hidden}
+.suggest button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:#fff;padding:10px 12px;font:inherit;font-size:15px;cursor:pointer}
+.suggest button:last-child{border-bottom:0}.suggest .sm{display:block}
+#slStock{justify-content:space-between;margin-top:12px}#slStock .go{color:var(--muted);font-size:22px}
+.skrow{display:flex;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);width:100%;background:none;border-left:0;border-right:0;border-top:0;text-align:left;font:inherit;cursor:pointer}
+.skrow:last-child{border-bottom:0}
+.flash{animation:flash 1.2s ease}@keyframes flash{0%{background:#fff3c4}100%{background:transparent}}
 </style>
 </head>
 <body>
@@ -535,6 +542,16 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     </div>
   </section>
 
+  <!-- STOCK -->
+  <section id="vStock" class="hide">
+    <div class="hdr"><button class="back" id="btnStockBack">‹</button><h2 style="margin:0;flex:1">Stock</h2></div>
+    <div class="ncard"><div class="nrow"><span>Lines</span><b id="skLines">…</b></div><div class="nrow"><span>Units left</span><b id="skUnits">…</b></div><div class="nrow"><span>Value at cost</span><b id="skValue">…</b></div></div>
+    <input id="skSearch" type="search" placeholder="Search your stock" autocomplete="off" style="width:100%;padding:13px 14px;border:1px solid #d0d0d5;border-radius:12px;font-size:16px;font-family:inherit;margin-bottom:8px;background:#fff">
+    <div class="seg" id="skSort"><button data-v="old" class="on">Oldest</button><button data-v="value">Value</button><button data-v="az">A–Z</button></div>
+    <p class="hint">Tap an item to log its sale. It's linked to this purchase, so profit and the count update.</p>
+    <div id="skList" class="card" style="padding:4px 14px"></div>
+  </section>
+
   <!-- HELP -->
   <section id="vHelp" class="hide form">
     <div class="hdr"><button class="back" id="btnHelpBack">‹</button><h2 style="margin:0;flex:1">Help</h2></div>
@@ -651,10 +668,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <p class="hint">Sites tell HMRC about you at 30 sales or £1,700 in a year. That is normal. It does not mean you owe tax.</p>
       <div id="slRepList"></div>
     </details>
-    <details class="more" id="slStock"><summary id="slStockSum">📦 Not sold yet</summary>
-      <p class="hint">Things you bought to sell. Oldest at the top.</p>
-      <div id="slStockList"></div>
-    </details>
+    <button class="big wide" id="slStock"><span><span id="slStockSum">Stock</span><small>What's left to sell, and how long you've had it</small></span><span class="go">›</span></button>
     <button class="btn sec" id="btnSlSettings" style="margin-top:14px">⚙️ Where you sell &amp; settings</button>
   </section>
 
@@ -669,7 +683,8 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <label>Platform</label><select id="saPlatform"></select>
     <div id="saWhereWrap"><label>Where</label><input id="saWhere" list="whereList" placeholder="e.g. Wimbledon car boot"><datalist id="whereList"></datalist></div>
     <label>Date sold</label><input id="saDate" inputmode="numeric" placeholder="DD/MM/YYYY">
-    <label>Item</label><input id="saItem" placeholder="What you sold, or 'Day's takings'">
+    <label>Item</label><input id="saItem" placeholder="Start typing, e.g. kettle" autocomplete="off">
+    <div id="saSuggest" class="suggest hide"></div>
     <label>Order number</label><input id="saOrder" autocomplete="off" placeholder="Order or transaction number">
     <div class="duo"><div><label>Quantity</label><input id="saQty" type="number" inputmode="numeric" value="1"></div>
       <div><label>Sale price (£)</label><input id="saPrice" type="number" step="0.01" inputmode="decimal" placeholder="0.00"></div></div>
@@ -808,7 +823,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=31"></script>
-<script src="app.js?v=31"></script>
+<script src="help.js?v=32"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>

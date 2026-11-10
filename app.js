@@ -13,8 +13,8 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro'];
-const APP_VERSION = 'v31';
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock'];
+const APP_VERSION = 'v32';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1433,15 +1433,22 @@ function setSalesCount(w) {
 function renderTodo(w) {
   w = w || {};
   const s = n => n === 1 ? '' : 's', rows = [];
-  if (w.late) rows.push(['🔴', w.late + ' parcel' + s(w.late) + ' late. Post now']);
-  if (w.postToday - (w.late || 0) > 0) { const n = w.postToday - (w.late || 0); rows.push(['📦', 'Post ' + n + ' parcel' + s(n) + ' today']); }
-  else if (w.toPost && !w.postToday) rows.push(['📦', w.toPost + ' parcel' + s(w.toPost) + ' to post']);
-  if (w.returnsSoon) rows.push(['↩️', w.returnsSoon + ' receipt' + s(w.returnsSoon) + ': last days to return']);
-  if (w.needs) rows.push(['⚠️', w.needs + ' sale' + s(w.needs) + ' need' + (w.needs === 1 ? 's' : '') + ' a check']);
+  const today = (w.postToday || 0) - (w.late || 0);
+  if (w.late) rows.push(['🔴', w.late + ' parcel' + s(w.late) + ' late. Post now', 'slPostWrap']);
+  if (w.toPost) rows.push(['📦', w.toPost + ' parcel' + s(w.toPost) + ' to post' + (today > 0 ? ' (' + today + ' today)' : ''), 'slPostWrap']);
+  if (w.returnsSoon) rows.push(['↩️', w.returnsSoon + ' receipt' + s(w.returnsSoon) + ': last days to return', 'slRetWrap']);
+  if (w.needs) rows.push(['⚠️', w.needs + ' sale' + s(w.needs) + ' need' + (w.needs === 1 ? 's' : '') + ' a check', 'slNeedsWrap']);
   $('todo').classList.toggle('hide', !rows.length);
-  $('todo').innerHTML = rows.slice(0, 3).map(r => `<button data-todo="1"><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`).join('');
+  $('todo').innerHTML = rows.slice(0, 4).map(r => `<button data-todo="${r[2]}"><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`).join('');
 }
-$('todo').onclick = e => { if (e.target.closest('[data-todo]')) openSales(); };
+// Tapping a to-do opens Sales at that section
+$('todo').onclick = e => { const b = e.target.closest('[data-todo]'); if (b) openSales(b.dataset.todo); };
+function goTo(id) {
+  const el = $(id);
+  if (!el || el.classList.contains('hide')) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
 
 // Counts from a loaded Sales screen, so home stays right after changes
 function countsFrom(d) {
@@ -1464,14 +1471,17 @@ const tagFor = st => st === 'Cancelled' || st === 'Refunded' ? 'no' : st === 'Co
 const num = v => v === '' || v === null || v === undefined || isNaN(Number(v)) ? null : Number(v);
 
 const LS_SALES = 'rs_sales';
-async function openSales() {
+async function openSales(target) {
   show('vSales');
   if (!SALES) { try { SALES = JSON.parse(localStorage.getItem(LS_SALES)); } catch (e) {} }   // last copy, shown at once
-  if (SALES) renderSales(); else $('slRecent').innerHTML = '<p class="sub">Loading…</p>';
+  if (SALES) { renderSales(); if (target) setTimeout(() => goTo(target), 50); } else $('slRecent').innerHTML = '<p class="sub">Loading…</p>';
+  const first = !SALES;
   try {
     SALES = await api('sales', {});
     try { localStorage.setItem(LS_SALES, JSON.stringify(SALES)); } catch (e) {}
+    const y = window.scrollY;
     renderSales();
+    if (target && first) setTimeout(() => goTo(target), 50); else window.scrollTo(0, y);   // don't jump while you're reading
   } catch (err) {
     if (SALES) return;   // the saved copy is already on screen
     $('slRecent').innerHTML = '<p class="sub">' + esc(err.code === 'OFFLINE' ? 'No signal: sales load when you\'re back online.'
@@ -1565,14 +1575,66 @@ function renderReporting(d) {
 
 function renderStock(d) {
   const s = d.stock || { count: 0, items: [] };
-  $('slStock').classList.toggle('hide', !s.count);
-  $('slStockSum').textContent = '📦 Not sold yet (' + s.count + (s.value ? ' · ' + money(s.value) : '') + ')';
-  $('slStockList').innerHTML = s.items.map(x => `<div class="srow"><div>${esc(x.item)}<br>
-      <span class="sm">${esc(x.store)} · ${x.left > 1 ? x.left + ' left · ' : ''}${money(x.each)} each${x.decision === 'return' ? ' · returning' : ''}</span></div>
-      <div style="text-align:right;white-space:nowrap"><span class="tag ${x.days >= 90 ? 'late' : x.days >= 45 ? 'soon' : ''}">${x.days} day${x.days === 1 ? '' : 's'}</span></div></div>`).join('') +
-    (s.count > s.items.length ? '<p class="sub">And ' + (s.count - s.items.length) + ' more in your Sheet.</p>' : '') +
-    '<p class="sub">Sold one? Link it in Log a sale so it leaves this list.</p>';
+  $('slStockSum').textContent = 'Stock' + (s.count ? ' · ' + s.count + ' line' + (s.count === 1 ? '' : 's') + (s.value ? ' · ' + money(s.value) : '') : '');
 }
+
+/* ---------- Stock page: what's left, searchable; tap to log its sale ---------- */
+let STOCK = null;
+async function loadStock() {
+  if (!STOCK) { try { STOCK = JSON.parse(localStorage.getItem('rs_stock')); } catch (e) {} }
+  try { STOCK = await api('stock', {}); try { localStorage.setItem('rs_stock', JSON.stringify(STOCK)); } catch (e) {} }
+  catch (err) { if (!STOCK) throw err; }
+  return STOCK;
+}
+async function openStock() {
+  show('vStock');
+  if (STOCK) renderStockPage(); else $('skList').innerHTML = '<p class="sub">Loading…</p>';
+  try { await loadStock(); renderStockPage(); }
+  catch (err) { $('skList').innerHTML = '<p class="sub">' + esc(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message) + '</p>'; }
+}
+function renderStockPage() {
+  const d = STOCK || { items: [] }, q = $('skSearch').value.trim().toLowerCase(), by = segGet('skSort') || 'old';
+  $('skLines').textContent = d.lines || 0; $('skUnits').textContent = d.units || 0; $('skValue').textContent = money(d.value || 0);
+  let list = d.items.filter(x => !q || (x.item + ' ' + x.store).toLowerCase().includes(q));
+  list = list.slice().sort(by === 'value' ? (a, b) => b.left * b.each - a.left * a.each : by === 'az' ? (a, b) => a.item.localeCompare(b.item) : (a, b) => b.days - a.days);
+  $('skList').innerHTML = list.length ? list.slice(0, 200).map(x => `<button class="skrow" data-sk="${x.row}"><span>${esc(x.item)}<span class="sm">${esc(x.store)} · ${x.left} of ${x.qty} left · ${money(x.each)} each${x.decision === 'return' ? ' · returning' : ''}</span></span>
+      <span class="tag ${x.days >= 90 ? 'late' : x.days >= 45 ? 'soon' : ''}" style="align-self:center">${x.days}d</span></button>`).join('')
+    : '<p class="sub" style="padding:10px 0">' + (q ? 'Nothing matches.' : 'No stock to sell. Things you buy with a resale purpose show here.') + '</p>';
+}
+$('skSearch').oninput = renderStockPage;
+$('skSort').onclick = e => { const b = e.target.closest('button'); if (b) { segSet('skSort', b.dataset.v); renderStockPage(); } };
+$('skList').onclick = e => {
+  const b = e.target.closest('[data-sk]');
+  if (!b) return;
+  const x = STOCK.items.find(i => String(i.row) === b.dataset.sk);
+  openSale(null); linkPurchase(x);
+};
+$('slStock').onclick = openStock;
+$('btnStockBack').onclick = () => openSales();
+
+// Link a sale to a purchase row (from the suggestions, the stock page or the purchase search)
+function linkPurchase(x) {
+  if (!x) return;
+  $('saItem').value = x.item;
+  sale.linked = 'Purchases row ' + x.row + ': ' + x.item;
+  sale.itemCost = Number(x.each !== undefined ? x.each : x.cost) * (Number($('saQty').value) || 1);
+  sale.linkEach = Number(x.each !== undefined ? x.each : x.cost);
+  $('saLinked').textContent = 'Linked: ' + x.item + ' (' + x.store + ', ' + x.date + ') · cost ' + money(sale.itemCost) + (x.left !== undefined ? ' · ' + x.left + ' left before this sale' : '');
+  $('saLinked').classList.remove('hide');
+  $('saSuggest').classList.add('hide');
+  saleCalc();
+}
+
+// "What did you sell?": suggestions from your stock as you type (no server call per key)
+$('saItem').addEventListener('input', () => {
+  const q = $('saItem').value.trim().toLowerCase();
+  if (sale && sale.linked && !q.includes(String(sale.linked).split(': ')[1].toLowerCase().slice(0, 4))) { sale.linked = ''; sale.itemCost = null; $('saLinked').classList.add('hide'); }
+  const words = q.split(/\s+/).filter(w => w.length > 1);
+  const hits = q.length < 2 || !STOCK ? [] : STOCK.items.filter(x => words.every(w => (x.item + ' ' + x.store).toLowerCase().includes(w))).slice(0, 6);
+  $('saSuggest').classList.toggle('hide', !hits.length);
+  $('saSuggest').innerHTML = hits.map(x => `<button data-sg="${x.row}"><b>${esc(x.item)}</b><span class="sm">${esc(x.store)} · ${esc(x.date)} · ${x.left} left · ${money(x.each)} each</span></button>`).join('');
+});
+$('saSuggest').onclick = e => { const b = e.target.closest('[data-sg]'); if (b) linkPurchase(STOCK.items.find(i => String(i.row) === b.dataset.sg)); };
 
 let SETTINGS = null;   // Settings screen data
 function renderWhere() {
@@ -1877,12 +1939,14 @@ $('saFound').onclick = e => {
   const b = e.target.closest('[data-pr]');
   if (!b) return;
   sale.linked = 'Purchases row ' + b.dataset.pr + ': ' + b.dataset.item;
-  sale.itemCost = Number(b.dataset.cost) * (Number($('saQty').value) || 1);
+  sale.linkEach = Number(b.dataset.cost);
+  sale.itemCost = sale.linkEach * (Number($('saQty').value) || 1);
   $('saLinked').textContent = 'Linked: ' + sale.linked + ' · cost ' + money(sale.itemCost);
   $('saLinked').classList.remove('hide');
   $('saFound').innerHTML = ''; $('saFind').value = '';
   saleCalc();
 };
+$('saQty').addEventListener('input', () => { if (sale && sale.linkEach) { sale.itemCost = sale.linkEach * (Number($('saQty').value) || 1); saleCalc(); } });
 
 function saleCalc() {
   const n = id => Number($(id).value) || 0;
@@ -1940,7 +2004,7 @@ async function saveSaleForm() {
 
 $('btnSales').onclick = openSales;
 $('btnSlBack').onclick = () => show('vHome');
-$('btnNewSale').onclick = () => openSale(null);
+$('btnNewSale').onclick = () => { openSale(null); loadStock().catch(() => {}); };
 $('btnSaBack').onclick = () => show('vSales');
 $('btnSaleSave').onclick = saveSaleForm;
 $('btnSalePhoto').onclick = () => $('inpSale').click();
