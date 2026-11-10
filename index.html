@@ -591,6 +591,10 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <button class="btn sec" id="btnQRefresh">↻ Check inbox now</button>
     <p class="sub" id="qLast" style="text-align:center;margin:6px 0 12px"></p>
     <div id="qList"></div>
+    <details id="qSkip" class="card hide" style="margin-top:12px"><summary id="qSkipSum"></summary>
+      <p class="hint">Shops send ads and account emails from the same address as your orders. These looked like ads, so they weren't read (no cost). If one is really an order, tap <b>Read it anyway</b>.</p>
+      <div id="qSkipList"></div>
+    </details>
   </section>
 
   <!-- PAGES: photos for one receipt, before reading -->
@@ -838,7 +842,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=34"></script>
-<script src="app.js?v=34"></script>
+<script src="help.js?v=35"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

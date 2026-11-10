@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock'];
-const APP_VERSION = 'v34';
+const APP_VERSION = 'v35';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1087,6 +1087,11 @@ function renderQueue(d) {
   $('qSub').textContent = (queueItems.length ? 'These came from your emails. Check each one, then tap Save. ' : 'Nothing to check yet. ')
     + waiting + 'We look for new emails every ' + (d.every || 15) + ' minutes. In a hurry? Tap Check inbox now. Gmail can take 1–2 minutes to pass an email on.';
   $('qLast').textContent = lastCheckText(d);
+  const sk = d.skipped || [];
+  $('qSkip').classList.toggle('hide', !sk.length);
+  $('qSkipSum').textContent = 'Skipped as ads (' + sk.length + ')';
+  $('qSkipList').innerHTML = sk.map(q => `<div class="skrow"><span>${esc(q.subject || '(no subject)')}<span class="sm">${esc(String(q.from || '').replace(/<.*>/, '').trim())} · ${esc(q.received || '')}</span></span>
+    <button class="btn sec" style="width:auto;padding:8px 12px;margin:0" data-skq="${esc(q.id)}">Read it anyway</button></div>`).join('');
 
   $('qList').innerHTML = queueItems.map((q, i) => {
     const res = q.result || {};
@@ -1153,6 +1158,16 @@ function emailError(msg) {
   if (/busy|503|429|overload/i.test(msg)) return 'Google was busy when this was read. Try again.';
   return 'Couldn\'t read this email: ' + (msg || 'unknown error');
 }
+
+$('qSkipList').onclick = async e => {
+  const id = e.target.dataset.skq;
+  if (!id) return;
+  e.target.disabled = true;
+  try {
+    renderQueue(await api('queueSet', { id: id, queueAction: 'retry' }));
+    toast('It will be read within 5 minutes');
+  } catch (err) { e.target.disabled = false; toast(err.message, true); }
+};
 
 $('qList').onclick = async e => {
   const act = e.target.dataset.q;
