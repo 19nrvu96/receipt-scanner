@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock'];
-const APP_VERSION = 'v33';
+const APP_VERSION = 'v34';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
