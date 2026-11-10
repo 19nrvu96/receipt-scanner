@@ -389,6 +389,9 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 #slStock{justify-content:space-between;margin-top:12px}#slStock .go{color:var(--muted);font-size:22px}
 .skrow{display:flex;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);width:100%;background:none;border-left:0;border-right:0;border-top:0;text-align:left;font:inherit;cursor:pointer}
 .skrow:last-child{border-bottom:0}
+.skrow .sm{display:block}
+.skrow .tip{display:block;color:#8a5a00;font-size:.85em;margin-top:2px}
+.agebox{background:#fff7e6;border:1px solid #f3d9a4;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:.95em}
 .flash{animation:flash 1.2s ease}@keyframes flash{0%{background:#fff3c4}100%{background:transparent}}
 </style>
 </head>
@@ -549,6 +552,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <input id="skSearch" type="search" placeholder="Search your stock" autocomplete="off" style="width:100%;padding:13px 14px;border:1px solid #d0d0d5;border-radius:12px;font-size:16px;font-family:inherit;margin-bottom:8px;background:#fff">
     <div class="seg" id="skSort"><button data-v="old" class="on">Oldest</button><button data-v="value">Value</button><button data-v="az">A–Z</button></div>
     <p class="hint">Tap an item to log its sale. It's linked to this purchase, so profit and the count update.</p>
+    <div id="skAge" class="agebox hide"></div>
     <div id="skList" class="card" style="padding:4px 14px"></div>
   </section>
 
@@ -694,6 +698,17 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
         <div class="duo"><div><label>Fee per tap (p)</label><input id="saTap" type="number" step="0.1" inputmode="decimal"></div>
           <div><label>Fee % of sale</label><input id="saPct" type="number" step="0.01" inputmode="decimal"></div></div>
         <p class="hint" id="saCardCalc">We save these for next time.</p></div></div>
+    <div id="saHandWrap" class="hide"><label>How did the buyer get it?</label>
+      <div class="seg" id="saHand"></div>
+      <div id="saDelWrap" class="hide">
+        <div id="saTripDone" class="sub hide"></div>
+        <div id="saTripAsk">
+          <label class="check"><input type="checkbox" id="saLogTrip" checked> Log the miles for this drop-off</label>
+          <div id="saDropWrap"><label>Where did you drop it off?</label><input id="saDropTo" list="placeList" placeholder="Postcode or town, e.g. KT1 1AA" autocomplete="off"></div>
+          <p class="hint" id="saDelHint">After you save, the trip page opens with the route filled in. Already logged this trip? Untick it.</p>
+        </div>
+      </div>
+    </div>
     <div id="saPostWrap">
       <label>Who paid for postage?</label>
       <div class="seg two" id="saPostBy"><button data-v="Buyer"><b>The buyer</b><small>they paid postage</small></button><button data-v="Seller"><b>Me</b><small>free postage for the buyer</small></button></div>
@@ -823,7 +838,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=32"></script>
-<script src="app.js?v=32"></script>
+<script src="help.js?v=33"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>

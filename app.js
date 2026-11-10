@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock'];
-const APP_VERSION = 'v32';
+const APP_VERSION = 'v33';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1192,7 +1192,7 @@ let trip = { route: null, routeKey: '', milesFromRoute: null, seq: 0 };
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 function homeAddr() { return localStorage.getItem(LS_HOME) || ''; }
 
-function openTrip() {
+function openTrip(pre) {
   $('tDate').value = today();
   $('tReason').value = ''; $('tMiles').value = ''; $('tReturn').checked = false;
   trip = { route: null, routeKey: '', milesFromRoute: null, seq: trip.seq + 1 };
@@ -1205,6 +1205,15 @@ function openTrip() {
   $('btnHome').textContent = homeAddr() ? '🏠 ' + homeAddr() : '🏠 Set home';
   $('tSub').textContent = 'Type where you went. We work out the miles. Don\'t claim fuel for this car as well.';
   routeIdle();
+  if (pre && pre.saleRow) {   // drop-off for a sale: home → buyer and back, linked to that sale
+    trip.saleRow = pre.saleRow; trip.saleId = pre.saleId;
+    $('tDate').value = pre.date || today();
+    $('tReason').value = pre.reason || '';
+    $('tReturn').checked = true;
+    renderStops([homeAddr() ? HOME : '', pre.to || '']);
+    $('tSub').textContent = 'The drop-off for your sale. Check the route and miles, then save. It\'s linked to the sale.';
+    if (homeAddr() && pre.to) lookupRoute();
+  }
   tripCalc();
   show('vTrip');
 }
@@ -1325,7 +1334,8 @@ function buildTrip() {
     from: named[0] || '', to: named[named.length - 1] || '', via: named.slice(1, -1).join(' → '),
     miles: miles, ret: false, returnIncluded: $('tReturn').checked,
     link: r ? r.link : '', source: r ? (edited ? 'Google Maps ' + r.miles + ', edited' : 'Google Maps') : 'Typed',
-    _stops: raw, _route: r
+    _stops: raw, _route: r,
+    saleRow: trip.saleRow || undefined, saleId: trip.saleId || undefined
   };
 }
 
@@ -1353,8 +1363,8 @@ async function saveTrip() {
     if (offline) throw Object.assign(new Error('No signal'), { code: 'OFFLINE' });
     const r = await sendTrip(t);
     rememberTrip(t);
-    toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' (' + r.rate + ')');
-    show('vHome');
+    toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' (' + r.rate + ')' + (t.saleRow ? ' · linked to the sale' : ''));
+    if (t.saleRow) { SALES = null; openSales(); } else show('vHome');
   } catch (err) {
     if (err.code === 'OFFLINE') {          // kept on the phone; sent (and the miles worked out) when signal returns
       t._routeStops = t.miles > 0 ? null : stopsForRoute();
@@ -1597,7 +1607,14 @@ function renderStockPage() {
   $('skLines').textContent = d.lines || 0; $('skUnits').textContent = d.units || 0; $('skValue').textContent = money(d.value || 0);
   let list = d.items.filter(x => !q || (x.item + ' ' + x.store).toLowerCase().includes(q));
   list = list.slice().sort(by === 'value' ? (a, b) => b.left * b.each - a.left * a.each : by === 'az' ? (a, b) => a.item.localeCompare(b.item) : (a, b) => b.days - a.days);
-  $('skList').innerHTML = list.length ? list.slice(0, 200).map(x => `<button class="skrow" data-sk="${x.row}"><span>${esc(x.item)}<span class="sm">${esc(x.store)} · ${x.left} of ${x.qty} left · ${money(x.each)} each${x.decision === 'return' ? ' · returning' : ''}</span></span>
+  // Ageing stock: cash sitting on the shelf. A nudge, not a rule
+  const old = d.items.filter(x => x.days >= 60 && x.decision !== 'return'), tied = old.reduce((t, x) => t + x.left * x.each, 0);
+  $('skAge').classList.toggle('hide', !old.length);
+  $('skAge').innerHTML = old.length ? '<b>' + money(tied) + ' is tied up in ' + old.length + ' item' + (old.length === 1 ? '' : 's') + ' you\'ve had over 2 months.</b> ' +
+    'A small price drop often gets things moving, and turns that money back into stock that sells.' : '';
+  const tip = x => x.decision === 'return' ? '' : x.days >= 90 ? '<span class="tip">Over 3 months: try a price drop or a bundle to free up the cash</span>'
+    : x.days >= 60 ? '<span class="tip">Over 2 months: a small price drop could get it moving</span>' : '';
+  $('skList').innerHTML = list.length ? list.slice(0, 200).map(x => `<button class="skrow" data-sk="${x.row}"><span>${esc(x.item)}<span class="sm">${esc(x.store)} · ${x.left} of ${x.qty} left · ${money(x.each)} each${x.decision === 'return' ? ' · returning' : ''}</span>${tip(x)}</span>
       <span class="tag ${x.days >= 90 ? 'late' : x.days >= 45 ? 'soon' : ''}" style="align-self:center">${x.days}d</span></button>`).join('')
     : '<p class="sub" style="padding:10px 0">' + (q ? 'Nothing matches.' : 'No stock to sell. Things you buy with a resale purpose show here.') + '</p>';
 }
@@ -1787,11 +1804,35 @@ function platformOptions(current) {
   return list.map(p => `<option ${p === current ? 'selected' : ''}>${esc(p)}</option>`).join('');
 }
 
+// How the buyer got it: only asked where it can be more than posting
+const HAND = {
+  'Facebook Marketplace': [['Posted', 'Posted', 'I sent it'], ['Collected', 'Collected', 'they came to me'], ['Delivered', 'I dropped it off', 'log the miles']],
+  'In person': [['Collected', 'They came to me', 'or bought at my stall'], ['Delivered', 'I dropped it off', 'log the miles']]
+};
+function handToggle() {
+  const hand = HAND[$('saPlatform').value];
+  const del = !!hand && segGet('saHand') === 'Delivered';
+  $('saDelWrap').classList.toggle('hide', !del);
+  const done = !!(sale && sale.trip);
+  $('saTripDone').classList.toggle('hide', !done);
+  $('saTripDone').textContent = done ? '🚗 Trip logged: ' + sale.trip + '. It\'s in your mileage.' : '';
+  $('saTripAsk').classList.toggle('hide', done);
+  $('saDropWrap').classList.toggle('hide', !$('saLogTrip').checked);
+}
 function saleWhereToggle() {
-  const plat = $('saPlatform').value, inPerson = plat === 'In person';
+  const plat = $('saPlatform').value, inPerson = plat === 'In person', hand = HAND[plat];
   $('saWhereWrap').classList.toggle('hide', !inPerson);
   $('saPayWrap').classList.toggle('hide', !inPerson);
-  $('saPostWrap').classList.toggle('hide', inPerson || plat === 'Amazon FBA');   // Amazon posts FBA orders itself
+  $('saHandWrap').classList.toggle('hide', !hand);
+  if (hand) {
+    const cur = segGet('saHand') || (sale && sale.hand) || '';
+    $('saHand').className = 'seg two';
+    $('saHand').innerHTML = hand.map(h => `<button data-v="${h[0]}"><b>${h[1]}</b><small>${h[2]}</small></button>`).join('');
+    segSet('saHand', hand.some(h => h[0] === cur) ? cur : '');
+  }
+  // Postage only when it was posted (in person never is; Marketplace only if you picked Posted; Amazon FBA posts its own)
+  $('saPostWrap').classList.toggle('hide', inPerson || plat === 'Amazon FBA' || (plat === 'Facebook Marketplace' && segGet('saHand') !== 'Posted'));
+  handToggle();
   // In person there's usually no order number: "n/a", which you can change
   if (inPerson && !$('saOrder').value.trim()) $('saOrder').value = 'n/a';
   if (!inPerson && /^n\/?a$/i.test($('saOrder').value.trim())) $('saOrder').value = '';
@@ -1847,11 +1888,15 @@ $('saPostBy').addEventListener('click', () => setTimeout(() => {
   postHint(); saleCalc();
 }, 0));
 $('saOwn').onchange = postHint;
+$('saHand').onclick = e => { const b = e.target.closest('button'); if (!b) return; segSet('saHand', b.dataset.v); if (sale) sale.hand = b.dataset.v; saleWhereToggle(); saleCalc(); };
+$('saLogTrip').onchange = handToggle;
 
 function openSale(o) {
   o = o || {};
   const isNew = !o.row;
-  sale = { row: o.row || null, saleId: o._sale_id || null, needs: o.needs || '', linked: o['linked purchase'] || '' };
+  sale = { row: o.row || null, saleId: o._sale_id || null, needs: o.needs || '', linked: o['linked purchase'] || '',
+           hand: o.handover || '', trip: o['delivery trip'] || '' };
+  $('saHand').innerHTML = ''; $('saLogTrip').checked = true; $('saDropTo').value = '';
   $('saTitle').textContent = isNew ? 'Log a sale' : 'Sale';
   const plat = o.platform || (CFG.platforms && CFG.platforms.indexOf('In person') > -1 ? 'In person' : (CFG.platforms && CFG.platforms[0]) || 'In person');
   $('saPlatform').innerHTML = platformOptions(plat);
@@ -1979,6 +2024,7 @@ async function saveSaleForm() {
     courier: $('saOwn').checked ? v('saCourier') : '',
     tracking: $('saOwn').checked ? v('saTrack') : '',
     'insured for': v('saIns'),
+    handover: $('saHandWrap').classList.contains('hide') ? '' : segGet('saHand'),
     // Saving it yourself clears the flag, except eBay postage while it's still blank
     needs: /^match/.test(sale.needs || '') ? sale.needs
       : /^eBay/.test($('saPlatform').value) && !segGet('saPostBy') && v('saPostOut') === '' && segGet('saStatus') !== 'Cancelled' ? 'add postage cost' : ''
@@ -1990,12 +2036,18 @@ async function saveSaleForm() {
       const f = { perTap: Number($('saTap').value) || 0, pct: Number($('saPct').value) || 0 }, c = CFG.cardFee || {};
       if (f.perTap !== (c.perTap || 0) || f.pct !== (c.pct || 0)) { CFG.cardFee = f; saveCache(); api('settingsSet', { settings: { cardFee: f } }).catch(() => {}); }
     }
-    await api('saleSave', { sale: s, row: sale.row, saleId: sale.saleId,
-      image: sale.photo ? { base64: sale.photo.split(',')[1], mimeType: 'image/jpeg' } : null });
+    const r = await api('saleSave', { sale: s, row: sale.row, saleId: sale.saleId,
+      image: sale.photo ? { base64: sale.photo.split(',')[1], mimeType: 'image/jpeg' } : null }) || {};
     if (s.where) lsSet(LS_WHERE, [s.where].concat(lsList(LS_WHERE).filter(w => w !== s.where)).slice(0, 15));
-    toast(sale.row ? 'Sale updated' : 'Sale saved');
     SALES = null;
-    openSales();
+    if (s.handover === 'Delivered' && !sale.trip && $('saLogTrip').checked) {   // straight on to the drop-off trip, linked to this sale
+      toast('Sale saved. Now check the trip miles');
+      openTrip({ date: s['sale date'], reason: 'Delivered sale: ' + (s.item || s['order number']), to: v('saDropTo'),
+                 saleRow: r.row || sale.row, saleId: r.saleId || sale.saleId });
+    } else {
+      toast(sale.row ? 'Sale updated' : 'Sale saved');
+      openSales();
+    }
   } catch (err) {
     toast(err.code === 'OFFLINE' ? 'No signal — not saved yet. Try again when you have signal' : err.message, true);
   }
@@ -2164,7 +2216,7 @@ $('btnPBack').onclick      = () => { if (!pages.length || confirm('Discard ' + (
 $('thumbs').onclick = e => { const i = e.target.dataset.x; if (i !== undefined) { pages.splice(Number(i), 1); renderPages(); } };
 $('btnJobs').onclick  = renderJobs;
 $('btnJBack').onclick = () => show('vHome');
-$('btnTrip').onclick  = openTrip;
+$('btnTrip').onclick  = () => openTrip();
 $('btnTBack').onclick = () => show('vHome');
 $('btnTripSave').onclick = saveTrip;
 $('tMiles').oninput = () => {
