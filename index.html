@@ -152,6 +152,14 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
        font-size:14px;z-index:99;max-width:90%;text-align:center;
        box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .toast.err{background:#b71c1c}
+/* Undo bar: the sale is already saved on the phone; this is the last chance to change your mind */
+.undobar{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:min(92vw,420px);display:flex;align-items:center;gap:12px;
+  background:#1a1a1a;color:#fff;padding:10px 10px 10px 18px;border-radius:16px;z-index:100;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:15px}
+.undobar span{flex:1}
+.undobar button{background:none;border:0;color:#7cc4ff;font:inherit;font-weight:700;padding:10px 12px;display:flex;align-items:center;gap:8px;cursor:pointer}
+.undobar svg{width:22px;height:22px;transform:rotate(-90deg)}
+.undobar circle{fill:none;stroke:#7cc4ff;stroke-width:3}
+.tag.saving{background:#e8f1ff;color:#0a58ca}
 
 /* ---------- Preview ---------- */
 .preview{width:100%;border-radius:12px;margin-bottom:12px;max-height:220px;
@@ -595,6 +603,10 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <p class="hint">Shops send ads and account emails from the same address as your orders. These looked like ads, so they weren't read (no cost). If one is really an order, tap <b>Read it anyway</b>.</p>
       <div id="qSkipList"></div>
     </details>
+    <details id="qDone" class="card hide" style="margin-top:12px"><summary id="qDoneSum"></summary>
+      <p class="hint">Sales and postage labels don't need checking, so they go straight into Sales and To post.</p>
+      <div id="qDoneList"></div>
+    </details>
   </section>
 
   <!-- PAGES: photos for one receipt, before reading -->
@@ -842,7 +854,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=35"></script>
-<script src="app.js?v=35"></script>
+<script src="help.js?v=36"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>

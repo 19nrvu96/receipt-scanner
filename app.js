@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock'];
-const APP_VERSION = 'v35';
+const APP_VERSION = 'v36';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1087,6 +1087,10 @@ function renderQueue(d) {
   $('qSub').textContent = (queueItems.length ? 'These came from your emails. Check each one, then tap Save. ' : 'Nothing to check yet. ')
     + waiting + 'We look for new emails every ' + (d.every || 15) + ' minutes. In a hurry? Tap Check inbox now. Gmail can take 1–2 minutes to pass an email on.';
   $('qLast').textContent = lastCheckText(d);
+  const hd = d.handled || [];
+  $('qDone').classList.toggle('hide', !hd.length);
+  $('qDoneSum').textContent = 'Done for you in the last 3 days (' + hd.length + ')';
+  $('qDoneList').innerHTML = hd.map(q => `<div class="skrow"><span>${esc(q.subject || '(no subject)')}<span class="sm">${esc(q.received || '')} · ${esc(q.note)}</span></span><span class="tag ok">✓</span></div>`).join('');
   const sk = d.skipped || [];
   $('qSkip').classList.toggle('hide', !sk.length);
   $('qSkipSum').textContent = 'Skipped as ads (' + sk.length + ')';
@@ -1123,6 +1127,7 @@ function lastCheckText(d) {
 // Check inbox now: the same check the app does every few minutes, straight away (no extra cost).
 // If nothing has arrived yet, look again a few times while this screen is open, since Gmail can be slow.
 let qTimer = null;
+const queueSeen = new Set();   // "done for you" items already mentioned this session
 async function checkInboxNow(tries = 0, auto = false) {
   clearTimeout(qTimer);
   const b = $('btnQRefresh');
@@ -1138,6 +1143,13 @@ async function checkInboxNow(tries = 0, auto = false) {
   if (!d) return;
   renderQueue(d);
   if (d.found) { toast('Found ' + d.found + ' new email' + (d.found === 1 ? '' : 's')); return; }
+  const hd = (d.handled || []).filter(q => !queueSeen.has(q.id));
+  if (hd.length && !auto) {   // already picked up by the 5-minute check: say so instead of "nothing yet"
+    hd.forEach(q => queueSeen.add(q.id));
+    toast(hd.length + ' email' + (hd.length === 1 ? ' was' : 's were') + ' already filed for you. See "Done for you"');
+    $('qDone').open = true;
+    return;
+  }
   if (d.ran !== undefined && tries < 4 && !$('vQueue').classList.contains('hide')) {   // up to 2 more minutes
     let left = 30;
     const tick = () => {
@@ -1220,7 +1232,7 @@ function openTrip(pre) {
   $('btnHome').textContent = homeAddr() ? '🏠 ' + homeAddr() : '🏠 Set home';
   $('tSub').textContent = 'Type where you went. We work out the miles. Don\'t claim fuel for this car as well.';
   routeIdle();
-  if (pre && pre.saleRow) {   // drop-off for a sale: home → buyer and back, linked to that sale
+  if (pre && (pre.saleRow || pre.saleId)) {   // drop-off for a sale: home → buyer and back, linked to that sale
     trip.saleRow = pre.saleRow; trip.saleId = pre.saleId;
     $('tDate').value = pre.date || today();
     $('tReason').value = pre.reason || '';
@@ -1376,10 +1388,11 @@ async function saveTrip() {
   const b = $('btnTripSave'); b.disabled = true; b.textContent = 'Saving…';
   try {
     if (offline) throw Object.assign(new Error('No signal'), { code: 'OFFLINE' });
+    if (t.saleId && saleOut.some(o => o.id === t.saleId)) { b.textContent = 'Saving the sale first…'; await flushSales(true); }
     const r = await sendTrip(t);
     rememberTrip(t);
-    toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' (' + r.rate + ')' + (t.saleRow ? ' · linked to the sale' : ''));
-    if (t.saleRow) { SALES = null; openSales(); } else show('vHome');
+    toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' (' + r.rate + ')' + (t.saleRow || t.saleId ? ' · linked to the sale' : ''));
+    if (t.saleRow || t.saleId) { SALES = null; openSales(); } else show('vHome');
   } catch (err) {
     if (err.code === 'OFFLINE') {          // kept on the phone; sent (and the miles worked out) when signal returns
       t._routeStops = t.miles > 0 ? null : stopsForRoute();
@@ -1527,7 +1540,7 @@ function saleCard(o, i, list) {
   return `<div class="card scard" data-${list}="${i}"><div class="sb">
     <div class="st">${esc(o.item || o['order number'] || 'Sale')}</div>
     <div class="sm">${bits}${o['order number'] ? ' · #' + esc(o['order number']) : ''}</div>
-    <div class="sm"><span class="tag ${tagFor(o.status)}">${esc(o.status || 'Sold')}</span>${o['counts in totals'] === 'No' ? '<span class="tag">not in totals</span>' : ''}
+    <div class="sm">${o._saving ? '<span class="tag saving">' + (navigator.onLine === false ? 'Waiting for signal' : 'Saving…') + '</span>' : ''}<span class="tag ${tagFor(o.status)}">${esc(o.status || 'Sold')}</span>${o['counts in totals'] === 'No' ? '<span class="tag">not in totals</span>' : ''}
       ${profit !== null ? '<span class="tag ok">profit ' + money(profit) + '</span>' : ''}${o.needs ? '<span class="tag warn">' + esc(/postage/.test(o.needs) ? 'add postage' : /match/.test(o.needs) ? 'pick the sale' : /check/.test(o.needs) ? 'check match' : o.needs) + '</span>' : ''}${returnTag(o)}</div>
   </div><div class="amt">${price !== null ? money(price) : net !== null ? money(net) : '—'}</div></div>`;
 }
@@ -1545,7 +1558,10 @@ function renderSales() {
   if (d.toPost.length) setTimeout(() => prefetchLabels(d.toPost), 300);   // codes ready before you tap
   $('slNeedsWrap').classList.toggle('hide', !d.needs.length);
   $('slNeeds').innerHTML = d.needs.map((o, i) => saleCard(o, i, 'need')).join('');
-  $('slRecent').innerHTML = d.recent.length ? d.recent.map((o, i) => saleCard(o, i, 'rec')).join('')
+  const waiting = saleOut.map(o => o.req.sale), editing = new Set(saleOut.map(o => o.row).filter(Boolean));
+  const pend = waiting.map((o, i) => saleCard(Object.assign({}, o, { _saving: true }), i, 'pend')).join('');
+  const rec = d.recent.filter(o => !editing.has(o.row));
+  $('slRecent').innerHTML = (rec.length || pend) ? pend + rec.map(o => saleCard(o, d.recent.indexOf(o), 'rec')).join('')
     : '<p class="sub">No sales yet. Forward a sale email, or tap ＋ Log a sale.</p>';
   renderReturns(d);
   renderReporting(d);
@@ -2020,6 +2036,71 @@ function saleCalc() {
 $('saPrice').addEventListener('input', cardCalc);
 $('saPlatform').onchange = () => { saleWhereToggle(); if (!sale.row) $('saCounts').checked = !/^Amazon/.test($('saPlatform').value); saleCalc(); };
 
+/* ---------- sales save in the background ----------
+   Tap Save: you're back on Sales at once, the sale shows as "Saving…", and an Undo bar counts down 5 seconds.
+   Only then is it sent. No signal or Google slow? It stays on the phone and is sent again by itself.
+   Each new sale carries its own id, so sending it twice never makes two rows. */
+const LS_SALE_OUT = 'rs_sale_outbox', UNDO_SECS = 5;
+let saleOut = lsList(LS_SALE_OUT), saleFlushing = null, undoTimer = null;
+const saleOutSave = () => {   // photos can be big: keep them in memory if the phone is out of room
+  try { localStorage.setItem(LS_SALE_OUT, JSON.stringify(saleOut)); }
+  catch (e) { lsSet(LS_SALE_OUT, saleOut.map(o => Object.assign({}, o, { req: Object.assign({}, o.req, { image: null }) }))); }
+};
+const newId = () => 'a-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+
+function undoBar(text, secs, onUndo, onDone) {
+  document.querySelectorAll('.undobar,.toast').forEach(x => x.remove());
+  clearInterval(undoTimer);
+  const bar = document.createElement('div'), C = 2 * Math.PI * 9;
+  bar.className = 'undobar';
+  bar.innerHTML = `<span>${esc(text)}</span><button>Undo <svg viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" stroke-dasharray="${C}" stroke-dashoffset="0"/></svg></button>`;
+  document.body.appendChild(bar);
+  const ring = bar.querySelector('circle'), t0 = Date.now();
+  const end = undone => { clearInterval(undoTimer); bar.remove(); undone ? onUndo() : onDone(); };
+  undoTimer = setInterval(() => {
+    const f = Math.min(1, (Date.now() - t0) / (secs * 1000));
+    ring.setAttribute('stroke-dashoffset', String(C * f));
+    if (f >= 1) end(false);
+  }, 100);
+  bar.querySelector('button').onclick = () => end(true);
+}
+
+function queueSale(req, label, hold) {
+  const item = { id: req.clientId || ('e-' + req.row + '-' + Date.now()), req, label, row: req.row || null, holdUntil: hold ? Date.now() + hold : 0, tries: 0 };
+  saleOut = saleOut.filter(o => !(o.row && o.row === item.row)).concat([item]);   // a newer edit of the same row replaces the older one
+  saleOutSave();
+  return item;
+}
+function unqueueSale(id) { saleOut = saleOut.filter(o => o.id !== id); saleOutSave(); }
+
+// Sends what's waiting. Returns when done (trips wait for their sale this way).
+function flushSales(force) {
+  if (saleFlushing) return saleFlushing;
+  saleFlushing = (async () => {
+    await null;   // so saleFlushing is set before this can finish
+    let changed = false;
+    for (const o of saleOut.slice()) {
+      if (!force && o.holdUntil > Date.now()) continue;
+      try {
+        const r = await api('saleSave', o.req) || {};
+        unqueueSale(o.id); changed = true;
+        if (o.onSaved) o.onSaved(r);
+      } catch (err) {
+        if (err.code === 'OFFLINE') break;   // try again when signal's back
+        o.tries = (o.tries || 0) + 1;
+        if (o.tries >= 3 || /moved in the Sheet|Add the item/.test(err.message)) {
+          unqueueSale(o.id);
+          toast('"' + o.label + '" wasn\'t saved: ' + err.message, true);
+          changed = true;
+        } else saleOutSave();
+      }
+    }
+    if (changed) { SALES = null; if (!$('vSales').classList.contains('hide')) openSales(); }
+  })().finally(() => { saleFlushing = null; });
+  return saleFlushing;
+}
+setInterval(() => { if (saleOut.length) flushSales(); }, 30000);
+
 async function saveSaleForm() {
   const date = $('saDate').value.trim(), payout = $('saPayout').value.trim();
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) { toast('Date must be DD/MM/YYYY', true); return; }
@@ -2045,28 +2126,30 @@ async function saveSaleForm() {
       : /^eBay/.test($('saPlatform').value) && !segGet('saPostBy') && v('saPostOut') === '' && segGet('saStatus') !== 'Cancelled' ? 'add postage cost' : ''
   };
   if (s['sale price'] === '' && !/^Amazon/.test(s.platform) && s.status !== 'Cancelled') { toast('Add the sale price', true); return; }
-  const b = $('btnSaleSave'); b.disabled = true; b.textContent = 'Saving…';
-  try {
-    if (!$('saCardWrap').classList.contains('hide')) {   // remember the card reader's fees
-      const f = { perTap: Number($('saTap').value) || 0, pct: Number($('saPct').value) || 0 }, c = CFG.cardFee || {};
-      if (f.perTap !== (c.perTap || 0) || f.pct !== (c.pct || 0)) { CFG.cardFee = f; saveCache(); api('settingsSet', { settings: { cardFee: f } }).catch(() => {}); }
-    }
-    const r = await api('saleSave', { sale: s, row: sale.row, saleId: sale.saleId,
-      image: sale.photo ? { base64: sale.photo.split(',')[1], mimeType: 'image/jpeg' } : null }) || {};
-    if (s.where) lsSet(LS_WHERE, [s.where].concat(lsList(LS_WHERE).filter(w => w !== s.where)).slice(0, 15));
-    SALES = null;
-    if (s.handover === 'Delivered' && !sale.trip && $('saLogTrip').checked) {   // straight on to the drop-off trip, linked to this sale
-      toast('Sale saved. Now check the trip miles');
-      openTrip({ date: s['sale date'], reason: 'Delivered sale: ' + (s.item || s['order number']), to: v('saDropTo'),
-                 saleRow: r.row || sale.row, saleId: r.saleId || sale.saleId });
-    } else {
-      toast(sale.row ? 'Sale updated' : 'Sale saved');
-      openSales();
-    }
-  } catch (err) {
-    toast(err.code === 'OFFLINE' ? 'No signal — not saved yet. Try again when you have signal' : err.message, true);
+  if (!$('saCardWrap').classList.contains('hide')) {   // remember the card reader's fees
+    const f = { perTap: Number($('saTap').value) || 0, pct: Number($('saPct').value) || 0 }, c = CFG.cardFee || {};
+    if (f.perTap !== (c.perTap || 0) || f.pct !== (c.pct || 0)) { CFG.cardFee = f; saveCache(); api('settingsSet', { settings: { cardFee: f } }).catch(() => {}); }
   }
-  b.disabled = false; b.textContent = 'Save sale';
+  if (s.where) lsSet(LS_WHERE, [s.where].concat(lsList(LS_WHERE).filter(w => w !== s.where)).slice(0, 15));
+  if (!sale.row && !sale.clientId) sale.clientId = newId();
+  const req = { sale: s, row: sale.row, saleId: sale.saleId, clientId: sale.row ? undefined : sale.clientId,
+                image: sale.photo ? { base64: sale.photo.split(',')[1], mimeType: 'image/jpeg' } : null };
+  const label = s.item || s['order number'] || 'Sale';
+
+  if (s.handover === 'Delivered' && !sale.trip && $('saLogTrip').checked) {   // straight on to the drop-off trip: send now, the trip waits for it
+    queueSale(req, label, 0);
+    flushSales();
+    toast('Sale saved. Now check the trip miles');
+    openTrip({ date: s['sale date'], reason: 'Delivered sale: ' + label, to: v('saDropTo'),
+               saleRow: sale.row || null, saleId: sale.saleId || sale.clientId });
+    return;
+  }
+  const item = queueSale(req, label, UNDO_SECS * 1000);
+  const back = sale;
+  openSales('slRecent');   // straight to the sale you just added
+  undoBar(sale.row ? 'Changes saved' : 'Sale saved', UNDO_SECS,
+    () => { unqueueSale(item.id); sale = back; show('vSale'); renderSales(); toast('Not saved. Change anything, then Save again'); },
+    () => flushSales());
 }
 
 $('btnSales').onclick = openSales;
@@ -2355,7 +2438,7 @@ setTimeout(() => { try { if (localStorage.getItem(LS_URL) && !localStorage.getIt
 // Offline queue: a photo left "reading" when the app closed is waiting again
 jobAll().then(all => Promise.all(all.filter(j => j.status === 'reading').map(j => { j.status = 'pending'; return jobPut(j); })))
   .then(refreshJobs).then(() => setTimeout(jobTick, 2000));
-window.addEventListener('online', () => { refreshJobs(); jobTick(); tripTick(); });
+window.addEventListener('online', () => { refreshJobs(); jobTick(); tripTick(); flushSales(true); });
 refreshTrips(); setTimeout(tripTick, 3000); setInterval(tripTick, 60000);
 window.addEventListener('offline', refreshJobs);
 setInterval(jobTick, 60000);
