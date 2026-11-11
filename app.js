@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch'];
-const APP_VERSION = 'v39';
+const APP_VERSION = 'v40';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1579,7 +1579,7 @@ function saleCard(o, i, list) {
 }
 
 const LS_POSTED = 'rs_posted_out';
-var postedOut = lsList(LS_POSTED), postedFlushing = false;
+var postedOut = lsList(LS_POSTED), postedFlushing = false, postedHeld = new Set();   // held = in the 5-second Undo window
 async function flushPosted() {
   if (postedFlushing || !postedOut.length) return;
   postedFlushing = true;
@@ -1597,7 +1597,7 @@ setInterval(flushPosted, 30000);
 
 function renderSales() {
   const d = SALES || { needs: [], recent: [], toPost: [] };
-  if (postedOut.length && d.toPost) d.toPost = d.toPost.filter(l => postedOut.indexOf(l.id) < 0);   // tapped Posted, still sending
+  if ((postedOut.length || postedHeld.size) && d.toPost) d.toPost = d.toPost.filter(l => postedOut.indexOf(l.id) < 0 && !postedHeld.has(l.id));   // tapped Posted, still sending
   setSalesCount(countsFrom(d));
   $('slPostWrap').classList.toggle('hide', !d.toPost.length);
   $('slPost').innerHTML = d.toPost.map((l, i) => `<div class="card scard"><div class="sb">
@@ -1820,11 +1820,12 @@ $('vSales').addEventListener('click', async e => {
   if (t.dataset.posted !== undefined) {   // instant: off the list now, saved in the background (kept on the phone if no signal)
     const l = SALES.toPost[Number(t.dataset.posted)];
     if (!l) return;
-    postedOut = postedOut.filter(x => x !== l.id).concat([l.id]); lsSet(LS_POSTED, postedOut);
+    postedHeld.add(l.id);
     SALES.toPost = SALES.toPost.filter(x => x.id !== l.id);
-    labDel(l.id); renderSales();
-    toast('✓ Posted. We saved today\'s date.');
-    flushPosted();
+    renderSales();
+    undoBar('✓ Marked as posted', UNDO_SECS,
+      () => { postedHeld.delete(l.id); SALES.toPost = SALES.toPost.concat([l]); renderSales(); toast('Back on your list'); },
+      () => { postedHeld.delete(l.id); postedOut = postedOut.filter(x => x !== l.id).concat([l.id]); lsSet(LS_POSTED, postedOut); labDel(l.id); flushPosted(); });
     return;
   }
   if (card) openSale(card.dataset.need !== undefined ? SALES.needs[Number(card.dataset.need)] : SALES.recent[Number(card.dataset.rec)]);
