@@ -13,8 +13,8 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock'];
-const APP_VERSION = 'v36';
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch'];
+const APP_VERSION = 'v37';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1018,6 +1018,7 @@ async function saveToSheet(force) {
     saveCache(); fillStores(); fillPayPicker();
 
     if (jobId) await jobDel(jobId);
+    matchPurchase(payload.filter(r => !/personal/i.test(r.purpose || '')).map(r => r.item).filter(Boolean));
     job = null; state = null;
     $('homeStatus').textContent =
       '✅ ' + res.rowsAdded + ' row' + (res.rowsAdded > 1 ? 's' : '') +
@@ -1630,7 +1631,7 @@ async function loadStock() {
 async function openStock() {
   show('vStock');
   if (STOCK) renderStockPage(); else $('skList').innerHTML = '<p class="sub">Loading…</p>';
-  try { await loadStock(); renderStockPage(); }
+  try { await loadStock(); renderStockPage(); loadStockMatches(); }
   catch (err) { $('skList').innerHTML = '<p class="sub">' + esc(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message) + '</p>'; }
 }
 function renderStockPage() {
@@ -1645,13 +1646,15 @@ function renderStockPage() {
     'A small price drop often gets things moving, and turns that money back into stock that sells.' : '';
   const tip = x => x.decision === 'return' ? '' : x.days >= 90 ? '<span class="tip">Over 3 months: try a price drop or a bundle to free up the cash</span>'
     : x.days >= 60 ? '<span class="tip">Over 2 months: a small price drop could get it moving</span>' : '';
-  $('skList').innerHTML = list.length ? list.slice(0, 200).map(x => `<button class="skrow" data-sk="${x.row}"><span>${esc(x.item)}<span class="sm">${esc(x.store)} · ${x.left} of ${x.qty} left · ${money(x.each)} each${x.decision === 'return' ? ' · returning' : ''}</span>${tip(x)}</span>
+  $('skList').innerHTML = list.length ? list.slice(0, 200).map(x => `<button class="skrow" data-sk="${x.row}"><span>${esc(x.item)}<span class="sm">${esc(x.store)} · ${x.left} of ${x.qty} left · ${money(x.each)} each${x.decision === 'return' ? ' · returning' : ''}${STOCK_MATCH[x.item] ? `<span class="mtag" data-skm="${esc(x.item)}">👥 ${STOCK_MATCH[x.item].buyers.length} interested</span>` : ''}</span>${tip(x)}</span>
       <span class="tag ${x.days >= 90 ? 'late' : x.days >= 45 ? 'soon' : ''}" style="align-self:center">${x.days}d</span></button>`).join('')
     : '<p class="sub" style="padding:10px 0">' + (q ? 'Nothing matches.' : 'No stock to sell. Things you buy with a resale purpose show here.') + '</p>';
 }
 $('skSearch').oninput = renderStockPage;
 $('skSort').onclick = e => { const b = e.target.closest('button'); if (b) { segSet('skSort', b.dataset.v); renderStockPage(); } };
 $('skList').onclick = e => {
+  const m = e.target.closest('[data-skm]');
+  if (m && STOCK_MATCH[m.dataset.skm]) { e.stopPropagation(); $('vStock').dataset.fromMatch = '1'; openMatch([STOCK_MATCH[m.dataset.skm]]); return; }
   const b = e.target.closest('[data-sk]');
   if (!b) return;
   const x = STOCK.items.find(i => String(i.row) === b.dataset.sk);
@@ -1849,6 +1852,7 @@ function handToggle() {
   $('saTripDone').textContent = done ? '🚗 Trip logged: ' + sale.trip + '. It\'s in your mileage.' : '';
   $('saTripAsk').classList.toggle('hide', done);
   $('saDropWrap').classList.toggle('hide', !$('saLogTrip').checked);
+  if (typeof crmToggle === 'function') crmToggle();
 }
 function saleWhereToggle() {
   const plat = $('saPlatform').value, inPerson = plat === 'In person', hand = HAND[plat];
@@ -1953,6 +1957,7 @@ function openSale(o) {
   $('saOrder').value = o['order number'] || o['transaction id'] || '';
   $('saBuyer').value = o.buyer || '';
   $('saNotes').value = o.notes || '';
+  crmFill(o);
   segSet('saPay', o['payment method'] || (isNew ? 'Cash' : ''));
   segSet('saStatus', o.status || (isNew ? 'Completed' : 'Sold'));
   $('saCounts').checked = o['counts in totals'] ? o['counts in totals'] === 'Yes' : !/^Amazon/.test(plat);
@@ -2134,6 +2139,8 @@ async function saveSaleForm() {
   if (!sale.row && !sale.clientId) sale.clientId = newId();
   const req = { sale: s, row: sale.row, saleId: sale.saleId, clientId: sale.row ? undefined : sale.clientId,
                 image: sale.photo ? { base64: sale.photo.split(',')[1], mimeType: 'image/jpeg' } : null };
+  const buyerInfo = crmPayload(s);
+  if (buyerInfo) req.buyerInfo = buyerInfo;
   const label = s.item || s['order number'] || 'Sale';
 
   if (s.handover === 'Delivered' && !sale.trip && $('saLogTrip').checked) {   // straight on to the drop-off trip: send now, the trip waits for it
@@ -2252,6 +2259,7 @@ async function refreshConfig() {
     CFG.business = d.business || '';
     CFG.platforms = d.platforms || [];
     CFG.cardFee = d.cardFee || CFG.cardFee || { perTap: 0, pct: 0 };
+    CFG.crm = !!d.crm; try { crmSync(); renderHomeMatch(); } catch (e) {}
     setSalesCount(d.salesWaiting);
     saveCache(); fillStores(); fillPayPicker();
     setEmailCount(d.emails || 0);
@@ -2465,6 +2473,7 @@ async function openSettings() {
     $('stFwd').textContent = a.forwardTo || '—';
     $('stEmailsOn').textContent = a.emailsOn ? 'On, every 5 minutes' : 'Not set up yet';
     $('stSrc').value = d.emailSource || ''; $('stOrderEmail').value = d.orderEmail || ''; $('stMonthly').checked = !!d.monthlyEmail;
+    $('stCrm').checked = !!d.crm; if (CFG.crm !== !!d.crm) { CFG.crm = !!d.crm; saveCache(); crmSync(); }
     srcSync();
     $('stHist').innerHTML = (d.history || []).map(h => `<p class="hist">Before ${esc(h.until)}: ${esc(h.label)}${h.tab ? ' · saved in the "' + esc(h.tab) + '" tab' : ''}</p>`).join('');
     stSync(); renderWhere();
@@ -2663,3 +2672,232 @@ function endIntro(scan) {
 }
 $('btnIntroNext').onclick = () => { if (introAt < INTRO.length - 1) { introAt++; drawIntro(); } else endIntro(true); };
 $('btnIntroSkip').onclick = () => endIntro(false);
+
+/* ---------- Buyers (CRM): notes on each buyer, contacts, and who might want what you buy ----------
+   Turned on in Settings → Selling. Lives on the "Buyers" tab of the Sheet. No AI, so no cost. */
+const LS_BUYERS = 'rs_buyers', LS_MATCH = 'rs_match';
+var BUYERS = (() => { try { return JSON.parse(localStorage.getItem(LS_BUYERS)) || null; } catch (e) { return null; } })();
+var bpKey = null, bpFrom = 'vBuyers', BP = null;
+const bKey = s => String(s || '').trim().replace(/^@/, '').replace(/\s+/g, ' ').toLowerCase();
+const bName = b => b.name || b.username || b.key;
+const findBuyer = s => (BUYERS && BUYERS.buyers || []).find(b => b.key === bKey(s) || bKey(b.name) === bKey(s) || bKey(b.username) === bKey(s));
+async function loadBuyers() {
+  BUYERS = await api('buyers', {});
+  try { localStorage.setItem(LS_BUYERS, JSON.stringify(BUYERS)); } catch (e) {}
+  fillBuyerLists();
+  return BUYERS;
+}
+function fillBuyerLists() {
+  const bs = (BUYERS && BUYERS.buyers) || [], tags = new Set();
+  bs.forEach(b => String(b['interested in'] || '').split(',').map(t => t.trim()).filter(Boolean).forEach(t => tags.add(t)));
+  $('tagList').innerHTML = [...tags].map(t => `<option value="${esc(t)}">`).join('');
+  let dl = $('buyerList');
+  if (!dl) { dl = document.createElement('datalist'); dl.id = 'buyerList'; document.body.appendChild(dl); }
+  dl.innerHTML = bs.map(b => `<option value="${esc(bName(b))}">`).join('');
+}
+const buyerChips = b => {
+  const c = [];
+  if (b.experience) c.push(`<span class="bchip ${b.experience === 'Good' ? 'good' : b.experience === 'Bad' ? 'bad' : ''}">${{ Good: '👍', Fine: '👌', Bad: '👎' }[b.experience] || ''} ${esc(b.experience)}</span>`);
+  if (b['sell again']) c.push(`<span class="bchip ${b['sell again'] === 'No' ? 'bad' : b['sell again'] === 'Yes' ? 'good' : ''}">Sell again: ${esc(b['sell again'])}</span>`);
+  if (b['buying style']) c.push(`<span class="bchip">${esc(b['buying style'])}</span>`);
+  if (Number(b['avg off asking %']) > 0) c.push(`<span class="bchip">~${esc(b['avg off asking %'])}% off asking</span>`);
+  if (Number(b['no-shows']) > 0) c.push(`<span class="bchip bad">${esc(b['no-shows'])} no-show${b['no-shows'] > 1 ? 's' : ''}</span>`);
+  String(b['interested in'] || '').split(',').map(t => t.trim()).filter(Boolean).slice(0, 5).forEach(t => c.push(`<span class="bchip int">${esc(t)}</span>`));
+  return c.length ? '<span class="bchips">' + c.join('') + '</span>' : '';
+};
+const buyerLine = b => [b['times bought'] ? b['times bought'] + ' sale' + (b['times bought'] > 1 ? 's' : '') : '', b['total spent'] ? money(b['total spent']) : '',
+  b['last bought'] ? 'last ' + b['last bought'] : '', b.platforms].filter(Boolean).join(' · ');
+
+// Settings toggle
+$('stCrm').onchange = async () => {
+  const on = $('stCrm').checked;
+  try { await api('settingsSet', { settings: { crm: on } }); CFG.crm = on; saveCache(); crmSync(); toast(on ? 'Buyers turned on' : 'Buyers turned off. Your notes stay in the Sheet'); }
+  catch (err) { $('stCrm').checked = !on; toast(err.message, true); }
+};
+
+// Sale form
+const saBuyerHome = $('saBuyer').parentNode, saBuyerNext = $('saBuyer').nextSibling;
+function crmSync() {
+  const on = !!CFG.crm;
+  $('slBuyers').classList.toggle('hide', !on);
+  $('saCrm').classList.toggle('hide', !on);
+  const inp = $('saBuyer'), lbl = inp.previousElementSibling;
+  if (on && inp.parentNode !== $('saBuyerSlot')) { $('saBuyerSlot').appendChild(inp); if (lbl && /Buyer/.test(lbl.textContent)) lbl.classList.add('hide'); }
+  if (!on && inp.parentNode === $('saBuyerSlot')) { saBuyerHome.insertBefore(inp, saBuyerNext); saBuyerHome.querySelectorAll('label.hide').forEach(l => l.classList.remove('hide')); }
+  inp.setAttribute('list', on ? 'buyerList' : '');
+  inp.placeholder = on ? 'e.g. John Smith or ebay username' : '';
+}
+function crmToggle() {
+  if (!CFG.crm) return;
+  const plat = $('saPlatform').value, hand = $('saHandWrap').classList.contains('hide') ? '' : segGet('saHand');
+  $('saTurnWrap').classList.toggle('hide', !(plat === 'In person' || hand === 'Collected' || hand === 'Delivered'));
+}
+function buyerHint(prefill) {
+  const b = findBuyer($('saBuyer').value);
+  $('saBuyerHint').classList.toggle('hide', !b);
+  if (!b) return;
+  const warn = b.experience === 'Bad' || b['sell again'] === 'No' || Number(b['no-shows']) > 0;
+  $('saBuyerHint').innerHTML = (warn ? '⚠️ ' : '') + `<b>${esc(bName(b))}</b>: ${esc(buyerLine(b)) || 'no sales yet'} ${buyerChips(b)} <button class="lnk" data-bk="${esc(b.key)}" style="background:none;border:0;color:#0a58ca;font:inherit;padding:4px 0;text-decoration:underline">View profile</button>`;
+  if (prefill) {
+    const put = (id, v) => { if (!$(id).value && v) $(id).value = v; };
+    put('saBMobile', b.mobile); put('saBEmail', b.email); put('saBOther', b['other contact']);
+    if (!$('saBPref').value && b['preferred contact']) $('saBPref').value = b['preferred contact'];
+    if (String(b['happy to hear about similar items']) === 'Yes') $('saBOpt').checked = true;
+  }
+}
+$('saBuyer').addEventListener('input', () => buyerHint(true));
+$('saBuyerHint').onclick = e => { const b = e.target.closest('[data-bk]'); if (b) { e.preventDefault(); openBuyer(b.dataset.bk, 'vSale'); } };
+function listedHint() {
+  const L = Number($('saListed').value), P = Number($('saPrice').value);
+  const off = L > 0 && P > 0 ? Math.round((L - P) / L * 100) : null;
+  $('saListedHint').classList.toggle('hide', off === null);
+  $('saListedHint').textContent = off === null ? '' : off <= 0 ? 'Paid the asking price' : off + '% under asking';
+  if (off !== null && !sale.styleSet) segSet('saStyle', off <= 0 ? 'Paid asking price' : off <= 12 ? 'Fair haggle' : off <= 30 ? 'Hard haggler' : 'Lowballer');
+}
+$('saListed').addEventListener('input', listedHint);
+$('saPrice').addEventListener('input', () => { if (CFG.crm) listedHint(); });
+['saExp', 'saAgain', 'saStyle', 'saTurn'].forEach(id => $(id).addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  segSet(id, segGet(id) === b.dataset.v ? '' : b.dataset.v);   // tap again to clear
+  if (id === 'saStyle') sale.styleSet = true;
+}));
+function crmFill(o) {
+  crmSync();
+  $('saListed').value = num(o['listed at']) ?? '';
+  segSet('saExp', o['buyer experience'] || ''); segSet('saAgain', o['sell again'] || ''); segSet('saStyle', o['buying style'] || ''); segSet('saTurn', o['turned up'] || '');
+  sale.styleSet = !!o['buying style'];
+  $('saInts').value = o['buyer interests'] || ''; $('saBNote').value = o['buyer note'] || '';
+  ['saBMobile', 'saBEmail', 'saBOther'].forEach(id => { $(id).value = ''; }); $('saBPref').value = ''; $('saBOpt').checked = false;
+  $('saContact').open = false;
+  $('saListedHint').classList.add('hide');
+  if (CFG.crm) { buyerHint(true); crmToggle(); if (!BUYERS) loadBuyers().catch(() => {}); }
+}
+function crmPayload(s) {
+  if (!CFG.crm) return null;
+  const v = id => $(id).value.trim();
+  Object.assign(s, { 'listed at': v('saListed'), 'buyer experience': segGet('saExp') || '', 'sell again': segGet('saAgain') || '',
+    'buying style': segGet('saStyle') || '', 'turned up': $('saTurnWrap').classList.contains('hide') ? '' : (segGet('saTurn') || ''),
+    'buyer interests': v('saInts'), 'buyer note': v('saBNote') });
+  if (!s.buyer) return null;
+  return { email: v('saBEmail'), mobile: v('saBMobile'), preferred: $('saBPref').value, other: v('saBOther'), optIn: $('saBOpt').checked };
+}
+
+// Buyers list
+async function openBuyers() {
+  show('vBuyers');
+  renderBuyers();
+  try { await loadBuyers(); renderBuyers(); }
+  catch (err) { if (!BUYERS) $('byList').innerHTML = '<p class="sub">' + esc(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message) + '</p>'; }
+}
+function renderBuyers() {
+  const q = $('byQ').value.trim().toLowerCase(), bs = (BUYERS && BUYERS.buyers) || [];
+  const list = bs.filter(b => !q || [b.name, b.username, b['interested in'], b.notes, b.email, b.platforms].join(' ').toLowerCase().includes(q));
+  $('byList').innerHTML = !BUYERS ? '<p class="sub">Loading…</p>' : list.length ? list.map(b => `<button class="skrow" data-bk="${esc(b.key)}"><span>${esc(bName(b))}${b.name && b.username ? ' <small class="sub">@' + esc(b.username) + '</small>' : ''}<span class="sm">${esc(buyerLine(b)) || 'No sales yet'}</span>${buyerChips(b)}</span><span class="go" style="align-self:center">›</span></button>`).join('')
+    : '<p class="sub" style="padding:10px 0">' + (q ? 'Nobody matches.' : 'No buyers yet. Add a name when you log a sale, or tap ＋ Add.') + '</p>';
+}
+$('byQ').oninput = renderBuyers;
+$('byList').onclick = e => { const b = e.target.closest('[data-bk]'); if (b) openBuyer(b.dataset.bk, 'vBuyers'); };
+$('slBuyers').onclick = openBuyers;
+$('btnBuyersBack').onclick = () => openSales();
+$('btnBuyerAdd').onclick = () => openBuyer(null, 'vBuyers');
+
+// One buyer
+const telUK = m => { const d = String(m || '').replace(/[^\d+]/g, ''); return d.startsWith('+') ? d.slice(1) : d.startsWith('0') ? '44' + d.slice(1) : d; };
+async function openBuyer(key, from) {
+  bpKey = key; bpFrom = from || 'vBuyers'; BP = key ? findBuyer(key) || null : null;
+  show('vBuyer');
+  $('bpEdit').classList.toggle('hide', !!key); $('bpView').classList.toggle('hide', !key); $('btnBuyerEdit').classList.toggle('hide', !key);
+  if (!key) { $('bpName').textContent = 'Add a buyer'; fillBuyerEdit({}); return; }
+  renderBuyer();
+  try { BP = await api('buyer', { key }); renderBuyer(); } catch (err) { if (!BP) $('bpView').innerHTML = '<p class="sub">' + esc(err.message) + '</p>'; }
+}
+function renderBuyer() {
+  const b = BP;
+  if (!b) { $('bpView').innerHTML = '<p class="sub">Loading…</p>'; return; }
+  $('bpName').textContent = bName(b);
+  const pref = String(b['preferred contact'] || ''), acts = [];
+  const act = (label, href, kind) => acts.push(`<a href="${esc(href)}" ${/^https/.test(href) ? 'target="_blank" rel="noopener"' : ''} class="${pref === kind ? 'pref' : ''}">${label}</a>`);
+  if (b.mobile) { act('WhatsApp', 'https://wa.me/' + telUK(b.mobile), 'WhatsApp'); act('Text', 'sms:' + b.mobile, 'Text'); act('Call', 'tel:' + b.mobile, 'Phone call'); }
+  if (b.email) act('Email', 'mailto:' + b.email, 'Email');
+  const warn = [];
+  if (b.ebayOnly) warn.push('eBay buyer: eBay doesn\'t allow messaging buyers about other items or selling outside eBay. Use these notes to spot patterns only.');
+  else if (!b.canMessage) warn.push('They haven\'t said they\'re happy to hear about new items. Only message them about things they\'ve asked for.');
+  if (b.experience === 'Bad' || b['sell again'] === 'No') warn.push('You marked: ' + [b.experience === 'Bad' ? 'bad experience' : '', b['sell again'] === 'No' ? 'don\'t sell to them again' : ''].filter(Boolean).join(', ') + '.');
+  if (Number(b['no-shows']) > 0) warn.push(b['no-shows'] + ' no-show' + (b['no-shows'] > 1 ? 's' : '') + '.');
+  const row = (k, v) => v === '' || v === undefined || v === null ? '' : `<div class="nrow"><span>${k}</span><b>${esc(v)}</b></div>`;
+  $('bpView').innerHTML =
+    (b.username && b.name ? `<p class="sub">@${esc(b.username)}</p>` : '') +
+    (warn.length ? `<div class="warn">${warn.map(esc).join('<br>')}</div>` : (b.canMessage ? '<p class="sub">✓ Happy to hear about similar items</p>' : '')) +
+    (acts.length ? `<div class="bpacts">${acts.join('')}</div>` : '') +
+    (pref || b['other contact'] ? `<p class="sub">Best way to reach them: <b>${esc(pref || 'not sure')}</b>${b['other contact'] ? ' · ' + esc(b['other contact']) : ''}</p>` : '') +
+    buyerChips(b) +
+    `<div class="ncard" style="margin-top:10px">${row('Times bought', b['times bought'] || 0)}${row('Total spent', b['total spent'] ? money(b['total spent']) : '')}${row('Last bought', b['last bought'])}${row('Average off your asking price', b['avg off asking %'] !== '' ? b['avg off asking %'] + '%' : '')}${row('Turned up', b['turned up'])}${row('Refunds', b.refunds || '')}${row('Where they buy', b.platforms)}${row('First seen', b['first seen'])}</div>` +
+    (b.notes ? `<h3 class="sech">Notes</h3><div class="card" style="white-space:pre-wrap">${esc(b.notes)}</div>` : '') +
+    (b.sales && b.sales.length ? `<h3 class="sech">What they bought</h3><div class="card" style="padding:4px 14px">${b.sales.map(x => `<div class="skrow"><span>${esc(x.item)}<span class="sm">${esc(x.date)} · ${esc(x.platform)}${x.listed ? ' · listed ' + money(x.listed) : ''}${x.note ? ' · ' + esc(x.note) : ''}</span></span><b>${money(x.price)}</b></div>`).join('')}</div>` : '');
+}
+function fillBuyerEdit(b) {
+  $('beName').value = b.name || ''; $('beUser').value = b.username || ''; $('beMobile').value = b.mobile || ''; $('beEmail').value = b.email || '';
+  $('bePref').value = b['preferred contact'] || ''; $('beOther').value = b['other contact'] || '';
+  $('beOpt').checked = String(b['happy to hear about similar items']) === 'Yes';
+  segSet('beExp', b.experience || ''); segSet('beAgain', b['sell again'] || ''); segSet('beStyle', b['buying style'] || '');
+  $('beInts').value = b['interested in'] || ''; $('beNotes').value = b.notes || '';
+}
+['beExp', 'beAgain', 'beStyle'].forEach(id => $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (b) segSet(id, segGet(id) === b.dataset.v ? '' : b.dataset.v); }));
+$('btnBuyerEdit').onclick = () => { fillBuyerEdit(BP || {}); $('bpView').classList.add('hide'); $('bpEdit').classList.remove('hide'); $('btnBuyerEdit').classList.add('hide'); };
+$('btnBuyerBack').onclick = () => { if (bpFrom === 'vSale') show('vSale'); else if (bpFrom === 'vMatch') show('vMatch'); else if (bpFrom === 'vHome') show('vHome'); else openBuyers(); };
+$('btnBuyerSave').onclick = async () => {
+  const v = id => $(id).value.trim();
+  const buyer = { name: v('beName'), username: v('beUser'), mobile: v('beMobile'), email: v('beEmail'), 'preferred contact': $('bePref').value,
+    'other contact': v('beOther'), 'happy to hear about similar items': $('beOpt').checked, experience: segGet('beExp') || '', 'sell again': segGet('beAgain') || '',
+    'buying style': segGet('beStyle') || '', 'interested in': v('beInts'), notes: $('beNotes').value.trim() };
+  if (!buyer.name && !buyer.username) { toast('Add a name or username', true); return; }
+  const b = $('btnBuyerSave'); b.disabled = true; b.textContent = 'Saving…';
+  try {
+    BP = await api('buyerSave', { key: bpKey || undefined, buyer });
+    bpKey = BP.key;
+    loadBuyers().catch(() => {});
+    $('bpEdit').classList.add('hide'); $('bpView').classList.remove('hide'); $('btnBuyerEdit').classList.remove('hide');
+    renderBuyer(); toast('Saved');
+  } catch (err) { toast(err.message, true); }
+  b.disabled = false; b.textContent = 'Save';
+};
+
+// Who might want it: after saving a purchase, and on the Stock page
+function renderMatchList(matches) {
+  return matches.map(m => `<h3 class="sech">${esc(m.item)}</h3><div class="card" style="padding:4px 14px">${m.buyers.map(b => `<button class="skrow" data-bk="${esc(b.key)}"><span>${esc(bName(b))}<span class="sm">Interested in ${esc(b.tag)}${b['preferred contact'] ? ' · best by ' + esc(b['preferred contact']) : ''}</span><span class="sm">${b.ebayOnly ? '⚠️ eBay buyer: can\'t message about other items' : b.canMessage ? '✓ Happy to hear about similar items' : '⚠️ Hasn\'t said they\'re happy to hear from you'}</span></span><span class="go" style="align-self:center">›</span></button>`).join('')}</div>`).join('');
+}
+function openMatch(matches) {
+  show('vMatch');
+  $('mtList').innerHTML = '<p class="hint">These buyers said they\'re after something like this. Tap one for their details. Only message people who are happy to hear from you.</p>' + renderMatchList(matches);
+}
+$('mtList').onclick = e => { const b = e.target.closest('[data-bk]'); if (b) openBuyer(b.dataset.bk, 'vMatch'); };
+$('btnMatchBack').onclick = () => show(STOCK && $('vStock').dataset.fromMatch ? 'vStock' : 'vHome');
+function renderHomeMatch() {
+  let m = null; try { m = JSON.parse(localStorage.getItem(LS_MATCH)); } catch (e) {}
+  const show_ = !!(CFG.crm && m && m.matches && m.matches.length);
+  $('homeMatch').classList.toggle('hide', !show_);
+  if (!show_) return;
+  const people = new Set(); m.matches.forEach(x => x.buyers.forEach(b => people.add(b.key)));
+  $('homeMatch').innerHTML = `<b>👥 ${people.size} buyer${people.size > 1 ? 's' : ''} might want what you just bought</b>
+    <p class="sub" style="margin:4px 0">${m.matches.slice(0, 3).map(x => esc(x.item) + ': ' + x.buyers.slice(0, 3).map(b => esc(bName(b))).join(', ')).join('<br>')}</p>
+    <button class="lnk" id="hmOpen">See who</button> &nbsp; <button class="lnk" id="hmClose" style="color:#666">Dismiss</button>`;
+  $('hmOpen').onclick = () => { delete $('vStock').dataset.fromMatch; openMatch(m.matches); };
+  $('hmClose').onclick = () => { try { localStorage.removeItem(LS_MATCH); } catch (e) {} renderHomeMatch(); };
+}
+async function matchPurchase(items) {
+  if (!CFG.crm || !items.length) return;
+  try {
+    const r = await api('buyerMatch', { items });
+    if (r.matches && r.matches.length) { localStorage.setItem(LS_MATCH, JSON.stringify({ when: Date.now(), matches: r.matches })); renderHomeMatch(); }
+  } catch (e) {}
+}
+var STOCK_MATCH = {};
+async function loadStockMatches() {
+  if (!CFG.crm || !STOCK || !STOCK.items.length) { STOCK_MATCH = {}; return; }
+  try {
+    const r = await api('buyerMatch', { items: [...new Set(STOCK.items.map(x => x.item))] });
+    STOCK_MATCH = {}; (r.matches || []).forEach(m => { STOCK_MATCH[m.item] = m; });
+    renderStockPage();
+  } catch (e) {}
+}
+try { if (BUYERS) fillBuyerLists(); crmSync(); renderHomeMatch(); } catch (e) {}

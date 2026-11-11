@@ -398,6 +398,17 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 .skrow{display:flex;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);width:100%;background:none;border-left:0;border-right:0;border-top:0;text-align:left;font:inherit;cursor:pointer}
 .skrow:last-child{border-bottom:0}
 .skrow .sm{display:block}
+.search{width:100%;padding:13px 14px;border:1px solid #d0d0d5;border-radius:12px;font-size:16px;font-family:inherit;margin-bottom:8px;background:#fff}
+.bchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.bchip{font-size:12px;padding:2px 8px;border-radius:999px;background:#eef0f3;color:#333}
+.bchip.good{background:#e6f4ea;color:#1e6b34}.bchip.bad{background:#fde8e8;color:#9b1c1c}.bchip.int{background:#efe9ff;color:#4b2fa3}
+.matchcard{background:#f4efff;border:1px solid #ddd0ff;border-radius:16px;padding:12px 14px;margin:10px 0}
+.matchcard button.lnk{background:none;border:0;padding:0;color:#4b2fa3;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
+.mtag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:#efe9ff;color:#4b2fa3;margin-left:6px;cursor:pointer}
+.bpacts{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin:10px 0}
+.bpacts a{display:block;text-align:center;padding:12px;border-radius:12px;background:#fff;border:1px solid #d0d0d5;color:#0a58ca;text-decoration:none;font-weight:700}
+.bpacts a.pref{border-color:#0a84ff;background:#e8f1ff}
+.warn{background:#fff7e6;border:1px solid #f3d9a4;border-radius:12px;padding:10px 12px;font-size:.92em;margin:8px 0}
 .skrow .tip{display:block;color:#8a5a00;font-size:.85em;margin-top:2px}
 .agebox{background:#fff7e6;border:1px solid #f3d9a4;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:.95em}
 .flash{animation:flash 1.2s ease}@keyframes flash{0%{background:#fff3c4}100%{background:transparent}}
@@ -423,6 +434,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <header class="homehead"><div><h1>Receipts</h1><p class="sub" id="homeDate"></p></div>
       <button class="gear" id="btnSettings" aria-label="Settings"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></header>
     <div id="todo" class="todo hide"></div>
+    <div id="homeMatch" class="matchcard hide"></div>
     <div class="addbox" id="addBox">
       <button class="hero" id="btnAdd" aria-expanded="false"><span class="plus">＋</span> Add receipt</button>
       <div class="addopts" id="addOpts">
@@ -488,6 +500,10 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     </div>
 
     <h3 class="sech">Selling</h3>
+    <div class="card scard2">
+      <label class="check"><input type="checkbox" id="stCrm"> Buyers: notes and contacts</label>
+      <p class="sub">Add notes about each buyer when you log a sale: how it went, would you sell to them again, what they're after. When you buy something, the app tells you who might want it. Kept on a "Buyers" tab in your Sheet.</p>
+    </div>
     <div class="card scard2" id="slWhere">
       <label>Where you sell</label>
       <p class="hint">Stopped using one? Turn it off. Your old sales stay safe.</p>
@@ -562,6 +578,39 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <p class="hint">Tap an item to log its sale. It's linked to this purchase, so profit and the count update.</p>
     <div id="skAge" class="agebox hide"></div>
     <div id="skList" class="card" style="padding:4px 14px"></div>
+  </section>
+
+  <!-- BUYERS (CRM) -->
+  <section id="vBuyers" class="hide">
+    <div class="hdr"><button class="back" id="btnBuyersBack">‹</button><h2 style="margin:0;flex:1">Buyers</h2><button class="btn sec" id="btnBuyerAdd" style="width:auto;margin:0;padding:8px 12px">＋ Add</button></div>
+    <input id="byQ" type="search" placeholder="Search names, interests, notes" autocomplete="off" class="search">
+    <div id="byList" class="card" style="padding:4px 14px"></div>
+  </section>
+  <section id="vBuyer" class="hide form">
+    <div class="hdr"><button class="back" id="btnBuyerBack">‹</button><h2 style="margin:0;flex:1" id="bpName">Buyer</h2><button class="btn sec" id="btnBuyerEdit" style="width:auto;margin:0;padding:8px 12px">Edit</button></div>
+    <div id="bpView"></div>
+    <div id="bpEdit" class="hide">
+      <div class="duo"><div><label>Name</label><input id="beName" autocomplete="off"></div><div><label>Username</label><input id="beUser" autocomplete="off"></div></div>
+      <div class="duo"><div><label>Mobile</label><input id="beMobile" type="tel" inputmode="tel" autocomplete="off"></div><div><label>Email</label><input id="beEmail" type="email" inputmode="email" autocomplete="off"></div></div>
+      <label>Best way to reach them</label>
+      <select id="bePref"><option value="">Not sure</option><option>Platform messages</option><option>WhatsApp</option><option>Text</option><option>Phone call</option><option>Email</option><option>Facebook Messenger</option><option>Instagram</option><option>Snapchat</option><option>Other</option></select>
+      <label>Other contact (e.g. Snapchat or Instagram name)</label><input id="beOther" autocomplete="off">
+      <label class="check"><input type="checkbox" id="beOpt"> They're happy to hear about similar items</label>
+      <label>How it went (last time)</label>
+      <div class="seg" id="beExp"><button data-v="Good">👍 Good</button><button data-v="Fine">👌 Fine</button><button data-v="Bad">👎 Bad</button></div>
+      <label>Sell to them again?</label>
+      <div class="seg" id="beAgain"><button data-v="Yes">Yes</button><button data-v="Maybe">Maybe</button><button data-v="No">No</button></div>
+      <label>How they buy</label>
+      <div class="seg two" id="beStyle"><button data-v="Paid asking price">Paid asking</button><button data-v="Fair haggle">Fair haggle</button><button data-v="Hard haggler">Hard haggler</button><button data-v="Lowballer">Lowballer</button></div>
+      <label>Interested in</label><input id="beInts" list="tagList" autocomplete="off" placeholder="e.g. golf balls, Pokémon cards">
+      <label>Notes</label><textarea id="beNotes" rows="5"></textarea>
+      <p class="hint">Only write what you'd be happy for them to read: people can ask to see what you keep about them.</p>
+      <div class="bar"><button class="btn" id="btnBuyerSave">Save</button></div>
+    </div>
+  </section>
+  <section id="vMatch" class="hide">
+    <div class="hdr"><button class="back" id="btnMatchBack">‹</button><h2 style="margin:0;flex:1">Who might want it</h2></div>
+    <div id="mtList"></div>
   </section>
 
   <!-- HELP -->
@@ -688,6 +737,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <p class="hint">Sites tell HMRC about you at 30 sales or £1,700 in a year. That is normal. It does not mean you owe tax.</p>
       <div id="slRepList"></div>
     </details>
+    <button class="big wide hide" id="slBuyers"><span><span>Buyers</span><small>Notes, contacts and what they're after</small></span><span class="go">›</span></button>
     <button class="big wide" id="slStock"><span><span id="slStockSum">Stock</span><small>What's left to sell, and how long you've had it</small></span><span class="go">›</span></button>
     <button class="btn sec" id="btnSlSettings" style="margin-top:14px">⚙️ Where you sell &amp; settings</button>
   </section>
@@ -751,6 +801,35 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <div id="saLinked" class="sub hide"></div>
     <input id="saFind" placeholder="Search your purchases, e.g. kettle" autocomplete="off">
     <div id="saFound"></div>
+    <div id="saCrm" class="card hide" style="margin-top:14px">
+      <h3 style="margin:0 0 4px">About the buyer <small class="sub">(optional)</small></h3>
+      <label for="saBuyerC">Name or username</label>
+      <div id="saBuyerSlot"></div>
+      <div id="saBuyerHint" class="sub hide"></div>
+      <label>Listed at (£)</label><input id="saListed" type="number" step="0.01" inputmode="decimal" placeholder="The price you asked">
+      <p class="hint hide" id="saListedHint"></p>
+      <label>How did it go?</label>
+      <div class="seg" id="saExp"><button data-v="Good">👍 Good</button><button data-v="Fine">👌 Fine</button><button data-v="Bad">👎 Bad</button></div>
+      <label>Sell to them again?</label>
+      <div class="seg" id="saAgain"><button data-v="Yes">Yes</button><button data-v="Maybe">Maybe</button><button data-v="No">No</button></div>
+      <label>How they buy</label>
+      <div class="seg two" id="saStyle"><button data-v="Paid asking price"><b>Paid asking</b><small>no haggling</small></button><button data-v="Fair haggle"><b>Fair haggle</b><small>a little off</small></button><button data-v="Hard haggler"><b>Hard haggler</b><small>pushed hard</small></button><button data-v="Lowballer"><b>Lowballer</b><small>silly offers</small></button></div>
+      <div id="saTurnWrap"><label>Did they turn up?</label>
+      <div class="seg two" id="saTurn"><button data-v="On time">On time</button><button data-v="Late">Late</button><button data-v="Rescheduled">Rescheduled</button><button data-v="No-show">No-show</button></div></div>
+      <label>Interested in</label><input id="saInts" list="tagList" placeholder="e.g. golf balls, Pokémon cards" autocomplete="off">
+      <datalist id="tagList"></datalist>
+      <p class="hint">Separate with commas. When you buy something that matches, the app tells you.</p>
+      <label>Note about them</label><textarea id="saBNote" rows="2" placeholder="e.g. collects after 6pm, pays cash"></textarea>
+      <details class="more" id="saContact"><summary>Contact details (if they gave them)</summary>
+        <div class="duo"><div><label>Mobile</label><input id="saBMobile" type="tel" inputmode="tel" autocomplete="off"></div>
+          <div><label>Email</label><input id="saBEmail" type="email" inputmode="email" autocomplete="off"></div></div>
+        <label>Best way to reach them</label>
+        <select id="saBPref"><option value="">Not sure</option><option>Platform messages</option><option>WhatsApp</option><option>Text</option><option>Phone call</option><option>Email</option><option>Facebook Messenger</option><option>Instagram</option><option>Snapchat</option><option>Other</option></select>
+        <label>Other contact (e.g. Snapchat or Instagram name)</label><input id="saBOther" autocomplete="off">
+        <label class="check"><input type="checkbox" id="saBOpt"> They're happy to hear about similar items</label>
+        <p class="hint">Only message people about new items if they said yes. Never message eBay buyers about other items: eBay doesn't allow it.</p>
+      </details>
+    </div>
     <label>Receipt photo (optional)</label>
     <button class="btn sec" id="btnSalePhoto">📷 Add a photo of the receipt</button>
     <img id="saPhoto" class="hide" style="width:96px;border-radius:8px;margin-top:8px" alt="Receipt photo">
@@ -854,7 +933,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=36"></script>
-<script src="app.js?v=36"></script>
+<script src="help.js?v=37"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>
