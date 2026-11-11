@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch'];
-const APP_VERSION = 'v37';
+const APP_VERSION = 'v38';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2820,7 +2820,8 @@ function renderBuyer() {
   if (b.mobile) { act('WhatsApp', 'https://wa.me/' + telUK(b.mobile), 'WhatsApp'); act('Text', 'sms:' + b.mobile, 'Text'); act('Call', 'tel:' + b.mobile, 'Phone call'); }
   if (b.email) act('Email', 'mailto:' + b.email, 'Email');
   const warn = [];
-  if (b.ebayOnly) warn.push('eBay buyer: eBay doesn\'t allow messaging buyers about other items or selling outside eBay. Use these notes to spot patterns only.');
+  const mk = b.marketOnly || (b.ebayOnly ? 'eBay' : '');
+  if (mk) warn.push(mk + ' buyer: ' + mk + ' doesn\'t allow messaging buyers about other items or selling outside ' + (mk === 'eBay and Amazon' ? 'them' : mk) + '. Use these notes to spot patterns only.');
   else if (!b.canMessage) warn.push('They haven\'t said they\'re happy to hear about new items. Only message them about things they\'ve asked for.');
   if (b.experience === 'Bad' || b['sell again'] === 'No') warn.push('You marked: ' + [b.experience === 'Bad' ? 'bad experience' : '', b['sell again'] === 'No' ? 'don\'t sell to them again' : ''].filter(Boolean).join(', ') + '.');
   if (Number(b['no-shows']) > 0) warn.push(b['no-shows'] + ' no-show' + (b['no-shows'] > 1 ? 's' : '') + '.');
@@ -2864,7 +2865,7 @@ $('btnBuyerSave').onclick = async () => {
 
 // Who might want it: after saving a purchase, and on the Stock page
 function renderMatchList(matches) {
-  return matches.map(m => `<h3 class="sech">${esc(m.item)}</h3><div class="card" style="padding:4px 14px">${m.buyers.map(b => `<button class="skrow" data-bk="${esc(b.key)}"><span>${esc(bName(b))}<span class="sm">Interested in ${esc(b.tag)}${b['preferred contact'] ? ' · best by ' + esc(b['preferred contact']) : ''}</span><span class="sm">${b.ebayOnly ? '⚠️ eBay buyer: can\'t message about other items' : b.canMessage ? '✓ Happy to hear about similar items' : '⚠️ Hasn\'t said they\'re happy to hear from you'}</span></span><span class="go" style="align-self:center">›</span></button>`).join('')}</div>`).join('');
+  return matches.map(m => `<h3 class="sech">${esc(m.item)}</h3><div class="card" style="padding:4px 14px">${m.buyers.map(b => `<button class="skrow" data-bk="${esc(b.key)}"><span>${esc(bName(b))}<span class="sm">Interested in ${esc(b.tag)}${b['preferred contact'] ? ' · best by ' + esc(b['preferred contact']) : ''}</span><span class="sm">${b.ebayOnly ? '⚠️ ' + (b.marketOnly || 'eBay') + ' buyer: can\'t message about other items' : b.canMessage ? '✓ Happy to hear about similar items' : '⚠️ Hasn\'t said they\'re happy to hear from you'}</span></span><span class="go" style="align-self:center">›</span></button>`).join('')}</div>`).join('');
 }
 function openMatch(matches) {
   show('vMatch');
