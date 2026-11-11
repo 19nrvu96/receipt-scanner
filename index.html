@@ -398,6 +398,9 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 .skrow{display:flex;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);width:100%;background:none;border-left:0;border-right:0;border-top:0;text-align:left;font:inherit;cursor:pointer}
 .skrow:last-child{border-bottom:0}
 .skrow .sm{display:block}
+.telrow{display:flex;gap:6px}.telrow select{width:auto;flex:0 0 auto;padding-left:8px;padding-right:8px}.telrow input{flex:1;min-width:0}
+.rfind{margin-top:6px}.rfind input{width:100%;padding:10px 12px;border:1px solid #d0d0d5;border-radius:10px;font:inherit;font-size:15px}
+.rfres button{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e0e0e5;border-radius:10px;padding:8px 10px;margin-top:4px;font:inherit;font-size:14px;cursor:pointer}
 .search{width:100%;padding:13px 14px;border:1px solid #d0d0d5;border-radius:12px;font-size:16px;font-family:inherit;margin-bottom:8px;background:#fff}
 .bchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .bchip{font-size:12px;padding:2px 8px;border-radius:999px;background:#eef0f3;color:#333}
@@ -591,14 +594,14 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <div id="bpView"></div>
     <div id="bpEdit" class="hide">
       <div class="duo"><div><label>Name</label><input id="beName" autocomplete="off"></div><div><label>Username</label><input id="beUser" autocomplete="off"></div></div>
-      <div class="duo"><div><label>Mobile</label><input id="beMobile" type="tel" inputmode="tel" autocomplete="off"></div><div><label>Email</label><input id="beEmail" type="email" inputmode="email" autocomplete="off"></div></div>
+      <div><div><label>Mobile</label><div class="telrow"><select id="beCc" aria-label="Country code"><option value="+44">🇬🇧 +44</option><option value="+353">🇮🇪 +353</option><option value="+1">🇺🇸 +1</option><option value="+33">🇫🇷 +33</option><option value="+49">🇩🇪 +49</option><option value="+34">🇪🇸 +34</option><option value="+39">🇮🇹 +39</option><option value="+31">🇳🇱 +31</option><option value="+351">🇵🇹 +351</option><option value="+48">🇵🇱 +48</option><option value="+40">🇷🇴 +40</option><option value="+91">🇮🇳 +91</option><option value="+92">🇵🇰 +92</option><option value="+234">🇳🇬 +234</option><option value="+61">🇦🇺 +61</option></select><input id="beMobile" type="tel" inputmode="tel" autocomplete="off" placeholder="07700 900123"></div></div><div><label>Email</label><input id="beEmail" type="email" inputmode="email" autocomplete="off"></div></div>
       <label>Best way to reach them</label>
       <select id="bePref"><option value="">Not sure</option><option>Platform messages</option><option>WhatsApp</option><option>Text</option><option>Phone call</option><option>Email</option><option>Facebook Messenger</option><option>Instagram</option><option>Snapchat</option><option>Other</option></select>
       <label>Other contact (e.g. Snapchat or Instagram name)</label><input id="beOther" autocomplete="off">
       <label class="check"><input type="checkbox" id="beOpt"> They're happy to hear about similar items</label>
       <label>How it went (last time)</label>
       <div class="seg" id="beExp"><button data-v="Good">👍 Good</button><button data-v="Fine">👌 Fine</button><button data-v="Bad">👎 Bad</button></div>
-      <label>Sell to them again?</label>
+      <label>Would you sell to them again?</label>
       <div class="seg" id="beAgain"><button data-v="Yes">Yes</button><button data-v="Maybe">Maybe</button><button data-v="No">No</button></div>
       <label>How they buy</label>
       <div class="seg two" id="beStyle"><button data-v="Paid asking price">Paid asking</button><button data-v="Fair haggle">Fair haggle</button><button data-v="Hard haggler">Hard haggler</button><button data-v="Lowballer">Lowballer</button></div>
@@ -810,7 +813,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <p class="hint hide" id="saListedHint"></p>
       <label>How did it go?</label>
       <div class="seg" id="saExp"><button data-v="Good">👍 Good</button><button data-v="Fine">👌 Fine</button><button data-v="Bad">👎 Bad</button></div>
-      <label>Sell to them again?</label>
+      <label>Would you sell to them again?</label>
       <div class="seg" id="saAgain"><button data-v="Yes">Yes</button><button data-v="Maybe">Maybe</button><button data-v="No">No</button></div>
       <label>How they buy</label>
       <div class="seg two" id="saStyle"><button data-v="Paid asking price"><b>Paid asking</b><small>no haggling</small></button><button data-v="Fair haggle"><b>Fair haggle</b><small>a little off</small></button><button data-v="Hard haggler"><b>Hard haggler</b><small>pushed hard</small></button><button data-v="Lowballer"><b>Lowballer</b><small>silly offers</small></button></div>
@@ -818,10 +821,10 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <div class="seg two" id="saTurn"><button data-v="On time">On time</button><button data-v="Late">Late</button><button data-v="Rescheduled">Rescheduled</button><button data-v="No-show">No-show</button></div></div>
       <label>Interested in</label><input id="saInts" list="tagList" placeholder="e.g. golf balls, Pokémon cards" autocomplete="off">
       <datalist id="tagList"></datalist>
-      <p class="hint">Separate with commas. When you buy something that matches, the app tells you.</p>
+      <p class="hint" id="saIntsHint">Separate with commas. When you buy something that matches, the app tells you.</p>
       <label>Note about them</label><textarea id="saBNote" rows="2" placeholder="e.g. collects after 6pm, pays cash"></textarea>
       <details class="more" id="saContact"><summary>Contact details (if they gave them)</summary>
-        <div class="duo"><div><label>Mobile</label><input id="saBMobile" type="tel" inputmode="tel" autocomplete="off"></div>
+        <div><div><label>Mobile</label><div class="telrow"><select id="saBCc" aria-label="Country code"><option value="+44">🇬🇧 +44</option><option value="+353">🇮🇪 +353</option><option value="+1">🇺🇸 +1</option><option value="+33">🇫🇷 +33</option><option value="+49">🇩🇪 +49</option><option value="+34">🇪🇸 +34</option><option value="+39">🇮🇹 +39</option><option value="+31">🇳🇱 +31</option><option value="+351">🇵🇹 +351</option><option value="+48">🇵🇱 +48</option><option value="+40">🇷🇴 +40</option><option value="+91">🇮🇳 +91</option><option value="+92">🇵🇰 +92</option><option value="+234">🇳🇬 +234</option><option value="+61">🇦🇺 +61</option></select><input id="saBMobile" type="tel" inputmode="tel" autocomplete="off" placeholder="07700 900123"></div></div>
           <div><label>Email</label><input id="saBEmail" type="email" inputmode="email" autocomplete="off"></div></div>
         <label>Best way to reach them</label>
         <select id="saBPref"><option value="">Not sure</option><option>Platform messages</option><option>WhatsApp</option><option>Text</option><option>Phone call</option><option>Email</option><option>Facebook Messenger</option><option>Instagram</option><option>Snapchat</option><option>Other</option></select>
@@ -933,7 +936,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=38"></script>
-<script src="app.js?v=38"></script>
+<script src="help.js?v=39"></script>
+<script src="app.js?v=39"></script>
 </body>
 </html>

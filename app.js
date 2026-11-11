@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch'];
-const APP_VERSION = 'v38';
+const APP_VERSION = 'v39';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -588,7 +588,7 @@ function buildReview(result, source) {
     const back = rows.reduce((t, r) => t + Math.abs(Number(r['total cost']) || 0), 0);
     $('refBanner').innerHTML = '↩︎ <b>Refund — ' + money(back) + ' back.</b> ' + (m.candidates && m.candidates.length
       ? 'Check which purchase each line refunds. That purchase is marked returned and refunded in your Sheet.'
-      : 'No matching purchase was found in your Sheet, so this is saved as refund lines only.');
+      : 'No match found automatically. Search under each line to pick the purchase it refunds, or save it as refund lines only.');
   }
   $('refBanner').classList.toggle('hide', !state.refund);
 
@@ -819,13 +819,45 @@ function showEmailField() {
 }
 
 /* ---------- refunds ---------- */
+// Pick the refunded purchase by hand: suggestions from your Sheet as you type (free, no AI)
+let rfTimer = null, rfRes = {};
+$('items').addEventListener('input', e => {
+  const i = e.target.dataset.rfi;
+  if (i === undefined) return;
+  const q = e.target.value.trim();
+  clearTimeout(rfTimer);
+  if (q.length < 2) { $('rfres' + i).innerHTML = ''; return; }
+  rfTimer = setTimeout(async () => {
+    try {
+      const r = await api('purchaseSearch', { q });
+      rfRes[i] = (r || []).filter(x => !state.rows.some(y => y._matchRowPicked === x.row && y !== state.rows[i]));
+      $('rfres' + i).innerHTML = rfRes[i].length ? rfRes[i].map((x, k) => `<button data-rfpick="${i}:${k}">${esc(x.item)}<br><small class="sub">${esc(x.date)} · ${esc(x.store)} · ${money(x.total)}</small></button>`).join('')
+        : '<p class="sub">Nothing matches. Try one word, e.g. "golf".</p>';
+    } catch (err) { $('rfres' + i).innerHTML = '<p class="sub">' + esc(err.message) + '</p>'; }
+  }, 300);
+});
+$('items').addEventListener('click', e => {
+  const b = e.target.closest('[data-rfpick]');
+  if (!b) return;
+  const [i, k] = b.dataset.rfpick.split(':').map(Number), x = (rfRes[i] || [])[k];
+  if (!x) return;
+  state.matches = state.matches || { candidates: [], lines: [] };
+  state.matches.candidates = state.matches.candidates || [];
+  let n = state.matches.candidates.findIndex(c => c.row === x.row);
+  if (n < 0) { state.matches.candidates.push({ row: x.row, item: x.item, date: x.date, total: x.total, purpose: x.purpose, shared: x.shared, notes: x.notes, store: x.store }); n = state.matches.candidates.length - 1; }
+  applyMatch(state.rows[i], n);
+  state.rows[i]._matchRowPicked = x.row;
+  renderItems();
+  toast('Matched to ' + x.item);
+});
 function matchSelect(r, i) {
   const c = (state.matches && state.matches.candidates) || [];
   return `<div class="match">Refund for:
     <select data-k="_match" data-i="${i}">
       ${c.map((x, k) => `<option value="${k}" ${k === r._match ? 'selected' : ''}>${esc(x.date)} · ${esc(x.item)} · ${money(x.total)}${x.shared ? ' (your share)' : ''}</option>`).join('')}
       <option value="-1" ${r._match === -1 ? 'selected' : ''}>Not in the Sheet — save as a refund line only</option>
-    </select></div>`;
+    </select>
+    <div class="rfind"><input data-rfi="${i}" placeholder="${c.length ? 'Not right? ' : ''}Search your purchases, e.g. golf balls" autocomplete="off"><div class="rfres" id="rfres${i}"></div></div></div>`;
 }
 
 // Takes the purpose and shared % from the purchase being refunded
@@ -1546,8 +1578,26 @@ function saleCard(o, i, list) {
   </div><div class="amt">${price !== null ? money(price) : net !== null ? money(net) : '—'}</div></div>`;
 }
 
+const LS_POSTED = 'rs_posted_out';
+var postedOut = lsList(LS_POSTED), postedFlushing = false;
+async function flushPosted() {
+  if (postedFlushing || !postedOut.length) return;
+  postedFlushing = true;
+  for (const id of postedOut.slice()) {
+    try { await api('labelDone', { id }); postedOut = postedOut.filter(x => x !== id); lsSet(LS_POSTED, postedOut); }
+    catch (err) {
+      if (err.code === 'OFFLINE') break;
+      postedOut = postedOut.filter(x => x !== id); lsSet(LS_POSTED, postedOut);
+      toast('Couldn\'t mark a parcel as posted: ' + err.message, true); SALES = null;
+    }
+  }
+  postedFlushing = false;
+}
+setInterval(flushPosted, 30000);
+
 function renderSales() {
   const d = SALES || { needs: [], recent: [], toPost: [] };
+  if (postedOut.length && d.toPost) d.toPost = d.toPost.filter(l => postedOut.indexOf(l.id) < 0);   // tapped Posted, still sending
   setSalesCount(countsFrom(d));
   $('slPostWrap').classList.toggle('hide', !d.toPost.length);
   $('slPost').innerHTML = d.toPost.map((l, i) => `<div class="card scard"><div class="sb">
@@ -1667,6 +1717,7 @@ $('btnStockBack').onclick = () => openSales();
 function linkPurchase(x) {
   if (!x) return;
   $('saItem').value = x.item;
+  try { autoInts(); } catch (e) {}
   sale.linked = 'Purchases row ' + x.row + ': ' + x.item;
   sale.itemCost = Number(x.each !== undefined ? x.each : x.cost) * (Number($('saQty').value) || 1);
   sale.linkEach = Number(x.each !== undefined ? x.each : x.cost);
@@ -1766,11 +1817,14 @@ $('vSales').addEventListener('click', async e => {
     } catch (err) { t.disabled = false; toast(err.message, true); }
     return;
   }
-  if (t.dataset.posted !== undefined) {
+  if (t.dataset.posted !== undefined) {   // instant: off the list now, saved in the background (kept on the phone if no signal)
     const l = SALES.toPost[Number(t.dataset.posted)];
-    t.disabled = true;
-    try { SALES.toPost = await api('labelDone', { id: l.id }); labDel(l.id); renderSales(); toast('Posted. We saved today\'s date.'); }
-    catch (err) { t.disabled = false; toast(err.message, true); }
+    if (!l) return;
+    postedOut = postedOut.filter(x => x !== l.id).concat([l.id]); lsSet(LS_POSTED, postedOut);
+    SALES.toPost = SALES.toPost.filter(x => x.id !== l.id);
+    labDel(l.id); renderSales();
+    toast('✓ Posted. We saved today\'s date.');
+    flushPosted();
     return;
   }
   if (card) openSale(card.dataset.need !== undefined ? SALES.needs[Number(card.dataset.need)] : SALES.recent[Number(card.dataset.rec)]);
@@ -2446,7 +2500,7 @@ setTimeout(() => { try { if (localStorage.getItem(LS_URL) && !localStorage.getIt
 // Offline queue: a photo left "reading" when the app closed is waiting again
 jobAll().then(all => Promise.all(all.filter(j => j.status === 'reading').map(j => { j.status = 'pending'; return jobPut(j); })))
   .then(refreshJobs).then(() => setTimeout(jobTick, 2000));
-window.addEventListener('online', () => { refreshJobs(); jobTick(); tripTick(); flushSales(true); });
+window.addEventListener('online', () => { refreshJobs(); jobTick(); tripTick(); flushSales(true); flushPosted(); });
 refreshTrips(); setTimeout(tripTick, 3000); setInterval(tripTick, 60000);
 window.addEventListener('offline', refreshJobs);
 setInterval(jobTick, 60000);
@@ -2708,6 +2762,60 @@ const buyerChips = b => {
 const buyerLine = b => [b['times bought'] ? b['times bought'] + ' sale' + (b['times bought'] > 1 ? 's' : '') : '', b['total spent'] ? money(b['total spent']) : '',
   b['last bought'] ? 'last ' + b['last bought'] : '', b.platforms].filter(Boolean).join(' · ');
 
+// A rough category from the item's name: fills in "interested in" (same list as Sales.gs CATEGORIES_)
+const CATEGORIES = [
+  ['golf', /\b(golf|titleist|callaway|taylormade|putter|pro v1)/],
+  ['trainers', /\b(trainers?|sneakers?|air max|air force|jordans?|yeezy|new balance)\b/],
+  ['collectibles', /\b(funko|pokemon|pokémon|trading cards?|tcg|one piece card|yu-?gi-?oh|collectibles?|figurines?)\b/],
+  ['gaming', /\b(ps5|ps4|playstation|xbox|nintendo|switch|controller|video games?)\b/],
+  ['phones and tech', /\b(iphone|ipad|samsung|galaxy|phones?|tablets?|laptops?|macbook|airpods|headphones|earbuds|speakers?|chargers?|cameras?|smart ?watch)\b/],
+  ['cleaning', /\b(mops?|hoover|vacuum|steam cleaner|cleaner|cleaning|duster|vileda|dettol|bleach|carpet cleaner)\b/],
+  ['kitchen appliances', /\b(kettles?|toasters?|blenders?|air ?fryers?|microwaves?|coffee machine|nespresso|food processor|stand mixer|slow cooker|ninja)\b/],
+  ['cookware', /\b(pans?|saucepans?|woks?|tefal|cookware|knives|knife|baking|casserole)\b/],
+  ['tools and DIY', /\b(drills?|saws?|screwdrivers?|makita|dewalt|ryobi|spanners?|tool ?kit|tools?)\b/],
+  ['toys', /\b(lego|toys?|dolls?|puzzles?|board games?|nerf|playmobil|barbie)\b/],
+  ['sports and fitness', /\b(football|dumbbells?|kettlebells?|yoga|bikes?|cycling|tennis|rackets?|gym|fitness|running)\b/],
+  ['health and beauty', /\b(perfume|aftershave|fragrance|eau de|make-?up|skincare|shampoo|hair ?dryer|straighteners|dyson airwrap)\b/],
+  ['clothing', /\b(hoodies?|jackets?|coats?|dress(es)?|jeans|shirts?|t-?shirts?|jumpers?|sweaters?|skirts?|trousers|shorts|tops?)\b/],
+  ['bags and accessories', /\b(bags?|backpacks?|handbags?|wallets?|purses?|watches|sunglasses|rucksacks?)\b/],
+  ['home and garden', /\b(garden|plants?|lamps?|cushions?|bedding|duvets?|towels?|rugs?|mirrors?|candles?|curtains?)\b/],
+  ['books and media', /\b(books?|dvds?|blu-?ray|vinyl|cds?)\b/],
+  ['baby and kids', /\b(baby|pram|buggy|car seat|nappies)\b/],
+  ['pet supplies', /\b(dogs?|cats?|pets?|puppy)\b/]
+];
+const categoryOf = item => { const t = String(item || '').toLowerCase(); const c = CATEGORIES.find(x => x[1].test(t)); return c ? c[0] : ''; };
+function autoInts() {
+  if (!CFG.crm || !sale || !sale.intsAuto) return;
+  const c = categoryOf($('saItem').value);
+  $('saInts').value = c;
+  $('saIntsHint').textContent = c ? 'Filled in from what they bought. Change it, or add more with commas.' : 'Separate with commas. When you buy something that matches, the app tells you.';
+}
+$('saItem').addEventListener('input', autoInts);
+$('saInts').addEventListener('input', () => { if (sale) sale.intsAuto = !$('saInts').value.trim(); });
+
+// Mobile numbers: country code picker + number. Saved as "+44 7700 900123"; UK numbers shown as 07…
+function phoneSet(ccId, inId, val) {
+  const v = String(val || '').trim(), sel = $(ccId);
+  let cc = '+44', nat = v;
+  if (v.startsWith('+')) {
+    const codes = [...sel.options].map(o => o.value).sort((a, b) => b.length - a.length);
+    const hit = codes.find(c => v.replace(/\s/g, '').startsWith(c));
+    if (hit) { cc = hit; nat = v.replace(/\s/g, '').slice(hit.length); }
+    if (hit === '+44' && nat && !nat.startsWith('0')) nat = '0' + nat;
+  }
+  sel.value = cc; $(inId).value = nat;
+}
+function phoneGet(ccId, inId) {
+  const n = $(inId).value.trim();
+  if (n.replace(/\D/g, '').length < 6) return '';
+  if (n.startsWith('+')) return n;
+  return $(ccId).value + ' ' + n.replace(/^0+/, '');
+}
+[['saBCc', 'saBMobile'], ['beCc', 'beMobile']].forEach(([c, i]) => {
+  $(i).addEventListener('focus', () => { if (!$(i).value && $(c).value === '+44') $(i).value = '07'; });
+  $(c).addEventListener('change', () => { if (/^0?7?$/.test($(i).value)) $(i).value = $(c).value === '+44' ? '07' : ''; });
+});
+
 // Settings toggle
 $('stCrm').onchange = async () => {
   const on = $('stCrm').checked;
@@ -2740,7 +2848,8 @@ function buyerHint(prefill) {
   $('saBuyerHint').innerHTML = (warn ? '⚠️ ' : '') + `<b>${esc(bName(b))}</b>: ${esc(buyerLine(b)) || 'no sales yet'} ${buyerChips(b)} <button class="lnk" data-bk="${esc(b.key)}" style="background:none;border:0;color:#0a58ca;font:inherit;padding:4px 0;text-decoration:underline">View profile</button>`;
   if (prefill) {
     const put = (id, v) => { if (!$(id).value && v) $(id).value = v; };
-    put('saBMobile', b.mobile); put('saBEmail', b.email); put('saBOther', b['other contact']);
+    if (!$('saBMobile').value || $('saBMobile').value === '07') phoneSet('saBCc', 'saBMobile', b.mobile);
+    put('saBEmail', b.email); put('saBOther', b['other contact']);
     if (!$('saBPref').value && b['preferred contact']) $('saBPref').value = b['preferred contact'];
     if (String(b['happy to hear about similar items']) === 'Yes') $('saBOpt').checked = true;
   }
@@ -2767,10 +2876,11 @@ function crmFill(o) {
   segSet('saExp', o['buyer experience'] || ''); segSet('saAgain', o['sell again'] || ''); segSet('saStyle', o['buying style'] || ''); segSet('saTurn', o['turned up'] || '');
   sale.styleSet = !!o['buying style'];
   $('saInts').value = o['buyer interests'] || ''; $('saBNote').value = o['buyer note'] || '';
-  ['saBMobile', 'saBEmail', 'saBOther'].forEach(id => { $(id).value = ''; }); $('saBPref').value = ''; $('saBOpt').checked = false;
+  sale.intsAuto = !o['buyer interests'];
+  ['saBEmail', 'saBOther'].forEach(id => { $(id).value = ''; }); phoneSet('saBCc', 'saBMobile', ''); $('saBPref').value = ''; $('saBOpt').checked = false;
   $('saContact').open = false;
   $('saListedHint').classList.add('hide');
-  if (CFG.crm) { buyerHint(true); crmToggle(); if (!BUYERS) loadBuyers().catch(() => {}); }
+  if (CFG.crm) { buyerHint(true); crmToggle(); autoInts(); if (!BUYERS) loadBuyers().catch(() => {}); }
 }
 function crmPayload(s) {
   if (!CFG.crm) return null;
@@ -2779,7 +2889,7 @@ function crmPayload(s) {
     'buying style': segGet('saStyle') || '', 'turned up': $('saTurnWrap').classList.contains('hide') ? '' : (segGet('saTurn') || ''),
     'buyer interests': v('saInts'), 'buyer note': v('saBNote') });
   if (!s.buyer) return null;
-  return { email: v('saBEmail'), mobile: v('saBMobile'), preferred: $('saBPref').value, other: v('saBOther'), optIn: $('saBOpt').checked };
+  return { email: v('saBEmail'), mobile: phoneGet('saBCc', 'saBMobile'), preferred: $('saBPref').value, other: v('saBOther'), optIn: $('saBOpt').checked };
 }
 
 // Buyers list
@@ -2837,7 +2947,7 @@ function renderBuyer() {
     (b.sales && b.sales.length ? `<h3 class="sech">What they bought</h3><div class="card" style="padding:4px 14px">${b.sales.map(x => `<div class="skrow"><span>${esc(x.item)}<span class="sm">${esc(x.date)} · ${esc(x.platform)}${x.listed ? ' · listed ' + money(x.listed) : ''}${x.note ? ' · ' + esc(x.note) : ''}</span></span><b>${money(x.price)}</b></div>`).join('')}</div>` : '');
 }
 function fillBuyerEdit(b) {
-  $('beName').value = b.name || ''; $('beUser').value = b.username || ''; $('beMobile').value = b.mobile || ''; $('beEmail').value = b.email || '';
+  $('beName').value = b.name || ''; $('beUser').value = b.username || ''; phoneSet('beCc', 'beMobile', b.mobile); $('beEmail').value = b.email || '';
   $('bePref').value = b['preferred contact'] || ''; $('beOther').value = b['other contact'] || '';
   $('beOpt').checked = String(b['happy to hear about similar items']) === 'Yes';
   segSet('beExp', b.experience || ''); segSet('beAgain', b['sell again'] || ''); segSet('beStyle', b['buying style'] || '');
@@ -2848,7 +2958,7 @@ $('btnBuyerEdit').onclick = () => { fillBuyerEdit(BP || {}); $('bpView').classLi
 $('btnBuyerBack').onclick = () => { if (bpFrom === 'vSale') show('vSale'); else if (bpFrom === 'vMatch') show('vMatch'); else if (bpFrom === 'vHome') show('vHome'); else openBuyers(); };
 $('btnBuyerSave').onclick = async () => {
   const v = id => $(id).value.trim();
-  const buyer = { name: v('beName'), username: v('beUser'), mobile: v('beMobile'), email: v('beEmail'), 'preferred contact': $('bePref').value,
+  const buyer = { name: v('beName'), username: v('beUser'), mobile: phoneGet('beCc', 'beMobile'), email: v('beEmail'), 'preferred contact': $('bePref').value,
     'other contact': v('beOther'), 'happy to hear about similar items': $('beOpt').checked, experience: segGet('beExp') || '', 'sell again': segGet('beAgain') || '',
     'buying style': segGet('beStyle') || '', 'interested in': v('beInts'), notes: $('beNotes').value.trim() };
   if (!buyer.name && !buyer.username) { toast('Add a name or username', true); return; }
