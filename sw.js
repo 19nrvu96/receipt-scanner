@@ -5,7 +5,7 @@
    it was released with. The shell is fetched with cache: 'reload' (bypassing the browser's own
    cache), and the page itself is network-first, so a new release shows on the next open. */
 
-const VERSION = '40';
+const VERSION = '41';
 const CACHE = 'receipts-v' + VERSION;
 const SHELL = ['./', './index.html', './app.js?v=' + VERSION, './help.js?v=' + VERSION, './manifest.json'];
 

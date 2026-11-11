@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch'];
-const APP_VERSION = 'v40';
+const APP_VERSION = 'v41';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1050,7 +1050,7 @@ async function saveToSheet(force) {
     saveCache(); fillStores(); fillPayPicker();
 
     if (jobId) await jobDel(jobId);
-    matchPurchase(payload.filter(r => !/personal/i.test(r.purpose || '')).map(r => r.item).filter(Boolean));
+    if (!state.refund) matchPurchase(payload.filter(r => !/personal/i.test(r.purpose || '')).map(r => r.item).filter(Boolean));   // scans and emailed receipts alike
     job = null; state = null;
     $('homeStatus').textContent =
       '✅ ' + res.rowsAdded + ' row' + (res.rowsAdded > 1 ? 's' : '') +
@@ -2784,7 +2784,7 @@ const CATEGORIES = [
   ['baby and kids', /\b(baby|pram|buggy|car seat|nappies)\b/],
   ['pet supplies', /\b(dogs?|cats?|pets?|puppy)\b/]
 ];
-const categoryOf = item => { const t = String(item || '').toLowerCase(); const c = CATEGORIES.find(x => x[1].test(t)); return c ? c[0] : ''; };
+const categoryOf = item => { const t = String(item || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); const c = CATEGORIES.find(x => x[1].test(t)); return c ? c[0] : ''; };
 function autoInts() {
   if (!CFG.crm || !sale || !sale.intsAuto) return;
   const c = categoryOf($('saItem').value);
@@ -3000,7 +3000,11 @@ async function matchPurchase(items) {
   if (!CFG.crm || !items.length) return;
   try {
     const r = await api('buyerMatch', { items });
-    if (r.matches && r.matches.length) { localStorage.setItem(LS_MATCH, JSON.stringify({ when: Date.now(), matches: r.matches })); renderHomeMatch(); }
+    if (r.matches && r.matches.length) {
+      localStorage.setItem(LS_MATCH, JSON.stringify({ when: Date.now(), matches: r.matches })); renderHomeMatch();
+      const n = new Set(); r.matches.forEach(x => x.buyers.forEach(b => n.add(b.key)));
+      if ($('vHome').classList.contains('hide')) toast('👥 ' + n.size + ' buyer' + (n.size > 1 ? 's' : '') + ' might want this. See your home screen');   // e.g. straight on to the next emailed receipt
+    }
   } catch (e) {}
 }
 var STOCK_MATCH = {};
