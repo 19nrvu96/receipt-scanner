@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v45';
+const APP_VERSION = 'v46';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1568,6 +1568,35 @@ function returnTag(o) {
   return '<span class="tag soon">buyer can return till ' + esc(dayName(o.returnsUntil)) + '</span>';
 }
 
+// Sales card shortcut: straight to the eBay order; when you come back, the sale opens at the postage box
+function ebayOrderNo(ord) {
+  const d = String(ord || '').replace(/\D/g, '');
+  return d.length === 12 ? d.slice(0, 2) + '-' + d.slice(2, 7) + '-' + d.slice(7) : '';
+}
+function ebayOrderUrl(ord, item) {
+  ord = ebayOrderNo(ord);
+  if (ord) return 'https://www.ebay.co.uk/mesh/ord/details?mode=SH&orderid=' + ord;
+  const w = String(item || '').replace(/[^\w\s-]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 4).join(' ');
+  return 'https://www.ebay.co.uk/sh/ord/?filter=status:ALL_ORDERS' + (w ? '&search=itemtitle:' + encodeURIComponent(w) : '');
+}
+let ebayBack = null;
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-ebaygo]'); if (!a) return;
+  e.stopPropagation();   // follow the link; don't open the sale underneath yet
+  const [list, i] = a.dataset.ebaygo.split(':'), d = SALES || {};
+  const o = (list === 'rec' ? d.recent : list === 'need' ? d.needs : (d[list] || []))[+i];
+  ebayBack = o ? { o, at: Date.now() } : null;
+}, true);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !ebayBack || Date.now() - ebayBack.at > 30 * 60000) return;
+  const o = ebayBack.o; ebayBack = null;
+  openSale(o);
+  if (!segGet('saPostBy')) { segSet('saPostBy', 'Seller'); try { saleWhereToggle(); postHint(); } catch (e) {} }
+  try { ebayHelp(); } catch (e) {}
+  setTimeout(() => { $('saPostOut').scrollIntoView({ block: 'center' }); $('saPostOut').focus(); }, 300);
+  toast('Type the label price from eBay');
+});
+
 function saleCard(o, i, list) {
   const price = num(o['sale price']), net = num(o['net received']), profit = num(o.profit);
   const bits = [esc(o.platform || ''), esc(o['sale date'] || '')].filter(Boolean).join(' · ');
@@ -1576,6 +1605,7 @@ function saleCard(o, i, list) {
     <div class="sm">${bits}${o['order number'] ? ' · #' + esc(o['order number']) : ''}</div>
     <div class="sm">${o._saving ? '<span class="tag saving">' + (navigator.onLine === false ? 'Waiting for signal' : 'Saving…') + '</span>' : ''}<span class="tag ${tagFor(o.status)}">${esc(o.status || 'Sold')}</span>${o['counts in totals'] === 'No' ? '<span class="tag">not in totals</span>' : ''}
       ${profit !== null ? '<span class="tag ok">profit ' + money(profit) + '</span>' : ''}${o.needs ? '<span class="tag warn">' + esc(/postage/.test(o.needs) ? 'add postage' : /match/.test(o.needs) ? 'pick the sale' : /check/.test(o.needs) ? 'check match' : o.needs) + '</span>' : ''}${returnTag(o)}</div>
+    ${/postage/.test(o.needs || '') && /^ebay/i.test(o.platform || '') && !o._saving ? `<div class="ouacts"><a href="${esc(ebayOrderUrl(o['order number'], o.item))}" target="_blank" rel="noopener" data-ebaygo="${list}:${i}">${ebayOrderNo(o['order number']) ? 'Open order on eBay ↗' : 'Find in eBay orders ↗'}</a><span class="sub" style="align-self:center;font-size:13px">label price is under "What you earned"</span></div>` : ''}
   </div><div class="amt">${price !== null ? money(price) : net !== null ? money(net) : '—'}</div></div>`;
 }
 
@@ -1966,11 +1996,10 @@ function ebayHelp() {
   $('saEbayWrap').classList.toggle('hide', !on);
   if (!on) return;
   const ord = $('saOrder').value.trim(), item = $('saItem').value.trim();
-  const byOrder = /^\d{2}-\d{5}-\d{5}$/.test(ord);
+  const byOrder = !!ebayOrderNo(ord);
   const words = item.replace(/[^\w\s-]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 4).join(' ');
-  $('btnEbayFind').href = byOrder ? 'https://www.ebay.co.uk/mesh/ord/details?mode=SH&orderid=' + ord
-    : 'https://www.ebay.co.uk/sh/ord/?filter=status:ALL_ORDERS' + (words ? '&search=itemtitle:' + encodeURIComponent(words) : '');
-  $('btnEbayFind').textContent = byOrder ? 'Open order ' + ord + ' on eBay ↗' : words ? 'Find "' + words + '" in your eBay orders ↗' : 'Open your eBay orders ↗';
+  $('btnEbayFind').href = ebayOrderUrl(ord, item);
+  $('btnEbayFind').textContent = byOrder ? 'Open order ' + ebayOrderNo(ord) + ' on eBay ↗' : words ? 'Find "' + words + '" in your eBay orders ↗' : 'Open your eBay orders ↗';
   let last = null; try { last = JSON.parse(localStorage.getItem(LS_POSTCOST) || 'null'); } catch (e) {}
   const show_ = !!(last && last.cost && !$('saPostOut').value);
   $('btnLastPost').classList.toggle('hide', !show_);
