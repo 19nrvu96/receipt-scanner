@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v43';
+const APP_VERSION = 'v44';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2539,6 +2539,7 @@ if ('serviceWorker' in navigator) {
 const MONTHS_UK = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 async function openSettings() {
   show('vSettings');
+  try { renderColl(); } catch (e) {}
   $('stYe').innerHTML = MONTHS_UK.map((m, i) => `<option value="${i + 1}">End of ${m}</option>`).join('');
   try {
     SETTINGS = await api('settings', {});
@@ -2552,6 +2553,7 @@ async function openSettings() {
     $('stEmailsOn').textContent = a.emailsOn ? 'On, every 5 minutes' : 'Not set up yet';
     $('stSrc').value = d.emailSource || ''; $('stOrderEmail').value = d.orderEmail || ''; $('stMonthly').checked = !!d.monthlyEmail;
     $('stCrm').checked = !!d.crm; if (CFG.crm !== !!d.crm) { CFG.crm = !!d.crm; saveCache(); crmSync(); }
+    try { renderColl(); } catch (e) {}
     srcSync();
     $('stHist').innerHTML = (d.history || []).map(h => `<p class="hist">Before ${esc(h.until)}: ${esc(h.label)}${h.tab ? ' · saved in the "' + esc(h.tab) + '" tab' : ''}</p>`).join('');
     stSync(); renderWhere();
@@ -2840,6 +2842,58 @@ function phoneGet(ccId, inId) {
   $(c).addEventListener('change', () => { if (/^0?7?$/.test($(i).value)) $(i).value = $(c).value === '+44' ? '07' : ''; });
 });
 
+// Meeting spots and saved messages: kept on this phone
+const LS_SPOTS = 'rs_spots', LS_TPLS = 'rs_tpls';
+const DEF_TPLS = [
+  { name: 'Where to meet', text: "Hi [Name], for security I don't meet people at my door. Please meet me at [Spot].\n[Directions]\nWhen you set off, can you message me your ETA from your maps so I know when you'll arrive? Thanks!" },
+  { name: 'Still available', text: "Hi [Name], yes the [Item] is still available at £[Price]. When would suit you to collect?" }
+];
+const getSpots = () => { try { return JSON.parse(localStorage.getItem(LS_SPOTS)) || []; } catch (e) { return []; } };
+const getTpls = () => { try { return JSON.parse(localStorage.getItem(LS_TPLS)) || DEF_TPLS; } catch (e) { return DEF_TPLS; } };
+const putList = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+let spEdit = -1, tpEdit = -1;
+function renderColl() {
+  $('stHome').value = homeAddr();
+  const sp = getSpots(), tp = getTpls();
+  $('stSpots').innerHTML = sp.length ? sp.map((x, i) => `<div class="sitem"><span><b>${esc(x.name)}</b>${x.addr ? '<br><small class="sub">' + esc(x.addr) + '</small>' : ''}${x.dir ? '<br><small class="sub">' + esc(x.dir) + '</small>' : ''}</span><button data-spe="${i}">Edit</button><button data-spd="${i}">✕</button></div>`).join('') : '<p class="sub">None yet.</p>';
+  $('stTpls').innerHTML = tp.map((x, i) => `<div class="sitem"><span><b>${esc(x.name)}</b><br><small class="sub">${esc(x.text.slice(0, 90))}${x.text.length > 90 ? '…' : ''}</small></span><button data-tpe="${i}">Edit</button><button data-tpd="${i}">✕</button></div>`).join('');
+}
+$('stHome').addEventListener('change', () => { const h = $('stHome').value.trim(); try { h ? localStorage.setItem(LS_HOME, h) : localStorage.removeItem(LS_HOME); } catch (e) {} toast(h ? 'Home saved' : 'Home cleared'); });
+$('btnSpSave').onclick = () => {
+  const x = { name: $('spName').value.trim(), addr: $('spAddr').value.trim(), dir: $('spDir').value.trim() };
+  if (!x.name) { toast('Give the spot a name', true); return; }
+  const sp = getSpots(); spEdit > -1 ? sp[spEdit] = x : sp.push(x); putList(LS_SPOTS, sp);
+  spEdit = -1; $('spName').value = $('spAddr').value = $('spDir').value = ''; $('stSpotAdd').open = false; renderColl(); toast('Spot saved');
+};
+$('btnTpSave').onclick = () => {
+  const x = { name: $('tpName').value.trim(), text: $('tpText').value.trim() };
+  if (!x.name || !x.text) { toast('Add a name and the message', true); return; }
+  const tp = getTpls(); tpEdit > -1 ? tp[tpEdit] = x : tp.push(x); putList(LS_TPLS, tp);
+  tpEdit = -1; $('tpName').value = $('tpText').value = ''; $('stTplAdd').open = false; renderColl(); toast('Message saved');
+};
+$('stSpots').onclick = e => {
+  const ed = e.target.dataset.spe, del = e.target.dataset.spd, sp = getSpots();
+  if (ed !== undefined) { spEdit = +ed; $('spName').value = sp[ed].name; $('spAddr').value = sp[ed].addr || ''; $('spDir').value = sp[ed].dir || ''; $('stSpotAdd').open = true; }
+  if (del !== undefined) { sp.splice(+del, 1); putList(LS_SPOTS, sp); renderColl(); }
+};
+$('stTpls').onclick = e => {
+  const ed = e.target.dataset.tpe, del = e.target.dataset.tpd, tp = getTpls();
+  if (ed !== undefined) { tpEdit = +ed; $('tpName').value = tp[ed].name; $('tpText').value = tp[ed].text; $('stTplAdd').open = true; }
+  if (del !== undefined) { tp.splice(+del, 1); putList(LS_TPLS, tp); renderColl(); }
+};
+
+// Choose a buyer for a sale: search and scroll everyone you've sold to
+function renderPick() {
+  const q = $('bpickQ').value.trim().toLowerCase();
+  const bs = ((BUYERS && BUYERS.buyers) || []).filter(b => !q || [b.name, b.username, b['interested in']].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => dayNum(b['last bought']) - dayNum(a['last bought']));
+  $('bpickList').innerHTML = bs.length ? bs.map(b => `<button class="skrow" data-pk="${esc(b.key)}"><span>${esc(bName(b))}<span class="sm">${esc(buyerLine(b)) || 'No sales yet'}</span></span></button>`).join('') : '<p class="sub">Nobody yet. Type their name in the box instead.</p>';
+}
+$('btnPickBuyer').onclick = async () => { $('bpick').classList.remove('hide'); $('bpickQ').value = ''; renderPick(); if (!BUYERS) { try { await loadBuyers(); renderPick(); } catch (e) {} } };
+$('bpickQ').oninput = renderPick;
+$('bpickClose').onclick = () => $('bpick').classList.add('hide');
+$('bpickList').onclick = e => { const b = e.target.closest('[data-pk]'); if (!b) return; const x = findBuyer(b.dataset.pk); $('saBuyer').value = bName(x); $('bpick').classList.add('hide'); buyerHint(true); };
+
 // Settings toggle
 $('stCrm').onchange = async () => {
   const on = $('stCrm').checked;
@@ -2979,6 +3033,7 @@ function renderBuyer() {
   const b = BP;
   if (!b) { $('bpView').innerHTML = '<p class="sub">Loading…</p>'; return; }
   $('bpName').textContent = bName(b);
+  const keepW = [($('wItem') || {}).value || '', ($('wMax') || {}).value || ''];   // don't lose what's being typed when fresh data arrives
   const pref = String(b['preferred contact'] || ''), acts = [];
   const act = (label, href, kind) => acts.push(`<a href="${esc(href)}" ${/^https/.test(href) ? 'target="_blank" rel="noopener"' : ''} class="${pref === kind ? 'pref' : ''}">${label}</a>`);
   if (b.mobile) { act('WhatsApp', 'https://wa.me/' + telUK(b.mobile), 'WhatsApp'); act('Text', 'sms:' + b.mobile, 'Text'); act('Call', 'tel:' + b.mobile, 'Phone call'); }
@@ -2997,9 +3052,37 @@ function renderBuyer() {
     (pref || b['other contact'] ? `<p class="sub">Best way to reach them: <b>${esc(pref || 'not sure')}</b>${b['other contact'] ? ' · ' + esc(b['other contact']) : ''}</p>` : '') +
     `<span class="bchips">${howTag(b)}</span>` + buyerChips(b) +
     `<div class="ncard" style="margin-top:10px">${row('Times bought', b['times bought'] || 0)}${row('Total spent', b['total spent'] ? money(b['total spent']) : '')}${row('Last bought', b['last bought'])}${row('Average off your asking price', b['avg off asking %'] !== '' ? b['avg off asking %'] + '%' : '')}${row('Usually buys by', b['usually buys by'] ? b['usually buys by'] + ' (' + [b.collects ? b.collects + ' collected' : '', b['drop-offs'] ? b['drop-offs'] + ' dropped off' : '', b.online ? b.online + ' online' : ''].filter(Boolean).join(', ') + ')' : '')}${row('Postcode', b.postcode)}${row('Miles from home', b['miles from home'] !== '' ? b['miles from home'] + ' miles' : '')}${row('Last contacted', b['last contacted'])}${row('Turned up', b['turned up'])}${row('Refunds', b.refunds || '')}${row('Where they buy', b.platforms)}${row('First seen', b['first seen'])}</div>` +
+    `<h3 class="sech">Wanted</h3><div class="card" style="padding:6px 14px">${wantedParse(b.wanted).map((w, i) => `<div class="wrow"><span>${esc(w.item)}${w.max ? ' · up to ' + money(w.max) : ''}${w.date ? ' <small class="sub">' + esc(w.date) + '</small>' : ''}</span><button class="lnk" data-wd="${i}" style="background:none;border:0;color:#0a58ca;font:inherit">✕</button></div>`).join('') || '<p class="sub">Nothing specific yet. Something they asked for that you haven\'t got?</p>'}
+      <div class="duo" style="margin-top:6px"><div><input id="wItem" placeholder="e.g. Ninja air fryer" autocomplete="off"></div><div class="telrow"><input id="wMax" type="number" inputmode="decimal" placeholder="Up to £"><button class="btn sec" id="btnWAdd" style="width:auto;margin:0;padding:8px 12px">Add</button></div></div>
+      <p class="hint">When you buy something that matches, they're shown first.</p></div>` +
     (b.notes ? `<h3 class="sech">Notes</h3><div class="card" style="white-space:pre-wrap">${esc(b.notes)}</div>` : '') +
     (b.sales && b.sales.length ? `<h3 class="sech">What they bought</h3><div class="card" style="padding:4px 14px">${b.sales.map(x => `<div class="skrow"><span>${esc(x.item)}<span class="sm">${esc(x.date)} · ${esc(x.platform)}${x.listed ? ' · listed ' + money(x.listed) : ''}${x.note ? ' · ' + esc(x.note) : ''}</span></span><b>${money(x.price)}</b></div>`).join('')}</div>` : '');
+  if ($('wItem')) { $('wItem').value = keepW[0]; $('wMax').value = keepW[1]; }
 }
+// Wanted: same readable format as the Sheet: "Ninja air fryer (up to £60, 13/11/2026); …"
+function wantedParse(t) {
+  return String(t || '').split(/;\s*/).map(x => x.trim()).filter(Boolean).map(x => {
+    const m = x.match(/^(.*?)\s*\((.*)\)\s*$/), inner = m ? m[2] : '';
+    return { item: (m ? m[1] : x).trim(), max: (inner.match(/up to £\s*([\d.]+)/i) || [])[1] || '', date: (inner.match(/(\d{1,2}\/\d{1,2}\/\d{4})/) || [])[1] || '' };
+  });
+}
+const wantedText = list => list.map(w => w.item + ' (' + [w.max ? 'up to £' + w.max : '', w.date].filter(Boolean).join(', ') + ')').join('; ');
+async function saveWanted(list) {
+  try { BP = await api('buyerSave', { key: BP.key, buyer: { wanted: wantedText(list) } }); renderBuyer(); loadBuyers().catch(() => {}); }
+  catch (err) { toast(err.message, true); }
+}
+$('bpView').addEventListener('click', e => {
+  if (!BP) return;
+  if (e.target.id === 'btnWAdd') {
+    const item = $('wItem').value.trim(); if (!item) { toast('What do they want?', true); return; }
+    const d = new Date(), date = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+    const max = $('wMax').value.trim(); $('wItem').value = ''; $('wMax').value = '';
+    saveWanted(wantedParse(BP.wanted).concat([{ item, max, date }])); toast('Added to their wanted list');
+  }
+  const wd = e.target.dataset.wd;
+  if (wd !== undefined) { const l = wantedParse(BP.wanted); l.splice(+wd, 1); saveWanted(l); }
+});
+
 function fillBuyerEdit(b) {
   $('beName').value = b.name || ''; $('beUser').value = b.username || ''; phoneSet('beCc', 'beMobile', b.mobile); $('beEmail').value = b.email || '';
   $('bePref').value = b['preferred contact'] || ''; $('beOther').value = b['other contact'] || '';
@@ -3008,6 +3091,7 @@ function fillBuyerEdit(b) {
   $('beInts').value = b['interested in'] || ''; $('beNotes').value = b.notes || ''; $('bePostcode').value = b.postcode || '';
 }
 ['beExp', 'beAgain', 'beStyle'].forEach(id => $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (b) segSet(id, segGet(id) === b.dataset.v ? '' : b.dataset.v); }));
+$('btnBuyerMsg').onclick = () => { if (BP) openOutreach([BP], '', 'vBuyer'); };
 $('btnBuyerEdit').onclick = () => { fillBuyerEdit(BP || {}); $('bpView').classList.add('hide'); $('bpEdit').classList.remove('hide'); $('btnBuyerEdit').classList.add('hide'); };
 $('btnBuyerBack').onclick = () => { if (bpFrom === 'vSale') show('vSale'); else if (bpFrom === 'vMatch') show('vMatch'); else if (bpFrom === 'vHome') show('vHome'); else openBuyers(); };
 $('btnBuyerSave').onclick = async () => {
@@ -3030,7 +3114,7 @@ $('btnBuyerSave').onclick = async () => {
 // Who might want it: after saving a purchase, and on the Stock page
 var MT = [], mtPicked = new Set();
 function renderMatchList(matches) {
-  return matches.map((m, mi) => `<h3 class="sech">${esc(m.item)}</h3><div class="card" style="padding:4px 14px">${m.buyers.map(b => `<button class="skrow${canPick(b) ? '' : ' off'}" data-bk="${esc(b.key)}" data-mi="${mi}"><input type="checkbox" class="pick" data-pick="${mi}|${esc(b.key)}" ${mtPicked.has(mi + '|' + b.key) ? 'checked' : ''} ${canPick(b) ? '' : 'disabled'}><span style="flex:1">${esc(bName(b))}<span class="sm">Interested in ${esc(b.tag)}${b['preferred contact'] ? ' · best by ' + esc(b['preferred contact']) : ''}</span><span class="bchips">${howTag(b)}</span><span class="sm">${mkt(b) ? '⚠️ ' + mkt(b) + ' buyer: their policy forbids this. Tick at your own risk' : b.canMessage ? '✓ Happy to hear about similar items' : '⚠️ Hasn\'t said they\'re happy to hear from you'}</span></span><span class="go" style="align-self:center">›</span></button>`).join('')}</div>`).join('');
+  return matches.map((m, mi) => `<h3 class="sech">${esc(m.item)}</h3><div class="card" style="padding:4px 14px">${m.buyers.map(b => `<button class="skrow${canPick(b) ? '' : ' off'}" data-bk="${esc(b.key)}" data-mi="${mi}"><input type="checkbox" class="pick" data-pick="${mi}|${esc(b.key)}" ${mtPicked.has(mi + '|' + b.key) ? 'checked' : ''} ${canPick(b) ? '' : 'disabled'}><span style="flex:1">${esc(bName(b))}<span class="sm">${b.wanted ? '<b>Asked for ' + esc(b.tag) + (b.wantMax ? ' (up to ' + money(b.wantMax) + ')' : '') + '</b>' : 'Interested in ' + esc(b.tag)}${b['preferred contact'] ? ' · best by ' + esc(b['preferred contact']) : ''}</span><span class="bchips">${howTag(b)}</span><span class="sm">${mkt(b) ? '⚠️ ' + mkt(b) + ' buyer: their policy forbids this. Tick at your own risk' : b.canMessage ? '✓ Happy to hear about similar items' : '⚠️ Hasn\'t said they\'re happy to hear from you'}</span></span><span class="go" style="align-self:center">›</span></button>`).join('')}</div>`).join('');
 }
 function openMatch(matches) {
   show('vMatch');
@@ -3063,12 +3147,42 @@ function openOutreach(buyers, item, from) {
   OU = { list: buyers, from: from || 'vBuyers', done: {} };
   $('ouItem').value = item || ''; $('ouPrice').value = ''; $('ouFeat').value = '';
   $('ouMsg').value = localStorage.getItem(LS_OUTMSG) || DEF_MSG;
-  show('vOutreach'); renderOutreach();
+  ouPhoto = null; $('ouPhoto').value = ''; $('ouPhotoName').textContent = '';
+  $('ouTpl').innerHTML = '<option value="">Your last message</option>' + getTpls().map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
+  $('ouSpot').innerHTML = '<option value="">None</option>' + getSpots().map((x, i) => `<option value="${i}">${esc(x.name)}</option>`).join('');
+  show('vOutreach'); renderOutreach(); loadGuide();
 }
+// The photo stays in this page's memory only: it goes straight from your phone to the app you share to.
+var ouPhoto = null;
+$('ouPhoto').onchange = () => { ouPhoto = $('ouPhoto').files[0] || null; $('ouPhotoName').textContent = ouPhoto ? '✓ ' + ouPhoto.name : ''; renderOutreach(); };
+$('ouTpl').onchange = () => { const t = getTpls()[+$('ouTpl').value]; $('ouMsg').value = t ? t.text : (localStorage.getItem(LS_OUTMSG) || DEF_MSG); renderOutreach(); };
+$('ouSpot').onchange = renderOutreach;
+// Price guide: same title only for the average; near titles listed for you to judge
+let guideTimer = null;
+function loadGuide() {
+  clearTimeout(guideTimer);
+  const item = $('ouItem').value.trim();
+  if (item.length < 3) { $('ouGuide').classList.add('hide'); return; }
+  guideTimer = setTimeout(async () => {
+    try {
+      const g = await api('priceGuide', { item });
+      if (item !== $('ouItem').value.trim()) return;
+      const h = [];
+      if (g.exact) h.push(`<b>Sold ${g.exact.n} before with this exact title:</b> average ${money(g.exact.avg)}` + (g.exact.n > 1 ? ` (${money(g.exact.min)}–${money(g.exact.max)})` : '') + (g.exact.days !== '' ? `, about ${g.exact.days} days to sell` : '') + `. <button data-gp="${g.exact.avg}">Use ${money(g.exact.avg)}</button>`);
+      if (g.similar && g.similar.length) h.push('<b>Similar titles</b> (not in the average):<br>' + g.similar.map(x => `${esc(x.item)}: ${money(x.price)} · ${esc(x.date)}${x.days !== '' ? ' · ' + x.days + ' days' : ''}`).join('<br>'));
+      $('ouGuide').innerHTML = h.join('<br>') || 'You haven\'t sold this exact item before.';
+      $('ouGuide').classList.remove('hide');
+    } catch (e) { $('ouGuide').classList.add('hide'); }
+  }, 400);
+}
+$('ouItem').addEventListener('input', loadGuide);
+$('ouGuide').onclick = e => { const b = e.target.closest('[data-gp]'); if (b) { $('ouPrice').value = b.dataset.gp; renderOutreach(); } };
 const firstName = b => String(b.name || b.username || '').trim().split(/\s+/)[0] || 'there';
 function personal(b) {
   const feats = $('ouFeat').value.trim().split('\n').map(x => x.trim()).filter(Boolean).map(x => '• ' + x).join('\n');
+  const sp = getSpots()[+$('ouSpot').value];
   return $('ouMsg').value.replace(/\[Name\]/g, firstName(b)).replace(/\[Item\]/g, $('ouItem').value.trim() || 'item')
+    .replace(/\[Spot\]/g, sp ? sp.name + (sp.addr ? ' (' + sp.addr + ')' : '') : 'my usual spot').replace(/\[Directions\]/g, sp ? sp.dir || '' : '')
     .replace(/\[Features\]/g, feats || '').replace(/\[Price\]/g, $('ouPrice').value.trim() || '?').replace(/\n{3,}/g, '\n\n');
 }
 function renderOutreach() {
@@ -3088,6 +3202,8 @@ function renderOutreach() {
       acts.push(`<a href="sms:${String(b.mobile).replace(/\s/g, '')}?&body=${t}" data-ou="${i}|text" class="${d.text ? 'done' : ''}">${d.text ? '✓ ' : ''}Text</a>`);
     }
     if (b.email) acts.push(`<button data-oue="${i}" class="${d.email ? 'done' : ''}">${d.email ? '✓ Emailed' : 'Email'}</button>`);
+    if (navigator.share) acts.push(`<button data-oushare="${i}" class="${d.share ? 'done' : ''}">${d.share ? '✓ ' : ''}Share${ouPhoto ? ' with photo' : ''}</button>`);
+    acts.push(`<button data-ousold="${i}">Sold to ${esc(firstName(b))}</button>`);
     return `<div class="skrow" style="display:block"><b>${esc(bName(b))}</b> <span class="bchips" style="display:inline-flex">${howTag(b)}${mkt(b) ? '<span class="bchip bad">⚠️ ' + esc(mkt(b)) + ' buyer: own risk</span>' : ''}</span>
       <span class="sm">${b['preferred contact'] ? 'Best by ' + esc(b['preferred contact']) : ''}${b['other contact'] ? ' · ' + esc(b['other contact']) : ''}${!b.mobile && !b.email ? 'No number or email saved: message them where you usually do' : ''}</span>
       <div class="ouacts">${acts.join('')}</div></div>`;
@@ -3105,7 +3221,42 @@ $('ouList').addEventListener('click', e => {
   }
   const m = e.target.closest('[data-oue]');
   if (m) sendOutEmails([OU.list[+m.dataset.oue]]);
+  const sh = e.target.closest('[data-oushare]');
+  if (sh) shareTo(OU.list[+sh.dataset.oushare]);
+  const so = e.target.closest('[data-ousold]');
+  if (so) soldTo(OU.list[+so.dataset.ousold], $('ouItem').value.trim(), $('ouPrice').value.trim());
 });
+// Your phone's share sheet: photo + message to WhatsApp, Messages, Instagram… You pick the person there.
+async function shareTo(b) {
+  const text = personal(b);
+  try { await navigator.clipboard.writeText(text); } catch (e) {}   // some apps drop the text when a photo is shared: it's ready to paste
+  const data = { text };
+  if (ouPhoto && navigator.canShare && navigator.canShare({ files: [ouPhoto] })) data.files = [ouPhoto];
+  try {
+    await navigator.share(data);
+    OU.done[b.key] = Object.assign(OU.done[b.key] || {}, { share: true });
+    api('buyerContacted', { keys: [b.key], how: 'shared', item: $('ouItem').value.trim() }).catch(() => {});
+    renderOutreach();
+    if (data.files) toast('If the message didn\'t go with the photo, paste it: it\'s copied');
+  } catch (e) { if (e.name !== 'AbortError') toast('Couldn\'t open sharing: ' + e.message, true); }
+}
+// "Sold to John": the sale form, already filled in with them, the item and price (and the stock it came from)
+function soldTo(b, item, price) {
+  openSale(null);
+  const plats = String(b.platforms || '');
+  const want = /facebook/i.test(plats) ? 'Facebook Marketplace' : 'In person';
+  if ([...$('saPlatform').options].some(o => o.value === want || o.textContent === want)) $('saPlatform').value = want;
+  saleWhereToggle();
+  if (item) {
+    const st = (STOCK && STOCK.items || []).find(x => bKey(x.item) === bKey(item));
+    if (st) linkPurchase(st); else { $('saItem').value = item; try { autoInts(); } catch (e) {} }
+  }
+  if (price) $('saPrice').value = price;
+  $('saBuyer').value = bName(b); buyerHint(true);
+  saleCalc();
+  toast('Check the details, then Save sale');
+}
+
 async function sendOutEmails(list) {
   list = list.filter(b => b.email && !(OU.done[b.key] || {}).email);
   if (!list.length) { toast('Already emailed'); return; }
@@ -3120,7 +3271,7 @@ async function sendOutEmails(list) {
   } catch (err) { toast(err.message, true); }
 }
 $('btnOuEmailAll').onclick = () => sendOutEmails(OU.list);
-$('btnOutBack').onclick = () => { if (OU.from === 'vMatch') { show('vMatch'); } else openBuyers(); };
+$('btnOutBack').onclick = () => { if (OU.from === 'vMatch') show('vMatch'); else if (OU.from === 'vBuyer') show('vBuyer'); else openBuyers(); };
 
 function renderHomeMatch() {
   let m = null; try { m = JSON.parse(localStorage.getItem(LS_MATCH)); } catch (e) {}

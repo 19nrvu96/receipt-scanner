@@ -404,6 +404,12 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 .pick{width:22px;height:22px;flex:0 0 auto;margin-right:10px;align-self:center}
 .skrow.off{opacity:.55}
 .ouacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.ouacts a,.ouacts button{font:inherit;font-size:14px;padding:7px 10px;border-radius:10px;border:1px solid #d0d0d5;background:#fff;color:#0a58ca;text-decoration:none;cursor:pointer}.ouacts .done{background:#e6f4ea;color:#1e6b34;border-color:#b7dfc3}
+.guide{background:#eef6ee;border:1px solid #c9e3cc;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:.95em}
+.guide button{background:none;border:0;color:#0a58ca;font:inherit;font-weight:700;padding:0;text-decoration:underline;cursor:pointer}
+.ouphoto{display:flex;align-items:center;gap:10px}
+.sitem{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #eee}.sitem span{flex:1}.sitem button{background:none;border:0;color:#0a58ca;font:inherit;cursor:pointer;padding:2px 4px}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:90;display:flex;align-items:flex-end}.sheet-bg.hide{display:none}.sheet-bg .psheet{background:#f5f5f7;width:100%;border-radius:18px 18px 0 0;padding:14px 16px 24px}
+.wrow{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #eee}.wrow span{flex:1}
 .telrow{display:flex;gap:6px}.telrow select{width:auto;flex:0 0 auto;padding-left:8px;padding-right:8px}.telrow input{flex:1;min-width:0}
 .rfind{margin-top:6px}.rfind input{width:100%;padding:10px 12px;border:1px solid #d0d0d5;border-radius:10px;font:inherit;font-size:15px}
 .rfres button{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e0e0e5;border-radius:10px;padding:8px 10px;margin-top:4px;font:inherit;font-size:14px;cursor:pointer}
@@ -508,6 +514,29 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <div id="stHist"></div>
     </div>
 
+    <h3 class="sech">Collections and messages</h3>
+    <div class="card scard2">
+      <label for="stHome">Home address or postcode</label>
+      <input id="stHome" autocomplete="off" placeholder="e.g. SW19 1AA">
+      <p class="hint">Used for trips and how far buyers are. Kept on this phone only.</p>
+      <label>Meeting spots</label>
+      <div id="stSpots"></div>
+      <details class="more" id="stSpotAdd"><summary>＋ Add a meeting spot</summary>
+        <label>Name</label><input id="spName" placeholder="e.g. Outside number 71">
+        <label>Address or postcode</label><input id="spAddr" placeholder="e.g. 71 High Street, SW19 1AA">
+        <label>How to find you</label><textarea id="spDir" rows="3" placeholder="e.g. Look for a black Vauxhall Corsa. Park there and I'll come out."></textarea>
+        <button class="btn sec" id="btnSpSave">Save spot</button>
+      </details>
+      <label>Saved messages</label>
+      <div id="stTpls"></div>
+      <details class="more" id="stTplAdd"><summary>＋ Add a saved message</summary>
+        <label>Name</label><input id="tpName" placeholder="e.g. Where to meet">
+        <label>Message</label><textarea id="tpText" rows="6"></textarea>
+        <p class="hint">Use [Name], [Item], [Price], [Spot] (the meeting place) and [Directions]: they're filled in for each person.</p>
+        <button class="btn sec" id="btnTpSave">Save message</button>
+      </details>
+    </div>
+
     <h3 class="sech">Selling</h3>
     <div class="card scard2">
       <label class="check"><input type="checkbox" id="stCrm"> Buyers: notes and contacts</label>
@@ -600,7 +629,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <div id="byList" class="card" style="padding:4px 14px"></div>
   </section>
   <section id="vBuyer" class="hide form">
-    <div class="hdr"><button class="back" id="btnBuyerBack">‹</button><h2 style="margin:0;flex:1" id="bpName">Buyer</h2><button class="btn sec" id="btnBuyerEdit" style="width:auto;margin:0;padding:8px 12px">Edit</button></div>
+    <div class="hdr"><button class="back" id="btnBuyerBack">‹</button><h2 style="margin:0;flex:1" id="bpName">Buyer</h2><button class="btn sec" id="btnBuyerMsg" style="width:auto;margin:0 6px 0 0;padding:8px 12px">Message</button><button class="btn sec" id="btnBuyerEdit" style="width:auto;margin:0;padding:8px 12px">Edit</button></div>
     <div id="bpView"></div>
     <div id="bpEdit" class="hide">
       <div class="duo"><div><label>Name</label><input id="beName" autocomplete="off"></div><div><label>Username</label><input id="beUser" autocomplete="off"></div></div>
@@ -634,8 +663,14 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <label>Item</label><input id="ouItem" autocomplete="off" placeholder="e.g. Pro V1 golf balls, 12 pack">
     <label>Price (£)</label><input id="ouPrice" type="number" step="0.01" inputmode="decimal">
     <label>Key features</label><textarea id="ouFeat" rows="3" placeholder="One per line, e.g. brand new, boxed"></textarea>
+    <div id="ouGuide" class="guide hide"></div>
+    <label>Photo (optional)</label>
+    <div class="ouphoto"><label class="btn sec" style="margin:0;text-align:center">Choose a photo<input id="ouPhoto" type="file" accept="image/*" class="hide"></label><span id="ouPhotoName" class="sub"></span></div>
+    <p class="hint">Sent from your phone when you tap <b>Share</b>. It isn't uploaded or saved anywhere.</p>
+    <div class="duo"><div><label>Saved message</label><select id="ouTpl"><option value="">Your last message</option></select></div>
+      <div><label>Meeting spot</label><select id="ouSpot"><option value="">None</option></select></div></div>
     <label>Message</label><textarea id="ouMsg" rows="7"></textarea>
-    <p class="hint">[Name], [Item], [Features] and [Price] are filled in for each person. Your wording is remembered.</p>
+    <p class="hint">[Name], [Item], [Features], [Price], [Spot] and [Directions] are filled in for each person. Your wording is remembered. Add more saved messages and meeting spots in Settings.</p>
     <h3 class="sech" id="ouCount">Who</h3>
     <div id="ouWarn" class="warn hide"></div>
     <button class="btn" id="btnOuEmailAll">Email everyone with an email</button>
@@ -643,6 +678,13 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <div id="ouList" class="card" style="padding:4px 14px"></div>
     <p class="hint">WhatsApp and texts open one person at a time with the message ready: tap send, come back, tap the next. Emails go one each from your Gmail (free, about 100 a day). Nobody sees who else you messaged.</p>
   </section>
+
+  <!-- PICK A BUYER (sale form) -->
+  <div id="bpick" class="sheet-bg hide"><div class="psheet" style="max-height:80vh;overflow:auto">
+    <div class="hdr"><h2 style="margin:0;flex:1">Choose a buyer</h2><button class="lnk" id="bpickClose" style="background:none;border:0;font:inherit;color:#0a58ca">Close</button></div>
+    <input id="bpickQ" type="search" class="search" placeholder="Search names" autocomplete="off">
+    <div id="bpickList"></div>
+  </div></div>
 
   <!-- HELP -->
   <section id="vHelp" class="hide form">
@@ -841,6 +883,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <h3 style="margin:0 0 4px">About the buyer <small class="sub">(optional)</small></h3>
       <label for="saBuyerC">Name or username</label>
       <div id="saBuyerSlot"></div>
+      <button class="lnk" id="btnPickBuyer" type="button" style="background:none;border:0;color:#0a58ca;font:inherit;padding:4px 0;text-decoration:underline">Choose from your buyers</button>
       <div id="saBuyerHint" class="sub hide"></div>
       <label>Listed at (£)</label><input id="saListed" type="number" step="0.01" inputmode="decimal" placeholder="The price you asked">
       <p class="hint hide" id="saListedHint"></p>
@@ -969,7 +1012,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=43"></script>
-<script src="app.js?v=43"></script>
+<script src="help.js?v=44"></script>
+<script src="app.js?v=44"></script>
 </body>
 </html>
