@@ -14,11 +14,12 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v44';
+const APP_VERSION = 'v45';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
   if (v !== 'vReview') $('miniBar').classList.add('hide');
+  if (v === 'vHome') { try { renderHomeColl(); } catch (e) {} }
   window.scrollTo(0, 0);
 }
 
@@ -2539,7 +2540,7 @@ if ('serviceWorker' in navigator) {
 const MONTHS_UK = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 async function openSettings() {
   show('vSettings');
-  try { renderColl(); } catch (e) {}
+  try { renderColl(); renderAv(); } catch (e) {}
   $('stYe').innerHTML = MONTHS_UK.map((m, i) => `<option value="${i + 1}">End of ${m}</option>`).join('');
   try {
     SETTINGS = await api('settings', {});
@@ -2846,7 +2847,7 @@ function phoneGet(ccId, inId) {
 const LS_SPOTS = 'rs_spots', LS_TPLS = 'rs_tpls';
 const DEF_TPLS = [
   { name: 'Where to meet', text: "Hi [Name], for security I don't meet people at my door. Please meet me at [Spot].\n[Directions]\nWhen you set off, can you message me your ETA from your maps so I know when you'll arrive? Thanks!" },
-  { name: 'Still available', text: "Hi [Name], yes the [Item] is still available at £[Price]. When would suit you to collect?" }
+  { name: 'Still available', text: "Hi [Name], yes the [Item] is still available at £[Price]. I can do [Times]. Which suits you?" }
 ];
 const getSpots = () => { try { return JSON.parse(localStorage.getItem(LS_SPOTS)) || []; } catch (e) { return []; } };
 const getTpls = () => { try { return JSON.parse(localStorage.getItem(LS_TPLS)) || DEF_TPLS; } catch (e) { return DEF_TPLS; } };
@@ -2880,6 +2881,115 @@ $('stTpls').onclick = e => {
   const ed = e.target.dataset.tpe, del = e.target.dataset.tpd, tp = getTpls();
   if (ed !== undefined) { tpEdit = +ed; $('tpName').value = tp[ed].name; $('tpText').value = tp[ed].text; $('stTplAdd').open = true; }
   if (del !== undefined) { tp.splice(+del, 1); putList(LS_TPLS, tp); renderColl(); }
+};
+
+/* ---------- Collection times ----------
+   You set your usual free hours once (e.g. weekdays 6:15–8:30pm). The app offers your next free times in
+   messages ([Times]); when a buyer picks one you book it here: it stops being offered, goes into your phone's
+   calendar (a calendar file, free, no connection needed) and shows on Home on the day. Kept on this phone. */
+const LS_AVAIL = 'rs_avail', LS_BOOKED = 'rs_booked';
+const getAv = () => { try { return Object.assign({ days: {}, slot: 30, off: [] }, JSON.parse(localStorage.getItem(LS_AVAIL)) || {}); } catch (e) { return { days: {}, slot: 30, off: [] }; } };
+const getBooked = () => { try { return (JSON.parse(localStorage.getItem(LS_BOOKED)) || []).filter(x => new Date(x.start).getTime() > Date.now() - 864e5); } catch (e) { return []; } };
+const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const hm = d => { let h = d.getHours(), m = d.getMinutes(); const ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12; return h + (m ? ':' + String(m).padStart(2, '0') : '') + ap; };
+const dayLabel = d => { const t = new Date(); t.setHours(0, 0, 0, 0); const x = new Date(d); x.setHours(0, 0, 0, 0); const n = Math.round((x - t) / 864e5);
+  return n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()]; };
+function freeSlots(daysAhead) {
+  const av = getAv(), booked = getBooked(), out = [], mins = Number(av.slot) || 30, soon = Date.now() + 60 * 60000;
+  for (let i = 0; i < (daysAhead || 14); i++) {
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i);
+    const w = av.days[String(d.getDay())];
+    if (!w || !w[0] || !w[1] || av.off.indexOf(ymd(d)) > -1) continue;
+    const [fh, fm] = w[0].split(':').map(Number), [th, tm] = w[1].split(':').map(Number);
+    for (let t = fh * 60 + fm; t + mins <= th * 60 + tm; t += mins) {
+      const st = new Date(d); st.setMinutes(t);
+      if (st.getTime() < soon) continue;
+      const en = st.getTime() + mins * 60000;
+      if (booked.some(b => { const bs = new Date(b.start).getTime(); return bs < en && bs + b.mins * 60000 > st.getTime(); })) continue;
+      out.push(st);
+    }
+  }
+  return out;
+}
+// Three choices on different days reads better than three back-to-back slots
+function timesText() {
+  const f = freeSlots(14), pick = [], days = new Set();
+  f.forEach(d => { if (pick.length < 3 && !days.has(ymd(d))) { days.add(ymd(d)); pick.push(d); } });
+  if (!pick.length) return 'whenever suits you';
+  const s = pick.map(d => dayLabel(d) + ' ' + hm(d));
+  return s.length === 1 ? s[0] : s.slice(0, -1).join(', ') + ' or ' + s[s.length - 1];
+}
+function renderAv() {
+  const av = getAv();
+  document.querySelectorAll('[data-av]').forEach(i => { const w = av.days[i.dataset.av] || []; i.value = i.dataset.k === 'from' ? (w[0] || '') : (w[1] || ''); });
+  $('avSlot').value = String(av.slot || 30);
+  $('avOffList').innerHTML = av.off.filter(x => x >= ymd(new Date())).sort().map(x => `<div class="sitem"><span>${esc(dayLabel(new Date(x + 'T12:00')))}</span><button data-avoff="${x}">✕</button></div>`).join('');
+}
+const putAv = av => { try { localStorage.setItem(LS_AVAIL, JSON.stringify(av)); } catch (e) {} };
+$('avDays').addEventListener('change', () => {
+  const av = getAv(); av.days = {};
+  document.querySelectorAll('[data-av][data-k="from"]').forEach(f => { const t = document.querySelector(`[data-av="${f.dataset.av}"][data-k="to"]`); if (f.value && t.value && t.value > f.value) av.days[f.dataset.av] = [f.value, t.value]; });
+  putAv(av);
+});
+$('avSlot').onchange = () => { const av = getAv(); av.slot = Number($('avSlot').value); putAv(av); };
+$('btnAvOff').onclick = () => { const v = $('avOffDate').value; if (!v) return; const av = getAv(); if (av.off.indexOf(v) < 0) av.off.push(v); putAv(av); $('avOffDate').value = ''; renderAv(); toast('Not offering that day'); };
+$('avOffList').onclick = e => { const x = e.target.dataset.avoff; if (!x) return; const av = getAv(); av.off = av.off.filter(o => o !== x); putAv(av); renderAv(); };
+
+let slotFor = null;
+function openSlotPick(b) {
+  const f = freeSlots(14);
+  if (!Object.keys(getAv().days).length) { toast('Set your collection times in Settings first', true); return; }
+  slotFor = b;
+  $('slotTitle').textContent = 'Book ' + firstName(b);
+  let last = '';
+  $('slotList').innerHTML = f.length ? f.slice(0, 60).map((d, i) => { const h = ymd(d) !== last ? '<h4>' + esc(dayLabel(d)) + '</h4>' : ''; last = ymd(d); return h + `<button data-slot="${d.toISOString()}">${hm(d)}</button>`; }).join('')
+    : '<p class="sub">No free times in the next 2 weeks. Check your collection times in Settings.</p>';
+  $('slotPick').classList.remove('hide');
+}
+$('slotClose').onclick = () => $('slotPick').classList.add('hide');
+$('slotList').onclick = e => {
+  const x = e.target.dataset.slot; if (!x || !slotFor) return;
+  const b = slotFor, sp = getSpots()[+$('ouSpot').value], mins = Number(getAv().slot) || 30;
+  const bk = { start: x, mins, key: b.key, name: bName(b), item: $('ouItem').value.trim(), spot: sp ? sp.name : '', addr: sp ? sp.addr || '' : '', mobile: b.mobile || '' };
+  const all = getBooked(); all.push(bk); try { localStorage.setItem(LS_BOOKED, JSON.stringify(all)); } catch (e2) {}
+  $('slotPick').classList.add('hide');
+  const d = new Date(x);
+  OU.done[b.key] = Object.assign(OU.done[b.key] || {}, { book: dayLabel(d) + ' ' + hm(d) });
+  renderOutreach();
+  addToCalendar(bk);
+  toast('Booked ' + bk.name + ': ' + dayLabel(d) + ' ' + hm(d));
+};
+// A standard calendar file: your phone offers "Add to calendar". Nothing is connected or shared.
+function addToCalendar(bk) {
+  const st = new Date(bk.start), en = new Date(st.getTime() + bk.mins * 60000);
+  const f = d => d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + 'T' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0') + '00';
+  const esc2 = t => String(t || '').replace(/[\\;,]/g, m => '\\' + m).replace(/\n/g, '\\n');
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Receipts//Collections//EN', 'BEGIN:VEVENT', 'UID:' + Date.now() + '@receipts', 'DTSTAMP:' + f(new Date()),
+    'DTSTART:' + f(st), 'DTEND:' + f(en), 'SUMMARY:' + esc2('Collection: ' + bk.name + (bk.item ? ' – ' + bk.item : '')),
+    'LOCATION:' + esc2([bk.spot, bk.addr].filter(Boolean).join(', ')), 'DESCRIPTION:' + esc2((bk.mobile ? 'Mobile: ' + bk.mobile + '\n' : '') + 'Booked in Receipts'),
+    'BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', 'DESCRIPTION:Collection in 30 minutes', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = 'collection.ics';
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  } catch (e) {}
+}
+// Home: today's and upcoming collections, with "running late" and "I'm here" ready to send
+function renderHomeColl() {
+  const b = getBooked().filter(x => new Date(x.start).getTime() > Date.now() - 2 * 3600e3).sort((a, c) => new Date(a.start) - new Date(c.start)).slice(0, 4);
+  $('homeColl').classList.toggle('hide', !b.length);
+  if (!b.length) return;
+  const link = (x, t, label) => `<a href="https://wa.me/${telUK(x.mobile)}?text=${encodeURIComponent(t)}" target="_blank" rel="noopener">${label}</a>`;
+  $('homeColl').innerHTML = '<b>📅 Collections</b>' + b.map((x, i) => { const d = new Date(x.start), fn = String(x.name).split(/\s+/)[0];
+    return `<div class="crow"><b>${esc(dayLabel(d))} ${hm(d)}</b> · ${esc(x.name)}${x.item ? ' · ' + esc(x.item) : ''}${x.spot ? '<br><small class="sub">📍 ' + esc(x.spot) + '</small>' : ''}
+      <div class="ouacts">${x.mobile ? link(x, 'Hi ' + fn + ", I'm running about 10 minutes late, sorry!", 'Running late') + link(x, 'Hi ' + fn + ", I'm here" + (x.spot ? ' at ' + x.spot : '') + ' now.', "I'm here") : ''}<button data-collx="${esc(x.start)}|${esc(x.key)}">Cancel</button></div></div>`; }).join('');
+}
+$('homeColl').onclick = e => {
+  const c = e.target.dataset.collx; if (!c) return;
+  const [st, key] = c.split('|');
+  try { localStorage.setItem(LS_BOOKED, JSON.stringify(getBooked().filter(x => !(x.start === st && x.key === key)))); } catch (e2) {}
+  renderHomeColl(); toast('Cancelled. That time is free again');
 };
 
 // Choose a buyer for a sale: search and scroll everyone you've sold to
@@ -3181,7 +3291,7 @@ const firstName = b => String(b.name || b.username || '').trim().split(/\s+/)[0]
 function personal(b) {
   const feats = $('ouFeat').value.trim().split('\n').map(x => x.trim()).filter(Boolean).map(x => '• ' + x).join('\n');
   const sp = getSpots()[+$('ouSpot').value];
-  return $('ouMsg').value.replace(/\[Name\]/g, firstName(b)).replace(/\[Item\]/g, $('ouItem').value.trim() || 'item')
+  return $('ouMsg').value.replace(/\[Times\]/g, timesText()).replace(/\[Name\]/g, firstName(b)).replace(/\[Item\]/g, $('ouItem').value.trim() || 'item')
     .replace(/\[Spot\]/g, sp ? sp.name + (sp.addr ? ' (' + sp.addr + ')' : '') : 'my usual spot').replace(/\[Directions\]/g, sp ? sp.dir || '' : '')
     .replace(/\[Features\]/g, feats || '').replace(/\[Price\]/g, $('ouPrice').value.trim() || '?').replace(/\n{3,}/g, '\n\n');
 }
@@ -3203,6 +3313,7 @@ function renderOutreach() {
     }
     if (b.email) acts.push(`<button data-oue="${i}" class="${d.email ? 'done' : ''}">${d.email ? '✓ Emailed' : 'Email'}</button>`);
     if (navigator.share) acts.push(`<button data-oushare="${i}" class="${d.share ? 'done' : ''}">${d.share ? '✓ ' : ''}Share${ouPhoto ? ' with photo' : ''}</button>`);
+    acts.push(`<button data-oubook="${i}" class="${d.book ? 'done' : ''}">${d.book ? '✓ ' + esc(d.book) : 'Book a time'}</button>`);
     acts.push(`<button data-ousold="${i}">Sold to ${esc(firstName(b))}</button>`);
     return `<div class="skrow" style="display:block"><b>${esc(bName(b))}</b> <span class="bchips" style="display:inline-flex">${howTag(b)}${mkt(b) ? '<span class="bchip bad">⚠️ ' + esc(mkt(b)) + ' buyer: own risk</span>' : ''}</span>
       <span class="sm">${b['preferred contact'] ? 'Best by ' + esc(b['preferred contact']) : ''}${b['other contact'] ? ' · ' + esc(b['other contact']) : ''}${!b.mobile && !b.email ? 'No number or email saved: message them where you usually do' : ''}</span>
@@ -3223,6 +3334,8 @@ $('ouList').addEventListener('click', e => {
   if (m) sendOutEmails([OU.list[+m.dataset.oue]]);
   const sh = e.target.closest('[data-oushare]');
   if (sh) shareTo(OU.list[+sh.dataset.oushare]);
+  const bk = e.target.closest('[data-oubook]');
+  if (bk) openSlotPick(OU.list[+bk.dataset.oubook]);
   const so = e.target.closest('[data-ousold]');
   if (so) soldTo(OU.list[+so.dataset.ousold], $('ouItem').value.trim(), $('ouPrice').value.trim());
 });

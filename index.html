@@ -404,6 +404,9 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 .pick{width:22px;height:22px;flex:0 0 auto;margin-right:10px;align-self:center}
 .skrow.off{opacity:.55}
 .ouacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.ouacts a,.ouacts button{font:inherit;font-size:14px;padding:7px 10px;border-radius:10px;border:1px solid #d0d0d5;background:#fff;color:#0a58ca;text-decoration:none;cursor:pointer}.ouacts .done{background:#e6f4ea;color:#1e6b34;border-color:#b7dfc3}
+.avrow{display:grid;grid-template-columns:44px 1fr auto 1fr;gap:8px;align-items:center;margin:6px 0}.avrow input{padding:8px;min-width:0}
+.slotgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}.slotgrid button{padding:12px 8px;border-radius:12px;border:1px solid #d0d0d5;background:#fff;font:inherit;font-size:15px;cursor:pointer}.slotgrid h4{grid-column:1/-1;margin:10px 0 0}
+.collcard{background:#eef4ff;border:1px solid #cfe0ff;border-radius:16px;padding:12px 14px;margin:10px 0}.collcard .crow{padding:8px 0;border-top:1px solid #dbe6fb}.collcard .crow:first-of-type{border-top:0}
 .guide{background:#eef6ee;border:1px solid #c9e3cc;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:.95em}
 .guide button{background:none;border:0;color:#0a58ca;font:inherit;font-weight:700;padding:0;text-decoration:underline;cursor:pointer}
 .ouphoto{display:flex;align-items:center;gap:10px}
@@ -450,6 +453,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <button class="gear" id="btnSettings" aria-label="Settings"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></header>
     <div id="todo" class="todo hide"></div>
     <div id="homeMatch" class="matchcard hide"></div>
+    <div id="homeColl" class="collcard hide"></div>
     <div class="addbox" id="addBox">
       <button class="hero" id="btnAdd" aria-expanded="false"><span class="plus">＋</span> Add receipt</button>
       <div class="addopts" id="addOpts">
@@ -532,9 +536,20 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <details class="more" id="stTplAdd"><summary>＋ Add a saved message</summary>
         <label>Name</label><input id="tpName" placeholder="e.g. Where to meet">
         <label>Message</label><textarea id="tpText" rows="6"></textarea>
-        <p class="hint">Use [Name], [Item], [Price], [Spot] (the meeting place) and [Directions]: they're filled in for each person.</p>
+        <p class="hint">Use [Name], [Item], [Price], [Spot] (the meeting place), [Directions] and [Times] (your next free collection times): they're filled in for each person.</p>
         <button class="btn sec" id="btnTpSave">Save message</button>
       </details>
+    </div>
+
+    <h3 class="sech">Collection times</h3>
+    <div class="card scard2">
+      <p class="sub">When you're usually free for buyers to collect. Leave a day blank if you're never free then. The app offers your next free times in messages: you don't need to keep a calendar up to date.</p>
+      <div id="avDays"><div class="avrow"><span>Mon</span><input type="time" data-av="1" data-k="from"><span>to</span><input type="time" data-av="1" data-k="to"></div><div class="avrow"><span>Tue</span><input type="time" data-av="2" data-k="from"><span>to</span><input type="time" data-av="2" data-k="to"></div><div class="avrow"><span>Wed</span><input type="time" data-av="3" data-k="from"><span>to</span><input type="time" data-av="3" data-k="to"></div><div class="avrow"><span>Thu</span><input type="time" data-av="4" data-k="from"><span>to</span><input type="time" data-av="4" data-k="to"></div><div class="avrow"><span>Fri</span><input type="time" data-av="5" data-k="from"><span>to</span><input type="time" data-av="5" data-k="to"></div><div class="avrow"><span>Sat</span><input type="time" data-av="6" data-k="from"><span>to</span><input type="time" data-av="6" data-k="to"></div><div class="avrow"><span>Sun</span><input type="time" data-av="0" data-k="from"><span>to</span><input type="time" data-av="0" data-k="to"></div></div>
+      <label>Each slot</label>
+      <select id="avSlot"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="60">1 hour</option></select>
+      <label>Not available on</label>
+      <div class="telrow"><input type="date" id="avOffDate"><button class="btn sec" id="btnAvOff" style="width:auto;margin:0;padding:8px 12px">Block day</button></div>
+      <div id="avOffList"></div>
     </div>
 
     <h3 class="sech">Selling</h3>
@@ -670,7 +685,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <div class="duo"><div><label>Saved message</label><select id="ouTpl"><option value="">Your last message</option></select></div>
       <div><label>Meeting spot</label><select id="ouSpot"><option value="">None</option></select></div></div>
     <label>Message</label><textarea id="ouMsg" rows="7"></textarea>
-    <p class="hint">[Name], [Item], [Features], [Price], [Spot] and [Directions] are filled in for each person. Your wording is remembered. Add more saved messages and meeting spots in Settings.</p>
+    <p class="hint">[Name], [Item], [Features], [Price], [Spot], [Directions] and [Times] (your next free collection times) are filled in for each person. Your wording is remembered. Add more saved messages and meeting spots in Settings.</p>
     <h3 class="sech" id="ouCount">Who</h3>
     <div id="ouWarn" class="warn hide"></div>
     <button class="btn" id="btnOuEmailAll">Email everyone with an email</button>
@@ -684,6 +699,13 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <div class="hdr"><h2 style="margin:0;flex:1">Choose a buyer</h2><button class="lnk" id="bpickClose" style="background:none;border:0;font:inherit;color:#0a58ca">Close</button></div>
     <input id="bpickQ" type="search" class="search" placeholder="Search names" autocomplete="off">
     <div id="bpickList"></div>
+  </div></div>
+
+  <!-- BOOK A COLLECTION TIME -->
+  <div id="slotPick" class="sheet-bg hide"><div class="psheet" style="max-height:80vh;overflow:auto">
+    <div class="hdr"><h2 style="margin:0;flex:1" id="slotTitle">Book a time</h2><button class="lnk" id="slotClose" style="background:none;border:0;font:inherit;color:#0a58ca">Close</button></div>
+    <p class="hint">Pick the time you agreed. It's taken off your free times and added to your phone's calendar with a reminder.</p>
+    <div id="slotList" class="slotgrid"></div>
   </div></div>
 
   <!-- HELP -->
@@ -1012,7 +1034,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=44"></script>
-<script src="app.js?v=44"></script>
+<script src="help.js?v=45"></script>
+<script src="app.js?v=45"></script>
 </body>
 </html>
