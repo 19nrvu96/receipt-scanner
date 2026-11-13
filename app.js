@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v42';
+const APP_VERSION = 'v43';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2925,6 +2925,10 @@ async function openBuyers() {
   catch (err) { if (!BUYERS) $('byList').innerHTML = '<p class="sub">' + esc(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message) + '</p>'; }
 }
 var byFilter = '', bySelecting = false, byPicked = new Set();
+// eBay/Amazon buyers can be picked, with a warning: their policy forbids it, so it's at your own risk.
+const canPick = b => !!(b.canMessage || b.marketOnly || b.ebayOnly);
+const mkt = b => b.marketOnly || (b.ebayOnly ? 'eBay' : '');
+const EBAY_QUOTE = 'eBay\'s policy says members must not "contact other members to make offers to buy or sell items outside of eBay, or use information obtained on eBay to solicit sales outside of eBay."';
 const dayNum = s => { const m = String(s || '').match(/(\d+)\/(\d+)\/(\d+)/); return m ? new Date(+m[3], m[2] - 1, +m[1]).getTime() : 0; };
 const howTag = b => b['usually buys by'] ? `<span class="bchip ${b['usually buys by'] === 'Collects' ? 'good' : ''}">${{ Collects: '💷 Collects', 'Drop-off': '🚗 Drop-off', Online: '📦 Online', Mixed: 'Mixed' }[b['usually buys by']] || esc(b['usually buys by'])}${b['miles from home'] !== '' && b['miles from home'] !== undefined ? ' · ' + esc(b['miles from home']) + ' mi' : ''}</span>` : (b['miles from home'] ? `<span class="bchip">${esc(b['miles from home'])} mi</span>` : '');
 function buyersShown() {
@@ -2938,7 +2942,7 @@ function buyersShown() {
 }
 function renderBuyers() {
   const list = buyersShown();
-  $('byList').innerHTML = !BUYERS ? '<p class="sub">Loading…</p>' : list.length ? list.map(b => `<button class="skrow${bySelecting && !b.canMessage ? ' off' : ''}" data-bk="${esc(b.key)}">${bySelecting ? `<input type="checkbox" class="pick" ${byPicked.has(b.key) ? 'checked' : ''} ${b.canMessage ? '' : 'disabled'} tabindex="-1">` : ''}<span style="flex:1">${esc(bName(b))}${b.name && b.username ? ' <small class="sub">@' + esc(b.username) + '</small>' : ''}<span class="sm">${esc(buyerLine(b)) || 'No sales yet'}${bySelecting && !b.canMessage ? ' · ' + (b.marketOnly ? b.marketOnly + ' rules: can\'t message' : 'hasn\'t said yes to messages') : ''}</span><span class="bchips">${howTag(b)}</span>${buyerChips(b)}</span>${bySelecting ? '' : '<span class="go" style="align-self:center">›</span>'}</button>`).join('')
+  $('byList').innerHTML = !BUYERS ? '<p class="sub">Loading…</p>' : list.length ? list.map(b => `<button class="skrow${bySelecting && !canPick(b) ? ' off' : ''}" data-bk="${esc(b.key)}">${bySelecting ? `<input type="checkbox" class="pick" ${byPicked.has(b.key) ? 'checked' : ''} ${canPick(b) ? '' : 'disabled'} tabindex="-1">` : ''}<span style="flex:1">${esc(bName(b))}${b.name && b.username ? ' <small class="sub">@' + esc(b.username) + '</small>' : ''}<span class="sm">${esc(buyerLine(b)) || 'No sales yet'}${bySelecting && !b.canMessage ? ' · ' + (mkt(b) ? '⚠️ ' + mkt(b) + ' policy: contact at your own risk' : 'hasn\'t said yes to messages') : ''}</span><span class="bchips">${howTag(b)}</span>${buyerChips(b)}</span>${bySelecting ? '' : '<span class="go" style="align-self:center">›</span>'}</button>`).join('')
     : '<p class="sub" style="padding:10px 0">' + ($('byQ').value || byFilter ? 'Nobody matches.' : 'No buyers yet. Add a name when you log a sale, or tap ＋ Add.') + '</p>';
   $('bySelBar').classList.toggle('hide', !bySelecting);
   $('bySelN').textContent = byPicked.size + ' picked';
@@ -2947,12 +2951,13 @@ function renderBuyers() {
 $('byFilter').onclick = e => { const b = e.target.closest('[data-f]'); if (!b) return; byFilter = b.dataset.f; $('byFilter').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderBuyers(); };
 $('bySort').onchange = renderBuyers;
 $('btnBySelect').onclick = () => { bySelecting = !bySelecting; if (!bySelecting) byPicked.clear(); renderBuyers(); };
-$('bySelAll').onclick = () => { buyersShown().filter(b => b.canMessage).forEach(b => byPicked.add(b.key)); renderBuyers(); };
+$('bySelAll').onclick = () => { buyersShown().filter(b => b.canMessage).forEach(b => byPicked.add(b.key)); renderBuyers(); };   // eBay/Amazon buyers: tick them yourself
 $('btnByMsg').onclick = () => { const bs = ((BUYERS && BUYERS.buyers) || []).filter(b => byPicked.has(b.key)); if (!bs.length) { toast('Tick who to message', true); return; } openOutreach(bs, '', 'vBuyers'); };
 $('byQ').oninput = renderBuyers;
 $('byList').onclick = e => {
   const b = e.target.closest('[data-bk]'); if (!b) return;
-  if (bySelecting) { e.preventDefault(); const x = findBuyer(b.dataset.bk); if (!x || !x.canMessage) { toast(x && x.marketOnly ? x.marketOnly + ' doesn\'t allow messaging buyers about other items' : 'Only people who said they\'re happy to hear from you', true); return; }
+  if (bySelecting) { e.preventDefault(); const x = findBuyer(b.dataset.bk); if (!x || !canPick(x)) { toast('Only people who said they\'re happy to hear from you', true); return; }
+    if (!x.canMessage && !byPicked.has(x.key)) toast('⚠️ ' + mkt(x) + ' buyer: their policy doesn\'t allow this. At your own risk.', true);
     byPicked.has(x.key) ? byPicked.delete(x.key) : byPicked.add(x.key); renderBuyers(); return; }
   openBuyer(b.dataset.bk, 'vBuyers');
 };
@@ -2980,7 +2985,7 @@ function renderBuyer() {
   if (b.email) act('Email', 'mailto:' + b.email, 'Email');
   const warn = [];
   const mk = b.marketOnly || (b.ebayOnly ? 'eBay' : '');
-  if (mk) warn.push(mk + ' buyer: ' + mk + ' doesn\'t allow messaging buyers about other items or selling outside ' + (mk === 'eBay and Amazon' ? 'them' : mk) + '. Use these notes to spot patterns only.');
+  if (mk) warn.push(mk + ' buyer. ' + (/eBay/.test(mk) ? EBAY_QUOTE : 'Amazon\'s rules also don\'t allow contacting buyers about sales outside Amazon.') + ' You can still message them here, at your own risk: ' + mk + ' can remove listings or restrict or suspend your account.');
   else if (!b.canMessage) warn.push('They haven\'t said they\'re happy to hear about new items. Only message them about things they\'ve asked for.');
   if (b.experience === 'Bad' || b['sell again'] === 'No') warn.push('You marked: ' + [b.experience === 'Bad' ? 'bad experience' : '', b['sell again'] === 'No' ? 'don\'t sell to them again' : ''].filter(Boolean).join(', ') + '.');
   if (Number(b['no-shows']) > 0) warn.push(b['no-shows'] + ' no-show' + (b['no-shows'] > 1 ? 's' : '') + '.');
@@ -3025,7 +3030,7 @@ $('btnBuyerSave').onclick = async () => {
 // Who might want it: after saving a purchase, and on the Stock page
 var MT = [], mtPicked = new Set();
 function renderMatchList(matches) {
-  return matches.map((m, mi) => `<h3 class="sech">${esc(m.item)}</h3><div class="card" style="padding:4px 14px">${m.buyers.map(b => `<button class="skrow${b.canMessage ? '' : ' off'}" data-bk="${esc(b.key)}" data-mi="${mi}"><input type="checkbox" class="pick" data-pick="${mi}|${esc(b.key)}" ${mtPicked.has(mi + '|' + b.key) ? 'checked' : ''} ${b.canMessage ? '' : 'disabled'}><span style="flex:1">${esc(bName(b))}<span class="sm">Interested in ${esc(b.tag)}${b['preferred contact'] ? ' · best by ' + esc(b['preferred contact']) : ''}</span><span class="bchips">${howTag(b)}</span><span class="sm">${b.ebayOnly ? '⚠️ ' + (b.marketOnly || 'eBay') + ' buyer: can\'t message about other items' : b.canMessage ? '✓ Happy to hear about similar items' : '⚠️ Hasn\'t said they\'re happy to hear from you'}</span></span><span class="go" style="align-self:center">›</span></button>`).join('')}</div>`).join('');
+  return matches.map((m, mi) => `<h3 class="sech">${esc(m.item)}</h3><div class="card" style="padding:4px 14px">${m.buyers.map(b => `<button class="skrow${canPick(b) ? '' : ' off'}" data-bk="${esc(b.key)}" data-mi="${mi}"><input type="checkbox" class="pick" data-pick="${mi}|${esc(b.key)}" ${mtPicked.has(mi + '|' + b.key) ? 'checked' : ''} ${canPick(b) ? '' : 'disabled'}><span style="flex:1">${esc(bName(b))}<span class="sm">Interested in ${esc(b.tag)}${b['preferred contact'] ? ' · best by ' + esc(b['preferred contact']) : ''}</span><span class="bchips">${howTag(b)}</span><span class="sm">${mkt(b) ? '⚠️ ' + mkt(b) + ' buyer: their policy forbids this. Tick at your own risk' : b.canMessage ? '✓ Happy to hear about similar items' : '⚠️ Hasn\'t said they\'re happy to hear from you'}</span></span><span class="go" style="align-self:center">›</span></button>`).join('')}</div>`).join('');
 }
 function openMatch(matches) {
   show('vMatch');
@@ -3067,10 +3072,13 @@ function personal(b) {
     .replace(/\[Features\]/g, feats || '').replace(/\[Price\]/g, $('ouPrice').value.trim() || '?').replace(/\n{3,}/g, '\n\n');
 }
 function renderOutreach() {
-  const L = OU.list;
+  const L = OU.list, risky = L.filter(b => mkt(b));
+  $('ouWarn').classList.toggle('hide', !risky.length);
+  if (risky.length) $('ouWarn').innerHTML = '<b>⚠️ ' + risky.length + ' of these ' + (risky.length === 1 ? 'is an' : 'are') + ' eBay or Amazon buyer' + (risky.length === 1 ? '' : 's') + '.</b> ' + esc(EBAY_QUOTE) +
+    ' Amazon has similar rules. You can still contact them, but <b>it\'s at your own risk</b>: they can remove listings, restrict or suspend your account.';
   $('ouCount').textContent = L.length + ' ' + (L.length === 1 ? 'person' : 'people');
   const withEmail = L.filter(b => b.email).length;
-  $('btnOuEmailAll').classList.toggle('hide', !withEmail);
+  $('btnOuEmailAll').classList.toggle('hide', !withEmail); $('ouGmailNote').classList.toggle('hide', !withEmail);
   $('btnOuEmailAll').textContent = 'Email ' + (withEmail === 1 ? 'the 1 person' : 'all ' + withEmail) + ' with an email';
   $('ouList').innerHTML = L.map((b, i) => {
     const t = encodeURIComponent(personal(b)), d = OU.done[b.key] || {};
@@ -3080,7 +3088,7 @@ function renderOutreach() {
       acts.push(`<a href="sms:${String(b.mobile).replace(/\s/g, '')}?&body=${t}" data-ou="${i}|text" class="${d.text ? 'done' : ''}">${d.text ? '✓ ' : ''}Text</a>`);
     }
     if (b.email) acts.push(`<button data-oue="${i}" class="${d.email ? 'done' : ''}">${d.email ? '✓ Emailed' : 'Email'}</button>`);
-    return `<div class="skrow" style="display:block"><b>${esc(bName(b))}</b> <span class="bchips" style="display:inline-flex">${howTag(b)}</span>
+    return `<div class="skrow" style="display:block"><b>${esc(bName(b))}</b> <span class="bchips" style="display:inline-flex">${howTag(b)}${mkt(b) ? '<span class="bchip bad">⚠️ ' + esc(mkt(b)) + ' buyer: own risk</span>' : ''}</span>
       <span class="sm">${b['preferred contact'] ? 'Best by ' + esc(b['preferred contact']) : ''}${b['other contact'] ? ' · ' + esc(b['other contact']) : ''}${!b.mobile && !b.email ? 'No number or email saved: message them where you usually do' : ''}</span>
       <div class="ouacts">${acts.join('')}</div></div>`;
   }).join('');
@@ -3102,9 +3110,10 @@ async function sendOutEmails(list) {
   list = list.filter(b => b.email && !(OU.done[b.key] || {}).email);
   if (!list.length) { toast('Already emailed'); return; }
   const item = $('ouItem').value.trim();
-  if (!confirm('Send ' + list.length + ' email' + (list.length > 1 ? 's' : '') + ' from your Gmail, one to each person?')) return;
+  const risky = list.filter(b => mkt(b)).length;
+  if (!confirm('Send ' + list.length + ' email' + (list.length > 1 ? 's' : '') + ' from your Gmail, one to each person?\n\nGmail lets you send about 100 emails a day.' + (risky ? '\n\n⚠️ ' + risky + ' ' + (risky === 1 ? 'is an eBay/Amazon buyer' : 'are eBay/Amazon buyers') + ': their policy forbids this. Sending is at your own risk.' : ''))) return;
   try {
-    const r = await api('buyerEmail', { item, messages: list.map(b => ({ key: b.key, subject: item ? item + ' – are you interested?' : 'Something you might like', body: personal(b) })) });
+    const r = await api('buyerEmail', { item, acceptRisk: true, messages: list.map(b => ({ key: b.key, subject: item ? item + ' – are you interested?' : 'Something you might like', body: personal(b) })) });
     list.forEach(b => { if (!(r.skipped || []).some(x => x.key === b.key)) OU.done[b.key] = Object.assign(OU.done[b.key] || {}, { email: true }); });
     toast('Sent ' + r.sent + ' email' + (r.sent === 1 ? '' : 's') + ((r.skipped || []).length ? ' · ' + r.skipped.length + ' skipped' : ''));
     renderOutreach();

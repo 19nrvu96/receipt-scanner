@@ -637,7 +637,9 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <label>Message</label><textarea id="ouMsg" rows="7"></textarea>
     <p class="hint">[Name], [Item], [Features] and [Price] are filled in for each person. Your wording is remembered.</p>
     <h3 class="sech" id="ouCount">Who</h3>
+    <div id="ouWarn" class="warn hide"></div>
     <button class="btn" id="btnOuEmailAll">Email everyone with an email</button>
+    <p class="hint" id="ouGmailNote">Gmail lets you send <b>about 100 emails a day</b>. Each person counts as one.</p>
     <div id="ouList" class="card" style="padding:4px 14px"></div>
     <p class="hint">WhatsApp and texts open one person at a time with the message ready: tap send, come back, tap the next. Emails go one each from your Gmail (free, about 100 a day). Nobody sees who else you messaged.</p>
   </section>
@@ -861,7 +863,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
         <select id="saBPref"><option value="">Not sure</option><option>Platform messages</option><option>WhatsApp</option><option>Text</option><option>Phone call</option><option>Email</option><option>Facebook Messenger</option><option>Instagram</option><option>Snapchat</option><option>Other</option></select>
         <label>Other contact (e.g. Snapchat or Instagram name)</label><input id="saBOther" autocomplete="off">
         <label class="check"><input type="checkbox" id="saBOpt"> They're happy to hear about similar items</label>
-        <p class="hint">Only message people about new items if they said yes. Never message eBay or Amazon buyers about other items: they don't allow it.</p>
+        <p class="hint">Only message people about new items if they said yes. eBay and Amazon don't allow messaging their buyers about other items. You can, but it's at your own risk.</p>
       </details>
     </div>
     <label>Receipt photo (optional)</label>
@@ -967,7 +969,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=42"></script>
-<script src="app.js?v=42"></script>
+<script src="help.js?v=43"></script>
+<script src="app.js?v=43"></script>
 </body>
 </html>
