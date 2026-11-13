@@ -398,6 +398,12 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 .skrow{display:flex;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);width:100%;background:none;border-left:0;border-right:0;border-top:0;text-align:left;font:inherit;cursor:pointer}
 .skrow:last-child{border-bottom:0}
 .skrow .sm{display:block}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}.chips button{border:1px solid #d0d0d5;background:#fff;border-radius:999px;padding:6px 12px;font:inherit;font-size:14px;cursor:pointer}.chips button.on{background:#0a84ff;border-color:#0a84ff;color:#fff}
+.byctl{display:flex;gap:8px;align-items:center;margin-bottom:8px}.byctl select{flex:1}
+.selbar{position:sticky;bottom:0;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #d0d0d5;border-radius:14px;padding:8px 10px;margin-top:10px;z-index:5}.selbar span{flex:1;font-weight:700}
+.pick{width:22px;height:22px;flex:0 0 auto;margin-right:10px;align-self:center}
+.skrow.off{opacity:.55}
+.ouacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.ouacts a,.ouacts button{font:inherit;font-size:14px;padding:7px 10px;border-radius:10px;border:1px solid #d0d0d5;background:#fff;color:#0a58ca;text-decoration:none;cursor:pointer}.ouacts .done{background:#e6f4ea;color:#1e6b34;border-color:#b7dfc3}
 .telrow{display:flex;gap:6px}.telrow select{width:auto;flex:0 0 auto;padding-left:8px;padding-right:8px}.telrow input{flex:1;min-width:0}
 .rfind{margin-top:6px}.rfind input{width:100%;padding:10px 12px;border:1px solid #d0d0d5;border-radius:10px;font:inherit;font-size:15px}
 .rfres button{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e0e0e5;border-radius:10px;padding:8px 10px;margin-top:4px;font:inherit;font-size:14px;cursor:pointer}
@@ -587,6 +593,10 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
   <section id="vBuyers" class="hide">
     <div class="hdr"><button class="back" id="btnBuyersBack">‹</button><h2 style="margin:0;flex:1">Buyers</h2><button class="btn sec" id="btnBuyerAdd" style="width:auto;margin:0;padding:8px 12px">＋ Add</button></div>
     <input id="byQ" type="search" placeholder="Search names, interests, notes" autocomplete="off" class="search">
+    <div class="chips" id="byFilter"><button data-f="" class="on">All</button><button data-f="Collects">Collects (cash)</button><button data-f="Drop-off">Drop-off</button><button data-f="Online">Online</button><button data-f="msg">Can message</button></div>
+    <div class="byctl"><select id="bySort" aria-label="Sort"><option value="recent">Most recent</option><option value="spent">Spent most</option><option value="times">Bought most</option><option value="near">Nearest</option><option value="az">A–Z</option></select>
+      <button class="btn sec" id="btnBySelect" style="width:auto;margin:0;padding:8px 12px">Select</button></div>
+    <div id="bySelBar" class="selbar hide"><span id="bySelN">0 picked</span><button class="lnk" id="bySelAll">Pick all who can be messaged</button><button class="btn" id="btnByMsg" style="width:auto;margin:0;padding:10px 14px">Message</button></div>
     <div id="byList" class="card" style="padding:4px 14px"></div>
   </section>
   <section id="vBuyer" class="hide form">
@@ -598,6 +608,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <label>Best way to reach them</label>
       <select id="bePref"><option value="">Not sure</option><option>Platform messages</option><option>WhatsApp</option><option>Text</option><option>Phone call</option><option>Email</option><option>Facebook Messenger</option><option>Instagram</option><option>Snapchat</option><option>Other</option></select>
       <label>Other contact (e.g. Snapchat or Instagram name)</label><input id="beOther" autocomplete="off">
+      <label>Postcode (for how far they are)</label><input id="bePostcode" autocomplete="off" placeholder="e.g. KT1 1AA">
       <label class="check"><input type="checkbox" id="beOpt"> They're happy to hear about similar items</label>
       <label>How it went (last time)</label>
       <div class="seg" id="beExp"><button data-v="Good">👍 Good</button><button data-v="Fine">👌 Fine</button><button data-v="Bad">👎 Bad</button></div>
@@ -614,6 +625,21 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
   <section id="vMatch" class="hide">
     <div class="hdr"><button class="back" id="btnMatchBack">‹</button><h2 style="margin:0;flex:1">Who might want it</h2></div>
     <div id="mtList"></div>
+    <div class="selbar" id="mtBar"><span id="mtSelN">0 picked</span><button class="btn" id="btnMtMsg" style="width:auto;margin:0;padding:10px 14px">Message them</button></div>
+  </section>
+
+  <!-- MESSAGE BUYERS: one message each, never a group -->
+  <section id="vOutreach" class="hide form">
+    <div class="hdr"><button class="back" id="btnOutBack">‹</button><h2 style="margin:0;flex:1">Message buyers</h2></div>
+    <label>Item</label><input id="ouItem" autocomplete="off" placeholder="e.g. Pro V1 golf balls, 12 pack">
+    <label>Price (£)</label><input id="ouPrice" type="number" step="0.01" inputmode="decimal">
+    <label>Key features</label><textarea id="ouFeat" rows="3" placeholder="One per line, e.g. brand new, boxed"></textarea>
+    <label>Message</label><textarea id="ouMsg" rows="7"></textarea>
+    <p class="hint">[Name], [Item], [Features] and [Price] are filled in for each person. Your wording is remembered.</p>
+    <h3 class="sech" id="ouCount">Who</h3>
+    <button class="btn" id="btnOuEmailAll">Email everyone with an email</button>
+    <div id="ouList" class="card" style="padding:4px 14px"></div>
+    <p class="hint">WhatsApp and texts open one person at a time with the message ready: tap send, come back, tap the next. Emails go one each from your Gmail (free, about 100 a day). Nobody sees who else you messaged.</p>
   </section>
 
   <!-- HELP -->
@@ -783,7 +809,12 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <div class="seg two" id="saPostBy"><button data-v="Buyer"><b>The buyer</b><small>they paid postage</small></button><button data-v="Seller"><b>Me</b><small>free postage for the buyer</small></button></div>
       <p class="hint" id="saPostHint">Tap who paid. Then put in what it cost you to send it.</p>
       <input id="saPostIn" type="hidden">
-      <div id="saPostOutWrap"><label id="saPostOutLbl">You paid to send it (£)</label><input id="saPostOut" type="number" step="0.01" inputmode="decimal"></div>
+      <div id="saPostOutWrap"><label id="saPostOutLbl">You paid to send it (£)</label><input id="saPostOut" type="number" step="0.01" inputmode="decimal">
+        <div id="saEbayWrap" class="hide">
+          <button class="lnk" id="btnLastPost" type="button"></button>
+          <a class="btn sec" id="btnEbayFind" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;margin-top:8px">Find this order on eBay ↗</a>
+          <p class="hint" id="saEbayHint">eBay's emails never show the label price. On the order page it's under "What you earned" → <b>Postage label</b>.</p>
+        </div></div>
       <label class="check"><input type="checkbox" id="saOwn"> I used my own courier (big or odd-sized item)</label>
       <div id="saOwnWrap" class="hide"><label>Which courier?</label><input id="saCourier" placeholder="e.g. Parcelforce, DPD, a man with a van">
         <label>Tracking code (optional)</label><input id="saTrack" autocomplete="off" placeholder="Helps if it goes missing">
@@ -936,7 +967,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=41"></script>
-<script src="app.js?v=41"></script>
+<script src="help.js?v=42"></script>
+<script src="app.js?v=42"></script>
 </body>
 </html>

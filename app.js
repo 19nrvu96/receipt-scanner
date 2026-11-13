@@ -13,8 +13,8 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch'];
-const APP_VERSION = 'v41';
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
+const APP_VERSION = 'v42';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1908,6 +1908,7 @@ function handToggle() {
   $('saTripAsk').classList.toggle('hide', done);
   $('saDropWrap').classList.toggle('hide', !$('saLogTrip').checked);
   if (typeof crmToggle === 'function') crmToggle();
+  try { ebayHelp(); } catch (e) {}
 }
 function saleWhereToggle() {
   const plat = $('saPlatform').value, inPerson = plat === 'In person', hand = HAND[plat];
@@ -1956,6 +1957,27 @@ function cardCalc() {
 ['saTap', 'saPct'].forEach(id => { $(id).oninput = cardCalc; });
 
 // Postage: who paid decides what comes off your money
+// eBay never emails the label price. Link straight to the order (or a title search) on eBay, and offer
+// the last price you paid for an eBay label as a one-tap fill.
+const LS_POSTCOST = 'rs_postcost';
+function ebayHelp() {
+  const on = /^ebay/i.test($('saPlatform').value) && !$('saPostWrap').classList.contains('hide');
+  $('saEbayWrap').classList.toggle('hide', !on);
+  if (!on) return;
+  const ord = $('saOrder').value.trim(), item = $('saItem').value.trim();
+  const byOrder = /^\d{2}-\d{5}-\d{5}$/.test(ord);
+  const words = item.replace(/[^\w\s-]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 4).join(' ');
+  $('btnEbayFind').href = byOrder ? 'https://www.ebay.co.uk/mesh/ord/details?mode=SH&orderid=' + ord
+    : 'https://www.ebay.co.uk/sh/ord/?filter=status:ALL_ORDERS' + (words ? '&search=itemtitle:' + encodeURIComponent(words) : '');
+  $('btnEbayFind').textContent = byOrder ? 'Open order ' + ord + ' on eBay ↗' : words ? 'Find "' + words + '" in your eBay orders ↗' : 'Open your eBay orders ↗';
+  let last = null; try { last = JSON.parse(localStorage.getItem(LS_POSTCOST) || 'null'); } catch (e) {}
+  const show_ = !!(last && last.cost && !$('saPostOut').value);
+  $('btnLastPost').classList.toggle('hide', !show_);
+  if (show_) $('btnLastPost').textContent = 'Use ' + money(last.cost) + ' (your last eBay label' + (last.courier ? ', ' + last.courier : '') + ')';
+}
+$('btnLastPost').onclick = () => { let last = null; try { last = JSON.parse(localStorage.getItem(LS_POSTCOST)); } catch (e) {} if (last) { $('saPostOut').value = last.cost; $('saPostOut').dispatchEvent(new Event('input')); ebayHelp(); } };
+['saOrder', 'saItem', 'saPostOut'].forEach(id => $(id).addEventListener('input', () => { try { ebayHelp(); } catch (e) {} }));
+
 function postHint() {
   const plat = $('saPlatform').value, by = segGet('saPostBy');
   const vinted = plat === 'Vinted';
@@ -2192,6 +2214,7 @@ async function saveSaleForm() {
   }
   if (s.where) lsSet(LS_WHERE, [s.where].concat(lsList(LS_WHERE).filter(w => w !== s.where)).slice(0, 15));
   if (!sale.row && !sale.clientId) sale.clientId = newId();
+  if (/^ebay/i.test(s.platform) && Number(s['postage cost']) > 0 && segGet('saPostBy') === 'Seller') { try { localStorage.setItem(LS_POSTCOST, JSON.stringify({ cost: Number(s['postage cost']), courier: s.courier || '' })); } catch (e) {} }
   const req = { sale: s, row: sale.row, saleId: sale.saleId, clientId: sale.row ? undefined : sale.clientId,
                 image: sale.photo ? { base64: sale.photo.split(',')[1], mimeType: 'image/jpeg' } : null };
   const buyerInfo = crmPayload(s);
@@ -2890,7 +2913,8 @@ function crmPayload(s) {
     'buying style': segGet('saStyle') || '', 'turned up': $('saTurnWrap').classList.contains('hide') ? '' : (segGet('saTurn') || ''),
     'buyer interests': v('saInts'), 'buyer note': v('saBNote') });
   if (!s.buyer) return null;
-  return { email: v('saBEmail'), mobile: phoneGet('saBCc', 'saBMobile'), preferred: $('saBPref').value, other: v('saBOther'), optIn: $('saBOpt').checked };
+  return { postcode: s.handover === 'Delivered' ? v('saDropTo').toUpperCase() : undefined, home: homeAddr() || undefined,
+    email: v('saBEmail'), mobile: phoneGet('saBCc', 'saBMobile'), preferred: $('saBPref').value, other: v('saBOther'), optIn: $('saBOpt').checked };
 }
 
 // Buyers list
@@ -2900,14 +2924,38 @@ async function openBuyers() {
   try { await loadBuyers(); renderBuyers(); }
   catch (err) { if (!BUYERS) $('byList').innerHTML = '<p class="sub">' + esc(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message) + '</p>'; }
 }
-function renderBuyers() {
+var byFilter = '', bySelecting = false, byPicked = new Set();
+const dayNum = s => { const m = String(s || '').match(/(\d+)\/(\d+)\/(\d+)/); return m ? new Date(+m[3], m[2] - 1, +m[1]).getTime() : 0; };
+const howTag = b => b['usually buys by'] ? `<span class="bchip ${b['usually buys by'] === 'Collects' ? 'good' : ''}">${{ Collects: '💷 Collects', 'Drop-off': '🚗 Drop-off', Online: '📦 Online', Mixed: 'Mixed' }[b['usually buys by']] || esc(b['usually buys by'])}${b['miles from home'] !== '' && b['miles from home'] !== undefined ? ' · ' + esc(b['miles from home']) + ' mi' : ''}</span>` : (b['miles from home'] ? `<span class="bchip">${esc(b['miles from home'])} mi</span>` : '');
+function buyersShown() {
   const q = $('byQ').value.trim().toLowerCase(), bs = (BUYERS && BUYERS.buyers) || [];
-  const list = bs.filter(b => !q || [b.name, b.username, b['interested in'], b.notes, b.email, b.platforms].join(' ').toLowerCase().includes(q));
-  $('byList').innerHTML = !BUYERS ? '<p class="sub">Loading…</p>' : list.length ? list.map(b => `<button class="skrow" data-bk="${esc(b.key)}"><span>${esc(bName(b))}${b.name && b.username ? ' <small class="sub">@' + esc(b.username) + '</small>' : ''}<span class="sm">${esc(buyerLine(b)) || 'No sales yet'}</span>${buyerChips(b)}</span><span class="go" style="align-self:center">›</span></button>`).join('')
-    : '<p class="sub" style="padding:10px 0">' + (q ? 'Nobody matches.' : 'No buyers yet. Add a name when you log a sale, or tap ＋ Add.') + '</p>';
+  const list = bs.filter(b => (!q || [b.name, b.username, b['interested in'], b.notes, b.email, b.platforms, b.postcode].join(' ').toLowerCase().includes(q))
+    && (!byFilter || (byFilter === 'msg' ? b.canMessage : b['usually buys by'] === byFilter)));
+  const by = $('bySort').value, n = x => Number(x) || 0;
+  return list.sort(by === 'spent' ? (a, b) => n(b['total spent']) - n(a['total spent']) : by === 'times' ? (a, b) => n(b['times bought']) - n(a['times bought'])
+    : by === 'near' ? (a, b) => { const m = x => x['miles from home'] === '' || x['miles from home'] == null ? 1e9 : n(x['miles from home']); return m(a) - m(b); }
+    : by === 'az' ? (a, b) => bName(a).localeCompare(bName(b)) : (a, b) => dayNum(b['last bought']) - dayNum(a['last bought']));
 }
+function renderBuyers() {
+  const list = buyersShown();
+  $('byList').innerHTML = !BUYERS ? '<p class="sub">Loading…</p>' : list.length ? list.map(b => `<button class="skrow${bySelecting && !b.canMessage ? ' off' : ''}" data-bk="${esc(b.key)}">${bySelecting ? `<input type="checkbox" class="pick" ${byPicked.has(b.key) ? 'checked' : ''} ${b.canMessage ? '' : 'disabled'} tabindex="-1">` : ''}<span style="flex:1">${esc(bName(b))}${b.name && b.username ? ' <small class="sub">@' + esc(b.username) + '</small>' : ''}<span class="sm">${esc(buyerLine(b)) || 'No sales yet'}${bySelecting && !b.canMessage ? ' · ' + (b.marketOnly ? b.marketOnly + ' rules: can\'t message' : 'hasn\'t said yes to messages') : ''}</span><span class="bchips">${howTag(b)}</span>${buyerChips(b)}</span>${bySelecting ? '' : '<span class="go" style="align-self:center">›</span>'}</button>`).join('')
+    : '<p class="sub" style="padding:10px 0">' + ($('byQ').value || byFilter ? 'Nobody matches.' : 'No buyers yet. Add a name when you log a sale, or tap ＋ Add.') + '</p>';
+  $('bySelBar').classList.toggle('hide', !bySelecting);
+  $('bySelN').textContent = byPicked.size + ' picked';
+  $('btnBySelect').textContent = bySelecting ? 'Done' : 'Select';
+}
+$('byFilter').onclick = e => { const b = e.target.closest('[data-f]'); if (!b) return; byFilter = b.dataset.f; $('byFilter').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderBuyers(); };
+$('bySort').onchange = renderBuyers;
+$('btnBySelect').onclick = () => { bySelecting = !bySelecting; if (!bySelecting) byPicked.clear(); renderBuyers(); };
+$('bySelAll').onclick = () => { buyersShown().filter(b => b.canMessage).forEach(b => byPicked.add(b.key)); renderBuyers(); };
+$('btnByMsg').onclick = () => { const bs = ((BUYERS && BUYERS.buyers) || []).filter(b => byPicked.has(b.key)); if (!bs.length) { toast('Tick who to message', true); return; } openOutreach(bs, '', 'vBuyers'); };
 $('byQ').oninput = renderBuyers;
-$('byList').onclick = e => { const b = e.target.closest('[data-bk]'); if (b) openBuyer(b.dataset.bk, 'vBuyers'); };
+$('byList').onclick = e => {
+  const b = e.target.closest('[data-bk]'); if (!b) return;
+  if (bySelecting) { e.preventDefault(); const x = findBuyer(b.dataset.bk); if (!x || !x.canMessage) { toast(x && x.marketOnly ? x.marketOnly + ' doesn\'t allow messaging buyers about other items' : 'Only people who said they\'re happy to hear from you', true); return; }
+    byPicked.has(x.key) ? byPicked.delete(x.key) : byPicked.add(x.key); renderBuyers(); return; }
+  openBuyer(b.dataset.bk, 'vBuyers');
+};
 $('slBuyers').onclick = openBuyers;
 $('btnBuyersBack').onclick = () => openSales();
 $('btnBuyerAdd').onclick = () => openBuyer(null, 'vBuyers');
@@ -2942,8 +2990,8 @@ function renderBuyer() {
     (warn.length ? `<div class="warn">${warn.map(esc).join('<br>')}</div>` : (b.canMessage ? '<p class="sub">✓ Happy to hear about similar items</p>' : '')) +
     (acts.length ? `<div class="bpacts">${acts.join('')}</div>` : '') +
     (pref || b['other contact'] ? `<p class="sub">Best way to reach them: <b>${esc(pref || 'not sure')}</b>${b['other contact'] ? ' · ' + esc(b['other contact']) : ''}</p>` : '') +
-    buyerChips(b) +
-    `<div class="ncard" style="margin-top:10px">${row('Times bought', b['times bought'] || 0)}${row('Total spent', b['total spent'] ? money(b['total spent']) : '')}${row('Last bought', b['last bought'])}${row('Average off your asking price', b['avg off asking %'] !== '' ? b['avg off asking %'] + '%' : '')}${row('Turned up', b['turned up'])}${row('Refunds', b.refunds || '')}${row('Where they buy', b.platforms)}${row('First seen', b['first seen'])}</div>` +
+    `<span class="bchips">${howTag(b)}</span>` + buyerChips(b) +
+    `<div class="ncard" style="margin-top:10px">${row('Times bought', b['times bought'] || 0)}${row('Total spent', b['total spent'] ? money(b['total spent']) : '')}${row('Last bought', b['last bought'])}${row('Average off your asking price', b['avg off asking %'] !== '' ? b['avg off asking %'] + '%' : '')}${row('Usually buys by', b['usually buys by'] ? b['usually buys by'] + ' (' + [b.collects ? b.collects + ' collected' : '', b['drop-offs'] ? b['drop-offs'] + ' dropped off' : '', b.online ? b.online + ' online' : ''].filter(Boolean).join(', ') + ')' : '')}${row('Postcode', b.postcode)}${row('Miles from home', b['miles from home'] !== '' ? b['miles from home'] + ' miles' : '')}${row('Last contacted', b['last contacted'])}${row('Turned up', b['turned up'])}${row('Refunds', b.refunds || '')}${row('Where they buy', b.platforms)}${row('First seen', b['first seen'])}</div>` +
     (b.notes ? `<h3 class="sech">Notes</h3><div class="card" style="white-space:pre-wrap">${esc(b.notes)}</div>` : '') +
     (b.sales && b.sales.length ? `<h3 class="sech">What they bought</h3><div class="card" style="padding:4px 14px">${b.sales.map(x => `<div class="skrow"><span>${esc(x.item)}<span class="sm">${esc(x.date)} · ${esc(x.platform)}${x.listed ? ' · listed ' + money(x.listed) : ''}${x.note ? ' · ' + esc(x.note) : ''}</span></span><b>${money(x.price)}</b></div>`).join('')}</div>` : '');
 }
@@ -2952,7 +3000,7 @@ function fillBuyerEdit(b) {
   $('bePref').value = b['preferred contact'] || ''; $('beOther').value = b['other contact'] || '';
   $('beOpt').checked = String(b['happy to hear about similar items']) === 'Yes';
   segSet('beExp', b.experience || ''); segSet('beAgain', b['sell again'] || ''); segSet('beStyle', b['buying style'] || '');
-  $('beInts').value = b['interested in'] || ''; $('beNotes').value = b.notes || '';
+  $('beInts').value = b['interested in'] || ''; $('beNotes').value = b.notes || ''; $('bePostcode').value = b.postcode || '';
 }
 ['beExp', 'beAgain', 'beStyle'].forEach(id => $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (b) segSet(id, segGet(id) === b.dataset.v ? '' : b.dataset.v); }));
 $('btnBuyerEdit').onclick = () => { fillBuyerEdit(BP || {}); $('bpView').classList.add('hide'); $('bpEdit').classList.remove('hide'); $('btnBuyerEdit').classList.add('hide'); };
@@ -2961,11 +3009,11 @@ $('btnBuyerSave').onclick = async () => {
   const v = id => $(id).value.trim();
   const buyer = { name: v('beName'), username: v('beUser'), mobile: phoneGet('beCc', 'beMobile'), email: v('beEmail'), 'preferred contact': $('bePref').value,
     'other contact': v('beOther'), 'happy to hear about similar items': $('beOpt').checked, experience: segGet('beExp') || '', 'sell again': segGet('beAgain') || '',
-    'buying style': segGet('beStyle') || '', 'interested in': v('beInts'), notes: $('beNotes').value.trim() };
+    'buying style': segGet('beStyle') || '', 'interested in': v('beInts'), notes: $('beNotes').value.trim(), postcode: v('bePostcode').toUpperCase() };
   if (!buyer.name && !buyer.username) { toast('Add a name or username', true); return; }
   const b = $('btnBuyerSave'); b.disabled = true; b.textContent = 'Saving…';
   try {
-    BP = await api('buyerSave', { key: bpKey || undefined, buyer });
+    BP = await api('buyerSave', { key: bpKey || undefined, buyer, home: homeAddr() || undefined });
     bpKey = BP.key;
     loadBuyers().catch(() => {});
     $('bpEdit').classList.add('hide'); $('bpView').classList.remove('hide'); $('btnBuyerEdit').classList.remove('hide');
@@ -2975,15 +3023,96 @@ $('btnBuyerSave').onclick = async () => {
 };
 
 // Who might want it: after saving a purchase, and on the Stock page
+var MT = [], mtPicked = new Set();
 function renderMatchList(matches) {
-  return matches.map(m => `<h3 class="sech">${esc(m.item)}</h3><div class="card" style="padding:4px 14px">${m.buyers.map(b => `<button class="skrow" data-bk="${esc(b.key)}"><span>${esc(bName(b))}<span class="sm">Interested in ${esc(b.tag)}${b['preferred contact'] ? ' · best by ' + esc(b['preferred contact']) : ''}</span><span class="sm">${b.ebayOnly ? '⚠️ ' + (b.marketOnly || 'eBay') + ' buyer: can\'t message about other items' : b.canMessage ? '✓ Happy to hear about similar items' : '⚠️ Hasn\'t said they\'re happy to hear from you'}</span></span><span class="go" style="align-self:center">›</span></button>`).join('')}</div>`).join('');
+  return matches.map((m, mi) => `<h3 class="sech">${esc(m.item)}</h3><div class="card" style="padding:4px 14px">${m.buyers.map(b => `<button class="skrow${b.canMessage ? '' : ' off'}" data-bk="${esc(b.key)}" data-mi="${mi}"><input type="checkbox" class="pick" data-pick="${mi}|${esc(b.key)}" ${mtPicked.has(mi + '|' + b.key) ? 'checked' : ''} ${b.canMessage ? '' : 'disabled'}><span style="flex:1">${esc(bName(b))}<span class="sm">Interested in ${esc(b.tag)}${b['preferred contact'] ? ' · best by ' + esc(b['preferred contact']) : ''}</span><span class="bchips">${howTag(b)}</span><span class="sm">${b.ebayOnly ? '⚠️ ' + (b.marketOnly || 'eBay') + ' buyer: can\'t message about other items' : b.canMessage ? '✓ Happy to hear about similar items' : '⚠️ Hasn\'t said they\'re happy to hear from you'}</span></span><span class="go" style="align-self:center">›</span></button>`).join('')}</div>`).join('');
 }
 function openMatch(matches) {
   show('vMatch');
-  $('mtList').innerHTML = '<p class="hint">These buyers said they\'re after something like this. Tap one for their details. Only message people who are happy to hear from you.</p>' + renderMatchList(matches);
+  if (matches) { MT = matches; mtPicked = new Set(); MT.forEach((m, mi) => m.buyers.forEach(b => { if (b.canMessage) mtPicked.add(mi + '|' + b.key); })); }
+  renderMatch();
 }
-$('mtList').onclick = e => { const b = e.target.closest('[data-bk]'); if (b) openBuyer(b.dataset.bk, 'vMatch'); };
+function renderMatch() {
+  $('mtList').innerHTML = '<p class="hint">These buyers said they\'re after something like this. Cash buyers who collect are usually the quickest sale. Tick who to message, or tap a name for their details.</p>' + renderMatchList(MT);
+  $('mtSelN').textContent = mtPicked.size + ' picked';
+}
+$('mtList').onclick = e => {
+  const p = e.target.closest('[data-pick]');
+  if (p) { e.stopPropagation(); p.checked ? mtPicked.add(p.dataset.pick) : mtPicked.delete(p.dataset.pick); $('mtSelN').textContent = mtPicked.size + ' picked'; return; }
+  const b = e.target.closest('[data-bk]'); if (b) openBuyer(b.dataset.bk, 'vMatch');
+};
+$('btnMtMsg').onclick = () => {
+  const pick = [...mtPicked].map(k => k.split('|')), items = [...new Set(pick.map(x => +x[0]))];
+  const seen = new Set(), bs = [];
+  pick.forEach(([mi, key]) => { const b = MT[+mi] && MT[+mi].buyers.find(x => x.key === key); if (b && !seen.has(key)) { seen.add(key); bs.push(b); } });
+  if (!bs.length) { toast('Tick who to message', true); return; }
+  openOutreach(bs, items.length === 1 ? MT[items[0]].item : '', 'vMatch');
+};
 $('btnMatchBack').onclick = () => show(STOCK && $('vStock').dataset.fromMatch ? 'vStock' : 'vHome');
+// Message buyers: one personalised message each (WhatsApp / text / email). Free: WhatsApp and texts open
+// with the message ready (one tap to send each, no group chats); emails go one by one from your Gmail.
+const LS_OUTMSG = 'rs_out_msg';
+const DEF_MSG = "Hi [Name],\nI've got this new [Item]. Here are the key features:\n[Features]\nThe price is £[Price]. Would you be interested?\nLet me know soon as it's in demand.";
+var OU = { list: [], from: 'vBuyers', done: {} };
+function openOutreach(buyers, item, from) {
+  OU = { list: buyers, from: from || 'vBuyers', done: {} };
+  $('ouItem').value = item || ''; $('ouPrice').value = ''; $('ouFeat').value = '';
+  $('ouMsg').value = localStorage.getItem(LS_OUTMSG) || DEF_MSG;
+  show('vOutreach'); renderOutreach();
+}
+const firstName = b => String(b.name || b.username || '').trim().split(/\s+/)[0] || 'there';
+function personal(b) {
+  const feats = $('ouFeat').value.trim().split('\n').map(x => x.trim()).filter(Boolean).map(x => '• ' + x).join('\n');
+  return $('ouMsg').value.replace(/\[Name\]/g, firstName(b)).replace(/\[Item\]/g, $('ouItem').value.trim() || 'item')
+    .replace(/\[Features\]/g, feats || '').replace(/\[Price\]/g, $('ouPrice').value.trim() || '?').replace(/\n{3,}/g, '\n\n');
+}
+function renderOutreach() {
+  const L = OU.list;
+  $('ouCount').textContent = L.length + ' ' + (L.length === 1 ? 'person' : 'people');
+  const withEmail = L.filter(b => b.email).length;
+  $('btnOuEmailAll').classList.toggle('hide', !withEmail);
+  $('btnOuEmailAll').textContent = 'Email ' + (withEmail === 1 ? 'the 1 person' : 'all ' + withEmail) + ' with an email';
+  $('ouList').innerHTML = L.map((b, i) => {
+    const t = encodeURIComponent(personal(b)), d = OU.done[b.key] || {};
+    const acts = [];
+    if (b.mobile) {
+      acts.push(`<a href="https://wa.me/${telUK(b.mobile)}?text=${t}" target="_blank" rel="noopener" data-ou="${i}|WhatsApp" class="${d.WhatsApp ? 'done' : ''}">${d.WhatsApp ? '✓ ' : ''}WhatsApp</a>`);
+      acts.push(`<a href="sms:${String(b.mobile).replace(/\s/g, '')}?&body=${t}" data-ou="${i}|text" class="${d.text ? 'done' : ''}">${d.text ? '✓ ' : ''}Text</a>`);
+    }
+    if (b.email) acts.push(`<button data-oue="${i}" class="${d.email ? 'done' : ''}">${d.email ? '✓ Emailed' : 'Email'}</button>`);
+    return `<div class="skrow" style="display:block"><b>${esc(bName(b))}</b> <span class="bchips" style="display:inline-flex">${howTag(b)}</span>
+      <span class="sm">${b['preferred contact'] ? 'Best by ' + esc(b['preferred contact']) : ''}${b['other contact'] ? ' · ' + esc(b['other contact']) : ''}${!b.mobile && !b.email ? 'No number or email saved: message them where you usually do' : ''}</span>
+      <div class="ouacts">${acts.join('')}</div></div>`;
+  }).join('');
+}
+['ouItem', 'ouPrice', 'ouFeat', 'ouMsg'].forEach(id => $(id).addEventListener('input', () => { if (id === 'ouMsg') { try { localStorage.setItem(LS_OUTMSG, $('ouMsg').value); } catch (e) {} } renderOutreach(); }));
+$('ouList').addEventListener('click', e => {
+  const a = e.target.closest('[data-ou]');
+  if (a) {   // the link opens WhatsApp / Messages; we note it as done
+    const [i, how] = a.dataset.ou.split('|'), b = OU.list[+i];
+    OU.done[b.key] = Object.assign(OU.done[b.key] || {}, { [how]: true });
+    api('buyerContacted', { keys: [b.key], how, item: $('ouItem').value.trim() }).catch(() => {});
+    setTimeout(renderOutreach, 300);
+    return;
+  }
+  const m = e.target.closest('[data-oue]');
+  if (m) sendOutEmails([OU.list[+m.dataset.oue]]);
+});
+async function sendOutEmails(list) {
+  list = list.filter(b => b.email && !(OU.done[b.key] || {}).email);
+  if (!list.length) { toast('Already emailed'); return; }
+  const item = $('ouItem').value.trim();
+  if (!confirm('Send ' + list.length + ' email' + (list.length > 1 ? 's' : '') + ' from your Gmail, one to each person?')) return;
+  try {
+    const r = await api('buyerEmail', { item, messages: list.map(b => ({ key: b.key, subject: item ? item + ' – are you interested?' : 'Something you might like', body: personal(b) })) });
+    list.forEach(b => { if (!(r.skipped || []).some(x => x.key === b.key)) OU.done[b.key] = Object.assign(OU.done[b.key] || {}, { email: true }); });
+    toast('Sent ' + r.sent + ' email' + (r.sent === 1 ? '' : 's') + ((r.skipped || []).length ? ' · ' + r.skipped.length + ' skipped' : ''));
+    renderOutreach();
+  } catch (err) { toast(err.message, true); }
+}
+$('btnOuEmailAll').onclick = () => sendOutEmails(OU.list);
+$('btnOutBack').onclick = () => { if (OU.from === 'vMatch') { show('vMatch'); } else openBuyers(); };
+
 function renderHomeMatch() {
   let m = null; try { m = JSON.parse(localStorage.getItem(LS_MATCH)); } catch (e) {}
   const show_ = !!(CFG.crm && m && m.matches && m.matches.length);
