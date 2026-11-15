@@ -15,7 +15,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v52';
+const APP_VERSION = 'v53';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1742,7 +1742,7 @@ function renderToReturn(d) {
   $('slToRet').innerHTML = open.map((r, i) => `<div class="card scard"><div class="sb">
     <div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>
     <div class="sm">${[esc(r.store), 'bought ' + esc(r.bought), money(r.amount), r.order ? '#' + esc(r.order) : '', r.from && r.from !== 'Receipts' ? 'from ' + esc(r.from) : ''].filter(Boolean).join(' · ')}</div>
-    <div class="tags">${r.status === 'Sent back' ? '<span class="tag">Returned ' + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}<span class="tag">${r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>${r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
+    <div class="tags">${r.status === 'Sent back' ? '<span class="tag">Returned ' + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}<span class="tag">${r.extended ? '🎄 Extended return date' : r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>${r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
     ${r.notes ? '<div class="sm" style="margin-top:4px">' + esc(r.notes) + '</div>' : ''}
     ${r.files || r.link ? `<button class="btn" data-rqr="${i}" style="margin-top:10px">Show return QR code</button>` : ''}
     <div class="duo" style="margin-top:8px">${r.status === 'To return' ? `<button class="btn ${r.files || r.link ? 'sec' : ''}" data-rsent="${i}">✓ Returned it</button>` : `<button class="btn sec" data-rsorted="${i}">Already sorted</button>`}
@@ -1798,7 +1798,7 @@ const fcUrl = () => (CFG.apps && CFG.apps.flipcheck) || '';
 function renderAppSwitch() {
   const a = CFG.apps || {}, el = $('appSw');
   const links = [a.flipcheck ? `<a href="${esc(a.flipcheck)}/#/purchases" target="_blank" rel="noopener">FlipCheck</a>` : '',
-                 a.fliplist ? `<a href="${esc(a.fliplist)}/list/" target="_blank" rel="noopener">FlipList</a>` : ''].filter(Boolean);
+                 a.fliplist ? `<a href="${esc(a.fliplist)}/list/" target="_blank" rel="noopener">ListMe</a>` : ''].filter(Boolean);
   el.classList.toggle('hide', !links.length);
   el.innerHTML = links.length ? '<a aria-current="page" style="background:#1d3a5f;color:#fff">Receipts</a>' + links.join('') : '';
 }
@@ -1817,7 +1817,7 @@ function renderReturns(d) {
     return `<div class="card scard" data-g="${i}"><div class="sb">
     <div class="st">${title}</div>
     <div class="sm">${one ? esc(g.store) + ' · ' : ''}bought ${esc(g.date)} · ${money(g.total)}</div>
-    <div class="tags"><span class="tag ${g.daysLeft <= 2 ? 'late' : 'soon'}">${g.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(g.lastDay))}</span><span class="tag">${g.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>${fcUrl() && one ? `<a class="tag fctag" href="${esc(fcUrl())}/#/purchases/r${it.row}" target="_blank" rel="noopener">Worth keeping? FlipCheck ›</a>` : ''}</div>
+    <div class="tags"><span class="tag ${g.daysLeft <= 2 ? 'late' : 'soon'}">${g.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(g.lastDay))}</span><span class="tag">${g.extended ? '🎄 Extended return date' : g.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>${fcUrl() && one ? `<a class="tag fctag" href="${esc(fcUrl())}/#/purchases/r${it.row}" target="_blank" rel="noopener">Worth keeping? FlipCheck ›</a>` : ''}</div>
     ${one ? '' : `<details class="picks"><summary>Pick which to return (${g.items.length})</summary>
       <button class="selall" data-all="${i}">☑︎ Select all</button>
       <div class="ritems">${g.items.map((x, j) => `<label class="ritem"><input type="checkbox" data-pick="${i}:${j}"><span>${esc(x.item)}${x.left > 1 ? ' ×' + x.left : ''}</span><span class="sm">${money(x.each * x.left)}</span></label>`).join('')}</div></details>`}
