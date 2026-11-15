@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v46';
+const APP_VERSION = 'v47';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1494,6 +1494,44 @@ function plainNeeds(n) {
     /^check/.test(x) ? 'We guessed which sale this is. Check it is right, then tap Save.' : x).join(' ');
 }
 
+// Each flag on a sale: what happened, what to do, and where on the form to do it
+function needsList(o) {
+  const out = [], amt = num(o['refund amount']), item = o.item ? ' for “' + o.item + '”' : '';
+  String(o.needs || '').split(/;\s*|,\s*(?=add|sale price|match|check)/).filter(Boolean).forEach(x => {
+    if (/^add postage cost/.test(x)) out.push({ to: 'saPostWrap', focus: 'saPostOut',
+      text: 'Add what you paid to post it. ' + (/^ebay/i.test(o.platform || '') ? 'eBay\'s emails never show the label price, so we couldn\'t fill it in.' : 'The email didn\'t say.') + ' Until you do, the profit on this sale looks higher than it really is.' });
+    else if (/^sale price/.test(x)) out.push({ to: 'saPrice', focus: 'saPrice', text: 'The email didn\'t say what it sold for. Add the sale price.' });
+    else if (/^match/.test(x)) { const c = /cancel/.test(x);
+      out.push({ to: 'saMatch', text: (c ? 'A cancellation email came in' : 'A refund email came in' + (amt ? ' (' + money(amt) + ')' : '')) + item +
+        ', but we couldn\'t tell which of your sales it belongs to. Pick the sale below so ' + (c ? 'it comes out of your totals.' : 'the refund comes off the right sale.') }); }
+    else if (/^check: cancellation/.test(x)) out.push({ to: 'saStatus',
+      text: 'We marked this sale cancelled because a cancellation email had the same item name (there was no order number to be sure). If that\'s right, tap Save. If not, tap the right status.' });
+    else if (/^check/.test(x)) { const r = (x.match(/row (\d+)/) || [])[1];
+      out.push({ to: 'saItem', dup: r || '?', text: 'A sale email came in that might be a copy of a sale you already have' + (r ? ' (row ' + r + ' in your Sheet)' : '') +
+        '. If it\'s a different sale, check the details and tap Save. If it\'s the same sale, tap “It\'s a copy” so it isn\'t counted twice.' }); }
+    else out.push({ to: null, text: x });
+  });
+  return out;
+}
+function needGo(n, noFocus) {
+  const t = n && n.to && $(n.to); if (!t) return;
+  const call = $('saNeedHere') || Object.assign(document.createElement('div'), { id: 'saNeedHere', className: 'needcall' });
+  call.innerHTML = '⚠️ ' + esc(n.text) + (n.dup ? ' <button class="btn sec" id="btnIsCopy" type="button" style="margin-top:8px">It\'s a copy: don\'t count it</button>' : '');
+  const anchor = n.to === 'saPrice' ? t.closest('.duo') : n.to === 'saStatus' ? t.previousElementSibling : n.to === 'saItem' ? t.previousElementSibling : t;
+  anchor.parentNode.insertBefore(call, anchor);
+  call.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  t.classList.add('hl'); setTimeout(() => t.classList.remove('hl'), 2500);
+  if (n.focus && !noFocus) setTimeout(() => { try { $(n.focus).focus({ preventScroll: true }); } catch (e) {} }, 450);
+}
+document.addEventListener('click', e => {
+  if (e.target.id !== 'btnIsCopy') return;
+  segSet('saStatus', 'Cancelled'); $('saCounts').checked = false;
+  const r = (sale.needs.match(/row (\d+)/) || [])[1];
+  if (!/Copy of/.test($('saNotes').value)) $('saNotes').value = ($('saNotes').value ? $('saNotes').value + '. ' : '') + 'Copy of ' + (r ? 'row ' + r : 'another sale');
+  saleCalc(); toast('Marked as a copy. Tap Save sale');
+  $('btnSaleSave').scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+
 function setSalesCount(w) {
   if (w) { CFG.waiting = w; saveCache(); }   // shown at once next time, before the server answers
   const n = w ? (w.needs || 0) + (w.toPost || 0) + (w.returnsSoon || 0) : 0;
@@ -2069,12 +2107,16 @@ function openSale(o) {
   segSet('saStatus', o.status || (isNew ? 'Completed' : 'Sold'));
   $('saCounts').checked = o['counts in totals'] ? o['counts in totals'] === 'Yes' : !/^Amazon/.test(plat);
   $('saFind').value = ''; $('saFound').innerHTML = '';
+  $('saFindStore').innerHTML = '<option value="">Any shop</option>' + (CFG.stores || []).map(x => `<option>${esc(x)}</option>`).join('');
   $('saLinked').classList.toggle('hide', !sale.linked);
   $('saLinked').textContent = sale.linked ? 'Linked: ' + sale.linked + (num(o['item cost']) !== null ? ' · cost ' + money(o['item cost']) : '') : '';
   sale.itemCost = num(o['item cost']);
-  $('saMore').open = !isNew && (num(o['platform fees']) === null || !!o.needs);
-  $('saNeeds').classList.toggle('hide', !o.needs);
-  $('saNeeds').textContent = o.needs ? '⚠️ ' + plainNeeds(o.needs) : '';
+  $('saMore').open = num(o['other costs']) > 0 || num(o['refund amount']) > 0;
+  feesSum();
+  const nl = needsList(o); sale.needList = nl;
+  { const old = $('saNeedHere'); if (old) old.remove(); }
+  $('saNeeds').classList.toggle('hide', !nl.length);
+  $('saNeeds').innerHTML = nl.length ? '<b>This sale needs a check</b>' + nl.map((n, i) => `<button class="needgo" type="button" data-ng="${i}">⚠️ ${esc(n.text)}${n.to && n.to !== 'saMatch' ? ' <u>Take me there ›</u>' : ''}</button>`).join('') : '';
   sale.photo = null; $('saPhoto').classList.add('hide');
   $('btnSalePhoto').textContent = o['document link'] ? '📷 Replace the receipt photo' : '📷 Add a photo of the receipt';
   $('saMatch').classList.add('hide'); $('saMatch').innerHTML = '';
@@ -2082,7 +2124,11 @@ function openSale(o) {
   saleWhereToggle();
   saleCalc();
   show('vSale');
+  // Opened from "Needs your input": go straight to the first thing to fix (the banner at the top says why)
+  const first = nl.find(n => n.to && n.to !== 'saMatch');
+  if (first) setTimeout(() => needGo(first, true), 350);
 }
+$('saNeeds').onclick = e => { const b = e.target.closest('[data-ng]'); if (b && sale && sale.needList) needGo(sale.needList[+b.dataset.ng]); };
 
 // A cancellation or refund that couldn't be matched: pick the sale it belongs to
 async function loadMatches(o) {
@@ -2110,19 +2156,21 @@ $('saMatch').onclick = async e => {
 };
 
 let findTimer = null;
-$('saFind').oninput = () => {
+function findPurchases() {
   clearTimeout(findTimer);
-  const q = $('saFind').value.trim();
-  if (q.length < 3) { $('saFound').innerHTML = ''; return; }
+  const q = $('saFind').value.trim(), store = $('saFindStore').value;
+  if (q.length < 3 && !store) { $('saFound').innerHTML = ''; return; }
   findTimer = setTimeout(async () => {
     try {
-      const r = await api('purchaseSearch', { q });
-      $('saFound').innerHTML = r.length ? r.map(x => `<button class="found" data-pr="${x.row}" data-cost="${x.cost}" data-item="${esc(x.item)}">
-        <b>${esc(x.item)}</b><br><span class="sm">${esc(x.store)} · ${esc(x.date)} · ${money(x.cost)} each</span></button>`).join('')
-        : '<p class="sub">No purchases match. Try another word.</p>';
+      const r = await api('purchaseSearch', { q: q.length >= 3 ? q : '', store });
+      $('saFound').innerHTML = r.length ? (store && !q ? '<p class="sub">Most recent from ' + esc(store) + ' first</p>' : '') + r.map(x => `<button class="found" data-pr="${x.row}" data-cost="${x.cost}" data-item="${esc(x.item)}">
+        <b>${esc(x.item)}</b><br><span class="sm">${esc(x.store)} · ${esc(x.date)} · ${money(x.cost)} each${x.left !== undefined ? ' · ' + x.left + ' left' : ''}</span></button>`).join('')
+        : '<p class="sub">' + (store ? 'Nothing from ' + esc(store) + (q ? ' matches that' : '') + '. Try another word or shop.' : 'No purchases match. Try another word, or pick the shop.') + '</p>';
     } catch (err) { $('saFound').innerHTML = '<p class="sub">' + esc(err.message) + '</p>'; }
   }, 350);
-};
+}
+$('saFind').oninput = findPurchases;
+$('saFindStore').onchange = findPurchases;
 $('saFound').onclick = e => {
   const b = e.target.closest('[data-pr]');
   if (!b) return;
@@ -2131,10 +2179,20 @@ $('saFound').onclick = e => {
   sale.itemCost = sale.linkEach * (Number($('saQty').value) || 1);
   $('saLinked').textContent = 'Linked: ' + sale.linked + ' · cost ' + money(sale.itemCost);
   $('saLinked').classList.remove('hide');
-  $('saFound').innerHTML = ''; $('saFind').value = '';
+  $('saFound').innerHTML = ''; $('saFind').value = ''; $('saFindStore').value = '';
   saleCalc();
 };
 $('saQty').addEventListener('input', () => { if (sale && sale.linkEach) { sale.itemCost = sale.linkEach * (Number($('saQty').value) || 1); saleCalc(); } });
+
+function feesSum() {
+  const p = [], v = id => num($(id).value);
+  if (v('saFees') > 0) p.push('fees ' + money(v('saFees')));
+  if (v('saOther') > 0) p.push('promoted/other ' + money(v('saOther')));
+  if (v('saRefund') > 0) p.push('refunded ' + money(v('saRefund')));
+  if ($('saPayout').value.trim()) p.push('paid out ' + $('saPayout').value.trim());
+  $('saMoreSum').textContent = p.length ? '· ' + p.join(' · ') : '· tap to add';
+}
+['saFees', 'saOther', 'saRefund', 'saPayout'].forEach(id => $(id).addEventListener('input', feesSum));
 
 function saleCalc() {
   const n = id => Number($(id).value) || 0;
@@ -2802,8 +2860,7 @@ function fillBuyerLists() {
   bs.forEach(b => String(b['interested in'] || '').split(',').map(t => t.trim()).filter(Boolean).forEach(t => tags.add(t)));
   $('tagList').innerHTML = [...tags].map(t => `<option value="${esc(t)}">`).join('');
   let dl = $('buyerList');
-  if (!dl) { dl = document.createElement('datalist'); dl.id = 'buyerList'; document.body.appendChild(dl); }
-  dl.innerHTML = bs.map(b => `<option value="${esc(bName(b))}">`).join('');
+  if (dl) dl.remove();   // the phone showed every buyer as a suggestion: the app's own search replaces it
 }
 const buyerChips = b => {
   const c = [];
@@ -3024,7 +3081,8 @@ $('homeColl').onclick = e => {
 // Choose a buyer for a sale: search and scroll everyone you've sold to
 function renderPick() {
   const q = $('bpickQ').value.trim().toLowerCase();
-  const bs = ((BUYERS && BUYERS.buyers) || []).filter(b => !q || [b.name, b.username, b['interested in']].join(' ').toLowerCase().includes(q))
+  const all = (BUYERS && BUYERS.buyers) || [], hit = q ? new Set(buyerSearch(q, all).map(h => h.b)) : null;
+  const bs = all.filter(b => !q || hit.has(b) || String(b['interested in'] || '').toLowerCase().includes(q))
     .sort((a, b) => dayNum(b['last bought']) - dayNum(a['last bought']));
   $('bpickList').innerHTML = bs.length ? bs.map(b => `<button class="skrow" data-pk="${esc(b.key)}"><span>${esc(bName(b))}<span class="sm">${esc(buyerLine(b)) || 'No sales yet'}</span></span></button>`).join('') : '<p class="sub">Nobody yet. Type their name in the box instead.</p>';
 }
@@ -3049,8 +3107,8 @@ function crmSync() {
   const inp = $('saBuyer'), lbl = inp.previousElementSibling;
   if (on && inp.parentNode !== $('saBuyerSlot')) { $('saBuyerSlot').appendChild(inp); if (lbl && /Buyer/.test(lbl.textContent)) lbl.classList.add('hide'); }
   if (!on && inp.parentNode === $('saBuyerSlot')) { saBuyerHome.insertBefore(inp, saBuyerNext); saBuyerHome.querySelectorAll('label.hide').forEach(l => l.classList.remove('hide')); }
-  inp.setAttribute('list', on ? 'buyerList' : '');
-  inp.placeholder = on ? 'e.g. John Smith or ebay username' : '';
+  inp.removeAttribute('list');
+  inp.placeholder = on ? 'Search name, username, number or email' : '';
 }
 function crmToggle() {
   if (!CFG.crm) return;
@@ -3071,13 +3129,34 @@ function buyerHint(prefill) {
     if (String(b['happy to hear about similar items']) === 'Yes') $('saBOpt').checked = true;
   }
 }
-$('saBuyer').addEventListener('input', () => buyerHint(true));
+$('saBuyer').addEventListener('input', () => { buyerHint(true); buyerSuggest(); });
+$('saBuyer').addEventListener('blur', () => setTimeout(() => $('saBuyerSug').classList.add('hide'), 250));
+// Find a buyer by anything you know about them: name, username, mobile (07… or +44…), email, Snapchat etc.
+const digits = s => String(s || '').replace(/\D/g, '').replace(/^(44|0)/, '');
+function buyerSearch(q, bs) {
+  q = String(q || '').trim().toLowerCase(); const d = digits(q);
+  if (!q) return [];
+  return bs.map(b => {
+    const f = [['name', b.name], ['username', b.username], ['email', b.email], ['other contact', b['other contact']], ['postcode', b.postcode]]
+      .find(([, v]) => v && String(v).toLowerCase().includes(q));
+    const byPhone = d.length >= 4 && b.mobile && digits(b.mobile).includes(d);
+    return f || byPhone ? { b, via: byPhone && !f ? 'mobile ' + b.mobile : f[0] === 'name' || f[0] === 'username' ? '' : f[0] + ' ' + f[1] } : null;
+  }).filter(Boolean);
+}
+function buyerSuggest() {
+  const box = $('saBuyerSug'), q = $('saBuyer').value.trim();
+  const hits = CFG.crm && q && !findBuyer(q) ? buyerSearch(q, (BUYERS && BUYERS.buyers) || []).slice(0, 6) : [];
+  box.classList.toggle('hide', !hits.length);
+  box.innerHTML = hits.map(h => `<button type="button" data-pk="${esc(h.b.key)}"><b>${esc(bName(h.b))}</b>${h.b.name && h.b.username ? ' <span class="sub">@' + esc(h.b.username) + '</span>' : ''}<span class="sm">${h.via ? 'Matched ' + esc(h.via) + ' · ' : ''}${esc(buyerLine(h.b)) || 'No sales yet'}</span></button>`).join('');
+}
+$('saBuyerSug').onclick = e => { const b = e.target.closest('[data-pk]'); if (!b) return; const x = findBuyer(b.dataset.pk); $('saBuyer').value = bName(x); $('saBuyerSug').classList.add('hide'); buyerHint(true); };
 $('saBuyerHint').onclick = e => { const b = e.target.closest('[data-bk]'); if (b) { e.preventDefault(); openBuyer(b.dataset.bk, 'vSale'); } };
 function listedHint() {
   const L = Number($('saListed').value), P = Number($('saPrice').value);
+  $('saSoldFor').value = $('saPrice').value;
   const off = L > 0 && P > 0 ? Math.round((L - P) / L * 100) : null;
-  $('saListedHint').classList.toggle('hide', off === null);
-  $('saListedHint').textContent = off === null ? '' : off <= 0 ? 'Paid the asking price' : off + '% under asking';
+  $('saListedHint').innerHTML = off === null ? 'Listed at is what you first asked. Sold for comes from the sale price above.'
+    : off <= 0 ? '<b>Paid the asking price</b>' : '<b>' + off + '% off asking</b> (' + money(L - P) + ' less). We save this so you can see how much buyers knock you down.';
   if (off !== null && !sale.styleSet) segSet('saStyle', off <= 0 ? 'Paid asking price' : off <= 12 ? 'Fair haggle' : off <= 30 ? 'Hard haggler' : 'Lowballer');
 }
 $('saListed').addEventListener('input', listedHint);
@@ -3095,8 +3174,8 @@ function crmFill(o) {
   $('saInts').value = o['buyer interests'] || ''; $('saBNote').value = o['buyer note'] || '';
   sale.intsAuto = !o['buyer interests'];
   ['saBEmail', 'saBOther'].forEach(id => { $(id).value = ''; }); phoneSet('saBCc', 'saBMobile', ''); $('saBPref').value = ''; $('saBOpt').checked = false;
-  $('saContact').open = false;
-  $('saListedHint').classList.add('hide');
+  $('saContact').open = false; $('saBuyerSug').classList.add('hide');
+  listedHint();
   if (CFG.crm) { buyerHint(true); crmToggle(); autoInts(); if (!BUYERS) loadBuyers().catch(() => {}); }
 }
 function crmPayload(s) {
