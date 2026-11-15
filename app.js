@@ -9,12 +9,13 @@ let state = null;          // current receipt being reviewed
 let pages = [];            // photos of the receipt being captured: [{ dataUrl, blurry, dark }]
 let job = null;            // the photo job being read or reviewed (see the offline queue below)
 let lastSource = 'cam';
+let RETURN_FOR = null;     // a refund photo taken from a return's card: attached to that return when saved
 let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v49';
+const APP_VERSION = 'v52';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -338,6 +339,7 @@ async function pagesDone() {
       ', so items may be misread. Read it anyway? (Cancel to retake.)')) return;
   const j = { id: 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), created: Date.now(),
               pages: pages.map(pg => ({ dataUrl: pg.dataUrl })), status: 'pending', tries: 0 };
+  if (RETURN_FOR) { j.returnId = RETURN_FOR; RETURN_FOR = null; }
   pages = [];
   await jobPut(j);
   if (navigator.onLine === false) {
@@ -1072,7 +1074,8 @@ async function saveToSheet(force) {
     const res = await api('append', Object.assign({
       rows: payload,
       queueId: queueId,
-      force: !!force
+      force: !!force,
+      returnId: (job && job.returnId) || undefined
     }, job && jobId ? withLegacy(jobImages(job)) : {}));
 
     if (store && !CFG.stores.includes(store)) { CFG.stores.push(store); CFG.stores.sort(); }
@@ -1086,7 +1089,9 @@ async function saveToSheet(force) {
     $('homeStatus').textContent =
       '✅ ' + res.rowsAdded + ' row' + (res.rowsAdded > 1 ? 's' : '') +
       ' saved · ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    toast(res.refundsMarked ? 'Refund saved · ' + res.refundsMarked + ' purchase' + (res.refundsMarked > 1 ? 's' : '') + ' marked returned' : 'Saved to sheet');
+    toast(res.returnsDone ? 'Refund saved and attached to the return' : res.refundsMarked ? 'Refund saved · ' + res.refundsMarked + ' purchase' + (res.refundsMarked > 1 ? 's' : '') + ' marked returned' : 'Saved to sheet');
+    if (res.returnsDone) SALES = null;
+    worthItLink(payload);
     refreshJobs();
     if (queueId) openQueue();     // straight on to the next emailed receipt
     else show('vHome');
@@ -1576,7 +1581,8 @@ function renderTodo(w) {
   const today = (w.postToday || 0) - (w.late || 0);
   if (w.late) rows.push(['🔴', w.late + ' parcel' + s(w.late) + ' late. Post now', 'slPostWrap']);
   if (w.toPost) rows.push(['📦', w.toPost + ' parcel' + s(w.toPost) + ' to post' + (today > 0 ? ' (' + today + ' today)' : ''), 'slPostWrap']);
-  if (w.returnsSoon) rows.push(['↩️', w.returnsSoon + ' receipt' + s(w.returnsSoon) + ': last days to return', 'slRetWrap']);
+  if (w.toReturn) rows.push(['↩️', w.toReturn + ' thing' + s(w.toReturn) + ' to take back', 'slToRetWrap']);
+  if (w.returnsSoon) rows.push(['⏳', w.returnsSoon + ' receipt' + s(w.returnsSoon) + ': last days to return', 'slRetWrap']);
   if (w.needs) rows.push(['⚠️', w.needs + ' sale' + s(w.needs) + ' need' + (w.needs === 1 ? 's' : '') + ' a check', 'slNeedsWrap']);
   $('todo').classList.toggle('hide', !rows.length);
   $('todo').innerHTML = rows.slice(0, 4).map(r => `<button data-todo="${r[2]}"><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`).join('');
@@ -1594,7 +1600,8 @@ function goTo(id) {
 function countsFrom(d) {
   const tp = d.toPost || [];
   return { needs: (d.needs || []).length, toPost: tp.length, postToday: tp.filter(l => l.daysLeft !== null && l.daysLeft <= 0).length,
-           late: tp.filter(l => l.daysLeft !== null && l.daysLeft < 0).length, returnsSoon: (d.returnsClosing || []).length };
+           late: tp.filter(l => l.daysLeft !== null && l.daysLeft < 0).length, returnsSoon: (d.returnsClosing || []).length,
+           toReturn: ((d.returns && d.returns.open) || []).filter(r => r.status === 'To return').length };
 }
 // "Post today" / "Late" / "Post by Thu"
 function postTag(l) {
@@ -1724,7 +1731,84 @@ function renderSales() {
   }
 }
 
+// Things going back to the shop (the Returns tab): last day, QR code, returned, refund proof.
+function renderToReturn(d) {
+  const R = d.returns || { open: [], done: [] };
+  const open = R.open || [], done = (R.done || []).filter(x => x.status === 'Refunded' || x.status === 'Sorted');
+  $('slToRetWrap').classList.toggle('hide', !open.length && !done.length);
+  if (open.length) setTimeout(() => prefetchReturnCodes(open), 400);   // the code opens with no signal at the counter
+  const lastDay = r => r.daysLeft === null ? '' : r.daysLeft < 0 ? '<span class="tag late">Past the last day (' + esc(dayName(r.returnBy)) + '): ask the shop</span>'
+    : '<span class="tag ' + (r.daysLeft <= 2 ? 'late' : r.daysLeft <= 7 ? 'soon' : '') + '">' + (r.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(r.returnBy))) + '</span>';
+  $('slToRet').innerHTML = open.map((r, i) => `<div class="card scard"><div class="sb">
+    <div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>
+    <div class="sm">${[esc(r.store), 'bought ' + esc(r.bought), money(r.amount), r.order ? '#' + esc(r.order) : '', r.from && r.from !== 'Receipts' ? 'from ' + esc(r.from) : ''].filter(Boolean).join(' · ')}</div>
+    <div class="tags">${r.status === 'Sent back' ? '<span class="tag">Returned ' + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}<span class="tag">${r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>${r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
+    ${r.notes ? '<div class="sm" style="margin-top:4px">' + esc(r.notes) + '</div>' : ''}
+    ${r.files || r.link ? `<button class="btn" data-rqr="${i}" style="margin-top:10px">Show return QR code</button>` : ''}
+    <div class="duo" style="margin-top:8px">${r.status === 'To return' ? `<button class="btn ${r.files || r.link ? 'sec' : ''}" data-rsent="${i}">✓ Returned it</button>` : `<button class="btn sec" data-rsorted="${i}">Already sorted</button>`}
+      <button class="btn ${r.status === 'Sent back' ? '' : 'sec'}" data-rscan="${i}">📷 Refund receipt</button></div>
+    ${r.email ? `<a class="link" href="${esc(r.email.split('\n')[0])}" target="_blank" rel="noopener" style="margin-top:8px;display:inline-block">Open the return email</a>` : ''}
+    ${r.status === 'To return' ? `<button class="link" data-rcancel="${i}" style="margin-top:8px">↩︎ Not returning it after all</button>` : ''}</div></div>`).join('')
+    + (done.length ? `<details class="more"><summary>Returned recently (${done.length})</summary>${done.map(r => `<div class="rdone">✅ ${esc(r.item)} · ${r.status === 'Refunded' ? money(r.refundAmount) + ' back ' + esc(dayName(r.refundedOn)) : 'sorted'}${r.proof ? `<a href="${esc(r.proof.split('\n')[0])}" target="_blank" rel="noopener">refund proof</a>` : ''}</div>`).join('')}</details>` : '');
+}
+
+// The return's QR code / label, kept on the phone like postage labels (key "r:<id>").
+async function fetchReturnCode(r) {
+  const f = await api('returnFiles', { id: r.id });
+  const images = f.images.slice();
+  if (!images.length) for (const p of f.pdfs) if (p.data) { try { images.push(await pdfToPng(p.data)); } catch (e) {} }
+  const o = { id: 'r:' + r.id, images, pdfs: f.pdfs.map(p => ({ url: p.url || p })), link: f.link, email: f.email, saved: Date.now() };
+  if (images.length) labPut(o);
+  return o;
+}
+let retPrefetching = false;
+async function prefetchReturnCodes(open) {
+  if (retPrefetching || !navigator.onLine) return;
+  retPrefetching = true;
+  try {
+    const want = new Set(open.map(r => 'r:' + r.id));
+    (await labKeys()).forEach(k => { if (String(k).startsWith('r:') && !want.has(k)) labDel(k); });
+    for (const r of open) if (r.files && r.status === 'To return' && !(await labGet('r:' + r.id))) { try { await fetchReturnCode(r); } catch (e) {} }
+  } finally { retPrefetching = false; }
+}
+async function showReturnCode(r) {
+  const veil = document.createElement('div');
+  veil.className = 'veil';
+  veil.innerHTML = `<div class="sheet"><h3>${esc(r.item)}</h3><p class="sub">Loading…</p></div>`;
+  veil.onclick = e => { if (e.target === veil || e.target.dataset.close) veil.remove(); };
+  document.body.appendChild(veil);
+  try {
+    const cached = await labGet('r:' + r.id);
+    const f = cached || await fetchReturnCode(r);
+    veil.querySelector('.sheet').innerHTML = `<button class="close" data-close="1" aria-label="Close">✕</button><h3>Return: ${esc(r.item)}</h3>
+      <p class="hint">Show this at ${esc(r.store || 'the shop')} or the drop-off point. Turn your screen brightness up.${cached ? ' Saved on this phone, so it works with no signal.' : ''}</p>
+      <p class="sub">${[r.order ? '#' + r.order : '', r.returnBy ? 'last day ' + dayName(r.returnBy) : ''].filter(Boolean).map(esc).join(' · ')}</p>
+      ${f.images.map(src => `<img class="qrimg" src="${src}" alt="Return QR code">`).join('')}
+      ${f.pdfs.map(p => `<a class="btn sec" href="${esc(p.url || p)}" target="_blank" rel="noopener">Open the return label</a>`).join('')}
+      ${f.link ? `<a class="btn sec" href="${esc(f.link)}" target="_blank" rel="noopener">Open the shop's return page</a>` : ''}
+      ${!f.images.length && !f.pdfs.length && !f.link ? '<p class="sub">No code was in the email. Open it in your email app.</p>' : ''}
+      <button class="btn ghost" data-close="1">Close</button>`;
+  } catch (err) {
+    veil.querySelector('.sheet').innerHTML = '<p class="sub">' + esc(err.message) + '</p><button class="btn ghost" data-close="1">Close</button>';
+  }
+}
+
+// Sister apps (only if set in Settings): FlipCheck says whether a resale buy is worth keeping.
+const fcUrl = () => (CFG.apps && CFG.apps.flipcheck) || '';
+function renderAppSwitch() {
+  const a = CFG.apps || {}, el = $('appSw');
+  const links = [a.flipcheck ? `<a href="${esc(a.flipcheck)}/#/purchases" target="_blank" rel="noopener">FlipCheck</a>` : '',
+                 a.fliplist ? `<a href="${esc(a.fliplist)}/list/" target="_blank" rel="noopener">FlipList</a>` : ''].filter(Boolean);
+  el.classList.toggle('hide', !links.length);
+  el.innerHTML = links.length ? '<a aria-current="page" style="background:#1d3a5f;color:#fff">Receipts</a>' + links.join('') : '';
+}
+function worthItLink(rows) {
+  if (!fcUrl() || !rows.some(r => /resale|stock|resell/i.test(r.purpose || '') && Number(r['total cost']) > 0)) return;
+  $('homeStatus').insertAdjacentHTML('beforeend', ` · <a href="${esc(fcUrl())}/#/purchases" target="_blank" rel="noopener">Worth it? Check in FlipCheck</a>`);
+}
+
 function renderReturns(d) {
+  renderToReturn(d);
   const r = d.returnsClosing || [];   // one card per receipt (same shop and date)
   $('slRetWrap').classList.toggle('hide', !r.length);
   $('slRet').innerHTML = r.map((g, i) => {
@@ -1733,7 +1817,7 @@ function renderReturns(d) {
     return `<div class="card scard" data-g="${i}"><div class="sb">
     <div class="st">${title}</div>
     <div class="sm">${one ? esc(g.store) + ' · ' : ''}bought ${esc(g.date)} · ${money(g.total)}</div>
-    <div class="tags"><span class="tag ${g.daysLeft <= 2 ? 'late' : 'soon'}">${g.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(g.lastDay))}</span><span class="tag">${g.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span></div>
+    <div class="tags"><span class="tag ${g.daysLeft <= 2 ? 'late' : 'soon'}">${g.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(g.lastDay))}</span><span class="tag">${g.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>${fcUrl() && one ? `<a class="tag fctag" href="${esc(fcUrl())}/#/purchases/r${it.row}" target="_blank" rel="noopener">Worth keeping? FlipCheck ›</a>` : ''}</div>
     ${one ? '' : `<details class="picks"><summary>Pick which to return (${g.items.length})</summary>
       <button class="selall" data-all="${i}">☑︎ Select all</button>
       <div class="ritems">${g.items.map((x, j) => `<label class="ritem"><input type="checkbox" data-pick="${i}:${j}"><span>${esc(x.item)}${x.left > 1 ? ' ×' + x.left : ''}</span><span class="sm">${money(x.each * x.left)}</span></label>`).join('')}</div></details>`}
@@ -1796,13 +1880,15 @@ function renderStockPage() {
     'A small price drop often gets things moving, and turns that money back into stock that sells.' : '';
   const tip = x => x.decision === 'return' ? '' : x.days >= 90 ? '<span class="tip">Over 3 months: try a price drop or a bundle to free up the cash</span>'
     : x.days >= 60 ? '<span class="tip">Over 2 months: a small price drop could get it moving</span>' : '';
-  $('skList').innerHTML = list.length ? list.slice(0, 200).map(x => `<button class="skrow" data-sk="${x.row}"><span>${esc(x.item)}<span class="sm">${esc(x.store)} · ${x.left} of ${x.qty} left · ${money(x.each)} each${x.decision === 'return' ? ' · returning' : ''}${STOCK_MATCH[x.item] ? `<span class="mtag" data-skm="${esc(x.item)}">👥 ${STOCK_MATCH[x.item].buyers.length} interested</span>` : ''}</span>${tip(x)}</span>
+  $('skList').innerHTML = list.length ? list.slice(0, 200).map(x => `<button class="skrow" data-sk="${x.row}"><span>${esc(x.item)}<span class="sm">${esc(x.store)} · ${x.left} of ${x.qty} left · ${money(x.each)} each${x.decision === 'return' || x.returning ? ' · returning' : ''}${fcUrl() && !x.returning ? `<span class="mtag fctag" data-skfc="${x.row}">🔍 Worth it?</span>` : ''}${STOCK_MATCH[x.item] ? `<span class="mtag" data-skm="${esc(x.item)}">👥 ${STOCK_MATCH[x.item].buyers.length} interested</span>` : ''}</span>${tip(x)}</span>
       <span class="tag ${x.days >= 90 ? 'late' : x.days >= 45 ? 'soon' : ''}" style="align-self:center">${x.days}d</span></button>`).join('')
     : '<p class="sub" style="padding:10px 0">' + (q ? 'Nothing matches.' : 'No stock to sell. Things you buy with a resale purpose show here.') + '</p>';
 }
 $('skSearch').oninput = renderStockPage;
 $('skSort').onclick = e => { const b = e.target.closest('button'); if (b) { segSet('skSort', b.dataset.v); renderStockPage(); } };
 $('skList').onclick = e => {
+  const fc = e.target.closest('[data-skfc]');
+  if (fc) { e.stopPropagation(); window.open(fcUrl() + '/#/purchases/r' + fc.dataset.skfc, '_blank', 'noopener'); return; }
   const m = e.target.closest('[data-skm]');
   if (m && STOCK_MATCH[m.dataset.skm]) { e.stopPropagation(); $('vStock').dataset.fromMatch = '1'; openMatch([STOCK_MATCH[m.dataset.skm]]); return; }
   const b = e.target.closest('[data-sk]');
@@ -1875,6 +1961,21 @@ $('slEbay').addEventListener('click', () => setTimeout(async () => {
 $('vSales').addEventListener('click', async e => {
   const t = e.target, card = t.closest('[data-need],[data-rec]');
   if (t.dataset.lab !== undefined) return showLabel(SALES.toPost[Number(t.dataset.lab)]);
+  const RO = (SALES && SALES.returns && SALES.returns.open) || [];
+  if (t.dataset.rqr !== undefined) return showReturnCode(RO[Number(t.dataset.rqr)]);
+  if (t.dataset.rscan !== undefined) { RETURN_FOR = RO[Number(t.dataset.rscan)].id; pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); return; }
+  if (t.dataset.rsent !== undefined || t.dataset.rcancel !== undefined || t.dataset.rsorted !== undefined) {
+    const r = RO[Number(t.dataset.rsent ?? t.dataset.rcancel ?? t.dataset.rsorted)];
+    const act = t.dataset.rsent !== undefined ? 'returnSent' : t.dataset.rcancel !== undefined ? 'returnCancel' : 'returnSorted';
+    if (act === 'returnSent' && !confirm('Handed "' + r.item + '" back or dropped it off?')) return;
+    t.disabled = true;
+    try {
+      await api(act, { id: r.id });
+      SALES = null; await openSales('slToRetWrap');
+      toast(act === 'returnSent' ? 'Marked returned. Scan the refund receipt or forward the refund email when it comes.' : act === 'returnCancel' ? 'OK, keeping it' : 'Ticked off');
+    } catch (err) { t.disabled = false; toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message, true); }
+    return;
+  }
   if (t.dataset.all !== undefined) {   // select all / none
     const boxes = [...document.querySelectorAll('[data-pick^="' + t.dataset.all + ':"]')], on = boxes.some(b => !b.checked);
     boxes.forEach(b => { b.checked = on; });
@@ -1955,7 +2056,7 @@ async function prefetchLabels(list) {
   prefetching = true;
   try {
     const want = new Set(list.map(l => l.id));
-    (await labKeys()).forEach(k => { if (!want.has(k)) labDel(k); });   // posted or gone: free the space
+    (await labKeys()).forEach(k => { if (!want.has(k) && !String(k).startsWith('r:')) labDel(k); });   // posted or gone: free the space (return codes are tidied by prefetchReturnCodes)
     for (const l of list) if (l.files && !(await labGet(l.id))) { try { await fetchLabel(l); } catch (e) {} }   // one at a time, in the background
   } finally { prefetching = false; }
 }
@@ -2458,6 +2559,7 @@ async function refreshConfig() {
     CFG.platforms = d.platforms || [];
     CFG.cardFee = d.cardFee || CFG.cardFee || { perTap: 0, pct: 0 };
     CFG.crm = !!d.crm; try { crmSync(); renderHomeMatch(); } catch (e) {}
+    CFG.apps = d.apps || CFG.apps || {}; renderAppSwitch();
     setSalesCount(d.salesWaiting);
     saveCache(); fillStores(); fillPayPicker();
     setEmailCount(d.emails || 0);
@@ -2508,8 +2610,8 @@ $('btnReset').onclick = () => {
 // Home: one "Add receipt" button that opens two choices in place
 function setAddOpen(open) { $('addBox').classList.toggle('open', open); $('btnAdd').setAttribute('aria-expanded', open); }
 $('btnAdd').onclick = () => setAddOpen(!$('addBox').classList.contains('open'));
-$('btnCam').onclick = () => { setAddOpen(false); pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); };
-$('btnLib').onclick = () => { setAddOpen(false); pages = []; job = null; lastSource = 'lib'; $('inpLib').click(); };
+$('btnCam').onclick = () => { setAddOpen(false); pages = []; job = null; RETURN_FOR = null; lastSource = 'cam'; $('inpCam').click(); };
+$('btnLib').onclick = () => { setAddOpen(false); pages = []; job = null; RETURN_FOR = null; lastSource = 'lib'; $('inpLib').click(); };
 $('homeDate').textContent = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 $('inpCam').onchange = e => { addPhotos(e.target.files); e.target.value = ''; };
 $('inpLib').onchange = e => { addPhotos(e.target.files); e.target.value = ''; };
@@ -2637,7 +2739,10 @@ setInterval(() => { if (!$('vHome').classList.contains('hide')) renderUsage(); }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && localStorage.getItem(LS_URL)) refreshConfig();
 });
-if (localStorage.getItem(LS_URL)) { show('vHome'); if (CFG.waiting) renderTodo(CFG.waiting); refreshConfig(); }
+if (localStorage.getItem(LS_URL)) {
+  show('vHome'); if (CFG.waiting) renderTodo(CFG.waiting); renderAppSwitch(); refreshConfig();
+  if (location.hash === '#returns') { history.replaceState(null, '', location.pathname); openSales('slToRetWrap'); }   // from FlipList / FlipCheck
+}
 else { show('vSetup'); }
 setTimeout(() => { try { if (localStorage.getItem(LS_URL) && !localStorage.getItem('rs_intro')) showIntro(); } catch (e) {} }, 0);
 

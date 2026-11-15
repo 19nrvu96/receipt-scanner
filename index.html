@@ -425,6 +425,11 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 .bchip.good{background:#e6f4ea;color:#1e6b34}.bchip.bad{background:#fde8e8;color:#9b1c1c}.bchip.int{background:#efe9ff;color:#4b2fa3}
 .matchcard{background:#f4efff;border:1px solid #ddd0ff;border-radius:16px;padding:12px 14px;margin:10px 0}
 .matchcard button.lnk{background:none;border:0;padding:0;color:#4b2fa3;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
+.rdone{font-size:.9em;color:#555;margin:4px 0}
+.rdone a{margin-left:6px}
+.appsw{display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 10px}
+.appsw a{font-size:13px;padding:4px 10px;border-radius:999px;background:#eef2f6;color:#1d3a5f;text-decoration:none;font-weight:600}
+.fctag{background:#fff6d6;color:#6b4e00}
 .mtag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:#efe9ff;color:#4b2fa3;margin-left:6px;cursor:pointer}
 .bpacts{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin:10px 0}
 .bpacts a{display:block;text-align:center;padding:12px;border-radius:12px;background:#fff;border:1px solid #d0d0d5;color:#0a58ca;text-decoration:none;font-weight:700}
@@ -458,6 +463,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
   <section id="vHome" class="hide">
     <header class="homehead"><div><h1>Receipts</h1><p class="sub" id="homeDate"></p></div>
       <button class="gear" id="btnSettings" aria-label="Settings"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></header>
+    <nav class="appsw hide" id="appSw" aria-label="Your other apps"></nav>
     <div id="todo" class="todo hide"></div>
     <div id="homeMatch" class="matchcard hide"></div>
     <div id="homeColl" class="collcard hide"></div>
@@ -836,6 +842,9 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
     <div id="slRetWrap" class="hide"><h3 class="sech">Last days to return</h3>
       <p class="hint">Not sold yet. Not going to sell it? Send it back in time. Online orders: 14 days. Shop receipts: often 28 or 30 days. Check the shop's own rules.</p>
       <div id="slRet"></div></div>
+    <div id="slToRetWrap" class="hide"><h3 class="sech">To return</h3>
+      <p class="hint">Take these back by the last day. Forward the shop's return email and its QR code shows here. Handed it back? Tap Returned. Then scan the refund receipt or forward the refund email: it's attached to the return.</p>
+      <div id="slToRet"></div></div>
     <div id="slWaitWrap" class="hide"><h3 class="sech">Waiting for a refund</h3>
       <p class="hint">Got your money back? Scan the refund receipt, or forward the refund email. We tick it off.</p>
       <div id="slWait"></div></div>
@@ -1051,7 +1060,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=51"></script>
-<script src="app.js?v=51"></script>
+<script src="help.js?v=52"></script>
+<script src="app.js?v=52"></script>
 </body>
 </html>
