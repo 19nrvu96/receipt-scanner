@@ -15,7 +15,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v53';
+const APP_VERSION = 'v54';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2560,6 +2560,7 @@ async function refreshConfig() {
     CFG.cardFee = d.cardFee || CFG.cardFee || { perTap: 0, pct: 0 };
     CFG.crm = !!d.crm; try { crmSync(); renderHomeMatch(); } catch (e) {}
     CFG.apps = d.apps || CFG.apps || {}; renderAppSwitch();
+    CFG.newReturns = 'apps' in d;   // the Sheet's script has the Returns update (whatsnew.js)
     setSalesCount(d.salesWaiting);
     saveCache(); fillStores(); fillPayPicker();
     setEmailCount(d.emails || 0);
