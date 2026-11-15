@@ -559,6 +559,12 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
       <div id="avOffList"></div>
     </div>
 
+    <h3 class="sech">Reading receipts</h3>
+    <div class="card scard2">
+      <label class="check"><input type="checkbox" id="stSaver"> Saver: cheaper model first</label>
+      <p class="sub">The cheaper Flash-Lite model reads each receipt first. Its answer is kept only when the lines add up to the total and nothing is marked unsure. Otherwise the main model reads it again. In testing it matched the main model on every receipt it kept, for roughly half the cost. Turn it off to always use the main model.</p>
+    </div>
+
     <h3 class="sech">Selling</h3>
     <div class="card scard2">
       <label class="check"><input type="checkbox" id="stCrm"> Buyers: notes and contacts</label>
@@ -1045,7 +1051,7 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=48"></script>
-<script src="app.js?v=48"></script>
+<script src="help.js?v=50"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>

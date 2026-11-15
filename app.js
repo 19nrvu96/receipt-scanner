@@ -2645,6 +2645,7 @@ async function openSettings() {
     $('stEmailsOn').textContent = a.emailsOn ? 'On, every 5 minutes' : 'Not set up yet';
     $('stSrc').value = d.emailSource || ''; $('stOrderEmail').value = d.orderEmail || ''; $('stMonthly').checked = !!d.monthlyEmail;
     $('stCrm').checked = !!d.crm; if (CFG.crm !== !!d.crm) { CFG.crm = !!d.crm; saveCache(); crmSync(); }
+    $('stSaver').checked = d.readMode === 'saver';
     try { renderColl(); } catch (e) {}
     srcSync();
     $('stHist').innerHTML = (d.history || []).map(h => `<p class="hist">Before ${esc(h.until)}: ${esc(h.label)}${h.tab ? ' · saved in the "' + esc(h.tab) + '" tab' : ''}</p>`).join('');
@@ -3095,7 +3096,12 @@ $('bpickQ').oninput = renderPick;
 $('bpickClose').onclick = () => $('bpick').classList.add('hide');
 $('bpickList').onclick = e => { const b = e.target.closest('[data-pk]'); if (!b) return; const x = findBuyer(b.dataset.pk); $('saBuyer').value = bName(x); $('bpick').classList.add('hide'); buyerHint(true); };
 
-// Settings toggle
+// Settings toggles
+$('stSaver').onchange = async () => {
+  const on = $('stSaver').checked;
+  try { await api('settingsSet', { settings: { readMode: on ? 'saver' : 'best' } }); toast(on ? 'Saver on: Flash-Lite first, checked against the total' : 'Saver off: the main model reads every receipt'); }
+  catch (err) { $('stSaver').checked = !on; toast(err.message, true); }
+};
 $('stCrm').onchange = async () => {
   const on = $('stCrm').checked;
   try { await api('settingsSet', { settings: { crm: on } }); CFG.crm = on; saveCache(); crmSync(); toast(on ? 'Buyers turned on' : 'Buyers turned off. Your notes stay in the Sheet'); }
