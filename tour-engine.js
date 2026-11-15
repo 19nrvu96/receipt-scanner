@@ -103,7 +103,7 @@
 
   async function findTarget(t, ms) {
     if (!t) return null;
-    const end = Date.now() + (ms || 6000);
+    const end = Date.now() + (ms || 4000);
     while (Date.now() < end) {
       if (!T) return null;
       let el = null;
@@ -122,16 +122,21 @@
     dim.style.display = 'none';
     ring.style.display = T.min ? 'none' : 'block';
     Object.assign(ring.style, { left: (r.left - pad) + 'px', top: (r.top - pad) + 'px', width: (r.width + pad * 2) + 'px', height: (r.height + pad * 2) + 'px' });
-    const low = r.top + r.height / 2 > innerHeight * 0.55;
-    card.className = 'ft-card ' + (low ? 'top' : 'bottom') + (T.min ? ' min' : '');
+    // Put the card where it covers least of the target (top or bottom of the screen)
+    const ch = card.offsetHeight || 300, gap = 12;
+    const underBottom = Math.max(0, r.bottom - (innerHeight - ch - gap)), underTop = Math.max(0, ch + gap - r.top);
+    const top = underBottom > underTop || (underBottom === underTop && r.top + r.height / 2 > innerHeight * 0.55);
+    if (T.side !== (top ? 'top' : 'bottom')) T.side = top ? 'top' : 'bottom';
+    card.className = 'ft-card ' + T.side + (T.min ? ' min' : '');
   }
 
   async function show(idx) {
     if (!T) return;
     T.i = Math.max(0, Math.min(T.steps.length - 1, idx));
     const st = T.steps[T.i], ch = T.cfg.chapters[st.ci], s = st.s;
-    T.el = null; T.menu = false; T.min = false; T.missing = false;
+    T.el = null; T.menu = false; T.min = false; T.missing = false; T.side = null;
     render(true);
+    T.card.scrollTop = 0;
     try {
       if (typeof s.go === 'function') await s.go();
       else if (typeof s.go === 'string' && location.hash !== s.go) location.hash = s.go;
@@ -145,11 +150,13 @@
       await sleep(400);
     }
     render(false);
-    // Keep the target above the card if they overlap
+    T.card.scrollTop = 0;
+    // Still covered? Scroll the page so the target sits in the space the card leaves free
     if (el && T) {
+      await sleep(60);
       const r = el.getBoundingClientRect(), c = T.card.getBoundingClientRect();
-      if (T.card.classList.contains('bottom') && r.bottom > c.top - 8) window.scrollBy({ top: Math.min(r.top - 70, r.bottom - c.top + 24), behavior: 'smooth' });
-      if (T.card.classList.contains('top') && r.top < c.bottom + 8) window.scrollBy({ top: -(c.bottom - r.top + 24), behavior: 'smooth' });
+      if (T.side === 'bottom' && r.bottom > c.top - 8) window.scrollBy({ top: Math.min(r.top - 70, r.bottom - c.top + 24), behavior: 'smooth' });
+      else if (T.side === 'top' && r.top < c.bottom + 8) window.scrollBy({ top: -(c.bottom - r.top + 24), behavior: 'smooth' });
     }
     // Mark the chapter done on its last step
     if (st.si === st.n - 1) { const d = store.get(T.cfg.key); d.done = Object.assign({}, d.done, { [ch.id]: 1 }); store.set(T.cfg.key, d); }
