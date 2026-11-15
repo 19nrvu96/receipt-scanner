@@ -81,7 +81,7 @@ async function api(action, payload) {
 // The Sheet's script counts receipts and estimates spend; Google has no way
 // for apps to read the real allowance or balance, so these are estimates.
 const LS_USAGE = 'rs_usage';
-const BILLING_URL = 'https://aistudio.google.com/projects';
+const BILLING_URL = 'https://aistudio.google.com/billing';
 const LIMITS_URL = 'https://aistudio.google.com/rate-limit';
 let USAGE = null;
 
@@ -124,6 +124,27 @@ function renderUsage() {
   if (!box) return;
   if (!u) { box.classList.add('hide'); return; }
   box.classList.remove('hide');
+
+  if (u.billing && u.credit) {
+    // Prepaid Google credit in pounds, with Google's auto top-up (Usage.gs creditView_).
+    const c = u.credit, r = c.reload;
+    const warn = c.warn === 'out' ? ' out' : (c.warn === 'reload' || c.warn === 'low') ? ' warn' : '';
+    box.className = 'usage' + warn;
+    const head = c.receiptsLeft == null
+      ? `💳 About <b>£${Number(c.gbp).toFixed(2)}</b> credit · auto top-up on`
+      : `💳 About <b>${c.receiptsLeft.toLocaleString('en-GB')}</b> receipts left · £${Number(c.gbp).toFixed(2)} credit`;
+    const next = r ? (c.toReload != null
+      ? `Next automatic top-up (£${r.gbp}) in about <b>${c.toReload.toLocaleString('en-GB')}</b> receipts, when the credit drops under £${r.below}.`
+      : `This month's auto top-up limit (£${r.monthlyGbp}) is used up.`) : 'Auto top-up is off.';
+    box.innerHTML = `<div class="uhead">${head}</div>
+       <div class="usub">${c.message ? '<b>' + esc(c.message) + '</b><br>' : ''}${next} About ${(c.perReceiptGbp * 100).toFixed(2)}p a receipt. Estimate from your last balance check${c.setAt ? ' (' + esc(new Date(c.setAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })) + ')' : ''}.</div>
+       <div class="uact"><a class="ubtn" href="${BILLING_URL}" target="_blank" rel="noopener">Billing</a>
+       <button class="ubtn" data-u="balance">Update balance</button><button class="ubtn" data-u="more">⋯</button></div>`;
+    // Say it once when a warning starts (or a top-up happens), not on every screen.
+    const key = c.warn ? c.warn + ':' + (c.warn === 'topped' ? c.lastReloadAt : new Date().toDateString()) : '';
+    try { if (key && localStorage.getItem('rs_credit_warn') !== key) { localStorage.setItem('rs_credit_warn', key); toast(c.message, c.warn === 'out'); } } catch (e) {}
+    return;
+  }
 
   if (u.billing) {
     const hasTop = Number(u.topupUsd) > 0;
@@ -171,6 +192,13 @@ $('usage').onclick = async e => {
       if (!confirm('Switch the app to paid mode? Do this once billing is set up in AI Studio.')) return;
       await api('usageSet', { billing: true });
       toast('Paid mode on. Record your top-up to track credit');
+    } else if (act === 'balance') {
+      const v = prompt('Your credit balance in AI Studio → Billing right now, in pounds (e.g. 3.72):');
+      if (v == null) return;
+      const n = Number(String(v).replace(/[^\d.]/g, ''));
+      if (!(n >= 0) || String(v).trim() === '') { toast('Enter an amount like 3.72', true); return; }
+      await api('usageSet', { balanceGbp: n });
+      toast('Balance set to £' + n.toFixed(2));
     } else if (act === 'topup') {
       const v = prompt('How much credit did you add, in US dollars? (e.g. 5)');
       if (v == null) return;
