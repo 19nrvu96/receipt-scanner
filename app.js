@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v48';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1670,7 +1670,8 @@ function renderSales() {
   setSalesCount(countsFrom(d));
   $('slPostWrap').classList.toggle('hide', !d.toPost.length);
   $('slPost').innerHTML = d.toPost.map((l, i) => `<div class="card scard"><div class="sb">
-    <div class="st">${esc(l.item || 'Postage label')}</div>
+    <div class="st">${l.qty > 1 ? '<span class="qtybadge">' + l.qty + ' ×</span> ' : ''}${esc(l.item || 'Postage label')}</div>
+    ${l.qty > 1 ? `<div class="qtynote">📦 ${l.qty} items go in this parcel</div>` : ''}
     <div class="sm">${[l.platform, l.courier, l.order ? '#' + l.order : ''].filter(Boolean).map(esc).join(' · ')}</div>
     <div class="tags">${postTag(l)}</div>
     <div class="duo" style="margin-top:8px"><button class="btn" data-lab="${i}">${l.files ? 'Show QR code' : 'Open label'}</button>
@@ -1932,13 +1933,14 @@ async function prefetchLabels(list) {
 async function showLabel(l) {
   const veil = document.createElement('div');
   veil.className = 'veil';
-  veil.innerHTML = `<div class="sheet"><h3>${esc(l.item || 'Postage label')}</h3><p class="sub">Loading…</p></div>`;
+  veil.innerHTML = `<div class="sheet"><h3>${l.qty > 1 ? l.qty + ' × ' : ''}${esc(l.item || 'Postage label')}</h3><p class="sub">Loading…</p></div>`;
   veil.onclick = e => { if (e.target === veil || e.target.dataset.close) veil.remove(); };
   document.body.appendChild(veil);
   try {
     const cached = await labGet(l.id);
     const f = cached || await fetchLabel(l);
-    veil.querySelector('.sheet').innerHTML = `<button class="close" data-close="1" aria-label="Close">✕</button><h3>${esc(l.item || 'Postage label')}</h3>
+    veil.querySelector('.sheet').innerHTML = `<button class="close" data-close="1" aria-label="Close">✕</button><h3>${l.qty > 1 ? l.qty + ' × ' : ''}${esc(l.item || 'Postage label')}</h3>
+      ${l.qty > 1 ? `<div class="qtynote big">📦 Pack ${l.qty} items in this parcel. One code covers them all.</div>` : ''}
       <p class="hint">Show this code at the shop. Turn your screen brightness up.${cached ? ' Saved on this phone, so it works with no signal.' : ''}</p>
       <p class="sub">${[l.courier, l.order ? '#' + l.order : '', l.tracking ? 'tracking ' + l.tracking : ''].filter(Boolean).map(esc).join(' · ')}</p>
       ${f.images.map(src => `<img class="qrimg" src="${src}" alt="Postage QR code">`).join('')}
