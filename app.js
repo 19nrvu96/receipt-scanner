@@ -14,7 +14,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v48';
+const APP_VERSION = 'v49';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -601,6 +601,8 @@ function buildReview(result, source) {
       toast('Items add to £' + itemsSum.toFixed(2) + ' but receipt total is £' + expected.toFixed(2) + ' — check prices', true);
     }
   }
+  // Read by a back-up AI model (the main ones were used up or busy): ask for a quick look.
+  if (meta.backup) toast('Read by a back-up AI model today. Give the lines and prices a quick check.', true);
 
    
    renderItems();
