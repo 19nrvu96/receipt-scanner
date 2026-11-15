@@ -15,7 +15,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v57';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -3231,6 +3231,9 @@ $('bpickClose').onclick = () => $('bpick').classList.add('hide');
 $('bpickList').onclick = e => { const b = e.target.closest('[data-pk]'); if (!b) return; const x = findBuyer(b.dataset.pk); $('saBuyer').value = bName(x); $('bpick').classList.add('hide'); buyerHint(true); };
 
 // Settings toggles
+// Look: automatic (follows the phone), light or dark. Set before the page draws (index.html).
+segSet('stTheme', window.getTheme ? window.getTheme() : 'auto');
+$('stTheme').onclick = e => { const b = e.target.closest('button'); if (!b || !window.setTheme) return; window.setTheme(b.dataset.v); segSet('stTheme', b.dataset.v); };
 $('stSaver').onchange = async () => {
   const on = $('stSaver').checked;
   try { await api('settingsSet', { settings: { readMode: on ? 'saver' : 'best' } }); toast(on ? 'Saver on: Flash-Lite first, checked against the total' : 'Saver off: the main model reads every receipt'); }

@@ -124,7 +124,8 @@
   ];
 
   const cfg = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:1115', chapters, ready,
-    theme: { accent: '#0a84ff', accentInk: '#fff', bg: '#fff', fg: '#111', line: '#d6d6db', strong: '#111' },
+    get theme() { const d = document.documentElement.classList.contains('dark');
+      return d ? { accent: '#0a84ff', accentInk: '#fff', bg: '#1d2027', fg: '#e8e8ea', line: '#3a3d45', strong: '#fff' } : { accent: '#0a84ff', accentInk: '#fff', bg: '#fff', fg: '#111', line: '#d6d6db', strong: '#111' }; },
     when: () => !!localStorage.getItem('rs_url') };
   window.whatsNew = () => window.FlipTour.start(cfg);
   document.addEventListener('click', e => { if (e.target.closest('[data-whatsnew]')) { e.preventDefault(); window.FlipTour.start(cfg); } });
