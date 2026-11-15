@@ -1,78 +1,132 @@
-/* "What's new": a short walkthrough of the day's changes, shown once the next time the app opens,
-   with Back / Next. Reopen it any time from Settings → What's new. Seen slides are remembered on
-   this phone, so slides added later still show. */
+/* Guided tour of the 15 November changes in Receipts. Each feature opens the real screen, points at the
+   real thing, says what to do, then shows what it does in the Google Sheet and in FlipCheck and ListMe.
+   Opens once on this phone; reopen from Settings → What's new. Engine: tour-engine.js.
+   Previews use example data only (this app is public, so no real data goes in it). */
 (function () {
-  const KEY = 'rs_whatsnew';
-  const WAIT = 'Starts working once your Sheet\'s script has today\'s update (the one Terminal command).';
-  const SLIDES = [
-    { id: 'rs-hello-1115', icon: '👋', title: 'What\'s new in Receipts', text: 'A quick tour of what changed on 15 November. Tap <b>Next</b> and <b>Back</b>, or swipe. It won\'t pop up again, but you can open it from <b>Settings → What\'s new</b>.' },
-    { id: 'rs-sales-1115', icon: '💷', title: 'Sales: clearer and quicker', text: 'A sale that needs a check now says what\'s missing, with <b>Take me there ›</b>. The price you sold for and how far it was <b>% off asking</b> are saved. The fees part stays folded away unless there\'s a promoted fee or a refund. Buyers can be found by name, phone number or email, and the cost search can be filtered by shop.', where: 'Sales, and Log a sale' },
-    { id: 'rs-parcels-1115', icon: '📦', title: 'How many go in the parcel', text: 'To post cards and the QR screen now show how many items go in one parcel, for example "Pack 2 items in this parcel".', where: 'Sales → To post' },
-    { id: 'rs-reading-1115', icon: '🤖', title: 'Saver reading, accurate models only', text: 'Receipts reads with the cheaper Flash-Lite model first and keeps the result only if the totals add up. If they don\'t, it reads again with 3.6 Flash. The less accurate models have been dropped. Switch it in Settings with <b>Saver: cheaper model first</b>.', where: 'Settings' },
-    { id: 'rs-credit-1115', icon: '💳', title: 'Your Google credit', text: 'The home screen shows your prepaid Google credit, about how many receipts it covers, and when the next automatic top-up comes (£5 when it drops under £1, up to £10 a month). You get a warning when it\'s getting low.', where: 'Home screen' },
-    { id: 'rs-toreturn-1115', icon: '↩️', title: 'New: To return', text: 'Things you\'re taking back get their own cards: last day, shop, amount, and where you decided (here, ListMe or FlipCheck). Tap <b>✓ Returned it</b> once it\'s handed back or dropped off. Then tap <b>📷 Refund receipt</b> on that card, or forward the refund email, and the refund is attached to the return as proof. Finished ones are under <b>Returned recently</b>.', where: 'Sales → To return', wait: true, go: 'slToRetWrap' },
-    { id: 'rs-qr-1115', icon: '🔳', title: 'Return QR codes', text: 'Forward the shop\'s return email (QR code or drop-off label) and it\'s filed on the right return, matched by order number or shop. <b>Show return QR code</b> works with no signal at the counter. A "we\'ve received your return" email marks it as returned for you.', where: 'Sales → To return', wait: true },
-    { id: 'rs-extended-1115', icon: '🎄', title: 'Extended return dates', text: 'When a receipt has its own later "return by" date (Christmas and other seasonal returns), that\'s the only deadline. Reminders here, in ListMe and in FlipCheck start 7 days before it, not at day 10 or 21. Its cards say <b>🎄 Extended return date</b>.', where: 'Last days to return, To return', wait: true },
-    { id: 'rs-apps-1115', icon: '🔍', title: 'Worth it? Ask FlipCheck', text: 'Stock rows have <b>🔍 Worth it?</b>, and last-days-to-return cards have <b>Worth keeping? FlipCheck ›</b>. Each opens FlipCheck at that purchase. After you save a resale receipt there\'s a link too, and FlipCheck and ListMe are at the top of the home screen.', where: 'Stock page, Sales, home', wait: true }
+  if (!window.FlipTour) return;
+  const M = window.FlipTour.mock;
+  const go = fn => async () => { try { await fn(); } catch (e) {} };
+  const sales = t => go(() => openSales(t));
+  const ready = async () => { try { return !!(typeof CFG !== 'undefined' && CFG.newReturns); } catch (e) { return false; } };
+
+  const RET_CARD = M.receipts('<div class="c"><div class="st">Pokémon TCG 30th Battle <span class="sm">×2</span></div><div class="sm">Smyths Toys · bought 30/10/2026 · £39.98 · from ListMe</div>' +
+    '<span class="tag soon">Last day Fri 27 Nov</span><span class="tag">🏬 Shop: often 28–30 days</span><span class="tag">QR code saved</span>' +
+    '<div><span class="b">Show return QR code</span></div><div><span class="b s">✓ Returned it</span><span class="b s">📷 Refund receipt</span></div></div>', 'Sales → To return');
+
+  const chapters = [
+    { id: 'rs-toreturn', icon: '↩️', title: 'To return', summary: 'Last day, returned, refund proof',
+      steps: [
+        { title: 'Your To return list', go: sales('slToRetWrap'), target: '#slToRetWrap', wait: true,
+          missing: 'Nothing is being returned yet. Once something is, its card looks like this:', mock: RET_CARD,
+          text: 'Everything you\'re taking back has a card: the last day, the shop, the amount, and where you decided (here, ListMe or FlipCheck). The last day is 14 days for online orders, 28 for shop receipts, or the receipt\'s own later "return by" date.',
+          todo: ['Open <b>Sales</b> (home → Sales).', 'Scroll to <b>To return</b>.'] },
+        { title: 'Handed it back?', go: sales('slToRetWrap'), target: '[data-rsent]', wait: true,
+          missing: 'No returns yet: the button is on each To return card.',
+          text: 'Once it\'s back at the shop, or dropped off for post, mark it so you know you\'re only waiting for the money.',
+          todo: ['Tap <b>✓ Returned it</b>, then OK.', 'The card changes to "Returned: waiting for the refund".'] },
+        { title: 'Attach the refund', go: sales('slToRetWrap'), target: '[data-rscan]', wait: true,
+          missing: 'No returns yet: the button is on each To return card.',
+          text: 'At the shop: photograph the refund receipt from this card, and it\'s attached to <b>this</b> return. Refunded online: forward the refund email to your receipts address, check it on the review screen, and save.',
+          todo: ['Tap <b>📷 Refund receipt</b> and take the photo.', 'Check the review screen (the amount is negative) and tap <b>Save</b>.', 'The card moves to <b>Returned recently</b> with a <b>refund proof</b> link.'] },
+      ],
+      effect: [
+        { app: 'Sheet', text: 'Deciding to return adds a row to the <b>Returns</b> tab.', mock: M.sheet('Returns', ['status', 'purchase row', 'item', 'amount', 'return by', 'from'], [['To return', '41', 'Pokemon TCG 30th Battle', '39.98', '27/11/2026', 'ListMe']], [[0, 0]], ['Purchases', 'Sales', 'Returns', 'To post']) },
+        { app: 'Sheet', text: '<b>✓ Returned it</b> sets <b>Sent back</b> and the date. Saving the refund sets <b>Refunded</b>, the amount, the date, and the photo or email link as <b>refund proof</b>.',
+          mock: M.sheet('Returns', ['status', 'item', 'sent back on', 'refund amount', 'refunded on', 'refund proof'], [['Refunded', 'Pokemon TCG 30th Battle', '24/11/2026', '39.98', '25/11/2026', 'drive…/refund.jpg']], [[0, 0], [0, 2], [0, 3], [0, 4], [0, 5]], ['Purchases', 'Sales', 'Returns', 'To post']) },
+        { app: 'Sheet', text: 'On <b>Purchases</b>, the original line is marked <b>Returned</b> and <b>refunded</b>, and the refund is saved as its own line (a negative amount), so your tax figures stay right.',
+          mock: M.sheet('Purchases', ['item', 'total cost', 'keep or return', 'refunded?', 'refund amount', 'document link'], [['Pokemon TCG 30th Battle', '39.98', 'Returned', 'Yes', '39.98', 'drive…/receipt.jpg'], ['Pokemon TCG 30th Battle', '-39.98', '', '', '', 'drive…/refund.jpg']], [[0, 2], [0, 3], [0, 4], [1, 1], [1, 5]]) },
+        { app: 'ListMe', text: 'The item is archived (it\'s gone), and it was already off your to-do lists while it was going back.' },
+        { app: 'FlipCheck', text: 'Its analysis\' Bought box says "Returned and refunded". The purchase leaves the Purchases list, because it\'s no longer in stock.' },
+      ] },
+
+    { id: 'rs-qr', icon: '🔳', title: 'Return QR codes', summary: 'Forward the shop\'s email; show it at the counter',
+      steps: [
+        { title: 'Forward the return email', wait: true,
+          mock: M.email('returns@shop.example', 'Your return QR code for order 204-1234567', 'Take this code to any Evri ParcelShop. Please drop it off by 28 November.<div class="qr"></div>'),
+          text: 'When you start a return on a shop\'s website, it usually emails you a QR code or a label. Forward that email to the same address you send receipts to.',
+          todo: ['Forward it like any receipt email.', 'Receipts matches it to the return by order number, or by shop if only one return is open there.', 'If you hadn\'t marked it for return yet, it starts the return for you.'] },
+        { title: 'Show it at the counter', go: sales('slToRetWrap'), target: '[data-rqr]', wait: true,
+          missing: 'No return has a code yet. On a card with one, it looks like this:', mock: RET_CARD,
+          text: 'The card says <b>QR code saved</b>. The code is kept on your phone, so it opens with no signal.',
+          todo: ['Tap <b>Show return QR code</b>.', 'Turn the brightness up and let them scan it.', 'Then tap <b>✓ Returned it</b>. If the shop emails "we\'ve received your return", forwarding that does it for you.'] },
+      ],
+      effect: [
+        { app: 'Drive', text: 'The code (image or PDF) goes in a <b>Return labels</b> folder, private to you.' },
+        { app: 'Sheet', text: 'The return\'s row gets the files, the email link, and the shop\'s own drop-off date if the email gives one.',
+          mock: M.sheet('Returns', ['status', 'item', 'return by', 'label files', 'return email'], [['To return', 'Pokemon TCG 30th Battle', '28/11/2026', '1a2B…', 'mail.google…/#all/18c…']], [[0, 2], [0, 3], [0, 4]], ['Purchases', 'Sales', 'Returns', 'To post']) },
+      ] },
+
+    { id: 'rs-closing', icon: '⏳', title: 'Last days to return', summary: 'Keep it or take it back, in time',
+      steps: [
+        { title: 'Reminders by receipt', go: sales('slRetWrap'), target: '#slRetWrap',
+          missing: 'Nothing is near its last day. Your 30 October buys appear here from Friday 20 November. It looks like this:',
+          mock: M.receipts('<div class="c"><div class="st">Smyths Toys · 2 things</div><div class="sm">bought 30/10/2026 · £49.96</div><span class="tag soon">Last day Fri 27 Nov</span><span class="tag">🏬 Shop: often 28–30 days</span><span class="tag" style="background:#fff6d6">Worth keeping? FlipCheck ›</span><div><span class="b s">Keep them all</span><span class="b">Return ticked</span></div></div>'),
+          text: 'Unsold things bought to resell show up as their last day gets close: from day 10 of 14 for online orders, and from day 21 of 28 for shop receipts. A receipt you marked with a later <b>Return by</b> date (seasonal or Christmas) shows <b>🎄 Extended return date</b>, and only appears in its last 7 days.',
+          todo: ['Not sure? Tap <b>Worth keeping? FlipCheck ›</b> to see if it\'s worth selling.', 'Tap <b>Keep it</b> (reminders stop), or <b>I\'ll return it</b>. For a receipt with several items, tick the ones going back first.'] },
+      ],
+      effect: [
+        { app: 'ListMe', text: 'The same reminder shows on ListMe\'s Today on the same days, with Keep and We\'ll return it.' },
+        { app: 'Sheet', text: '<b>I\'ll return it</b> adds the Returns row, the same as from ListMe or FlipCheck. <b>Keep</b> changes nothing in the Sheet: it just stops the reminders.' },
+      ] },
+
+    { id: 'rs-worth', icon: '🔍', title: 'Worth it? Ask FlipCheck', summary: 'From Stock, straight to that purchase',
+      steps: [
+        { title: 'On the Stock page', go: go(() => openStock()), target: '[data-skfc]', wait: true,
+          missing: 'The links appear once the FlipCheck address is saved in this app (it is now: give the page a moment, or reopen Stock).',
+          text: 'Every unsold line has a <b>🔍 Worth it?</b> tag. It opens FlipCheck on that exact purchase, with <b>Analyse</b> ready.',
+          todo: ['Open <b>Stock</b>.', 'Tap <b>🔍 Worth it?</b> on a line.', 'In FlipCheck, tap <b>Analyse</b>, or <b>That\'s it</b> if you checked it before buying.'] },
+        { title: 'Your other apps', go: go(() => show('vHome')), target: '#appSw', wait: true,
+          text: 'FlipCheck and ListMe sit at the top of the home screen. After you save a resale receipt, the status line also says <b>Worth it? Check in FlipCheck</b>.' },
+      ],
+      effect: [
+        { app: 'FlipCheck', text: 'The analysis is tied to this purchase: it uses what you paid, knows the last day to return, and can send it to ListMe in one tap. The Sheet is only read.' },
+      ] },
+
+    { id: 'rs-sales', icon: '💷', title: 'Clearer sales', summary: 'Take me there, % off asking, buyer search',
+      steps: [
+        { title: 'Needs a check: Take me there', go: sales('slNeedsWrap'), target: '#slNeedsWrap',
+          missing: 'No sales need a check right now. When one does, it looks like this:',
+          mock: M.receipts('<div class="c"><b>This sale needs a check</b><div class="sm">⚠️ No item cost yet <u>Take me there ›</u></div></div>'),
+          text: 'A sale that needs a check now says exactly what\'s missing, and <b>Take me there ›</b> jumps to that field.',
+          todo: ['Tap a sale under <b>Needs your input</b>.', 'Tap <b>Take me there ›</b> and fill it in.'] },
+        { title: 'Logging a sale', go: sales(), target: '#btnNewSale',
+          text: 'Put in what you listed it at, and Receipts saves how far <b>% off asking</b> the buyer got you. The fees section stays folded away unless there\'s a promoted fee or a refund. Buyers can be searched by name, phone number or email, and the cost search can be filtered by shop.',
+          todo: ['Tap <b>＋ Log a sale</b>.', 'Fill in <b>Sold for</b> and <b>Listed at</b>: it shows, for example, "20% off asking (£10 less)".'] },
+      ],
+      effect: [
+        { app: 'Sheet', text: 'The Sales tab saves <b>listed at</b> and <b>off asking %</b>, and Buyers shows each buyer\'s average.',
+          mock: M.sheet('Sales', ['sale date', 'item', 'sale price', 'listed at', 'off asking %'], [['14/11/2026', 'Pokémon Blue', '80', '100', '20']], [[0, 3], [0, 4]], ['Purchases', 'Sales', 'Returns', 'To post']) },
+      ] },
+
+    { id: 'rs-parcels', icon: '📦', title: 'How many in the parcel', summary: 'On To post and the QR screen',
+      steps: [
+        { title: 'To post', go: sales('slPostWrap'), target: '#slPostWrap',
+          missing: 'No parcels to post right now. With one, it looks like this:',
+          mock: M.receipts('<div class="c"><div class="st"><span class="tag">2 ×</span> Pokémon booster</div><div class="sm">📦 2 items go in this parcel</div><div class="sm">eBay · Evri</div><div><span class="b">Show QR code</span><span class="b s">✓ Posted</span></div></div>'),
+          text: 'Cards and the QR screen now say how many items go in one parcel, for example <b>Pack 2 items in this parcel. One code covers them all.</b>',
+          todo: ['Tap <b>Show QR code</b> at the drop-off.', 'Then tap <b>✓ Posted</b>.'] },
+      ],
+      effect: [
+        { app: 'Sheet', text: 'The To post tab has a <b>quantity</b> column, taken from the label email or the sale.' },
+        { app: 'ListMe', text: 'ListMe\'s Today shows the same label with the drop-off near you.' },
+      ] },
+
+    { id: 'rs-reading', icon: '🤖', title: 'Saver reading and credit', summary: 'Cheaper first, kept only if it adds up',
+      steps: [
+        { title: 'The switch', go: go(() => openSettings()), target: () => { const c = document.getElementById('stSaver'); return c && c.closest('label'); },
+          text: 'Receipts reads with the cheaper Flash-Lite model first and keeps the result only if the lines add up to the total. If they don\'t, it reads the receipt again with 3.6 Flash. The less accurate models have been dropped.',
+          todo: ['Leave <b>Saver: cheaper model first</b> on to spend less.', 'Turn it off if you\'d rather always use the best model.'] },
+        { title: 'Your Google credit', go: go(() => show('vHome')), target: '#usage',
+          mock: M.receipts('<div class="c"><div class="st">Google credit (prepaid) £3.72</div><div class="sm">About 3,400 receipts now · next top-up of £5 after about 2,500</div></div>', 'home'),
+          text: 'The home screen shows your prepaid Google credit, about how many receipts it covers, and when the next automatic top-up comes (£5 when it drops under £1, at most £10 a month). You get a warning when it\'s getting low.' },
+        { title: 'Open this tour again', go: go(() => openSettings()), target: '[data-whatsnew]', text: 'Settings → <b>✨ What\'s new</b> brings this tour back. Use ☰ to jump to any feature.' },
+      ] },
   ];
 
-  const seen = () => { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } };
-  const remember = () => { try { localStorage.setItem(KEY, JSON.stringify(Array.from(new Set(seen().concat(SLIDES.map(s => s.id)))))); } catch (e) {} };
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  // The Sheet's script has today's update when its startup data includes the sister-app links
-  const ready = () => { try { return !!(typeof CFG !== 'undefined' && CFG.newReturns); } catch (e) { return false; } };
-
-  function open(all) {
-    const list = SLIDES.filter(s => all || seen().indexOf(s.id) < 0);
-    if (!list.length || document.querySelector('.wn-veil')) return;
-    let i = 0;
-    const veil = document.createElement('div');
-    veil.className = 'veil wn-veil';
-    veil.style.alignItems = 'center';
-    veil.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="wnTitle" style="border-radius:18px;margin:12px;max-width:460px"></div>';
-    const box = veil.firstElementChild;
-    const close = () => { remember(); veil.remove(); };
-    const draw = () => {
-      const s = list[i], last = i === list.length - 1;
-      box.innerHTML = '<button class="close" data-wn="close" aria-label="Close">✕</button>' +
-        '<p class="sub" style="margin:0 0 6px">What\'s new · ' + (i + 1) + ' of ' + list.length + '</p>' +
-        '<div style="font-size:40px;line-height:1.1" aria-hidden="true">' + s.icon + '</div>' +
-        '<h3 id="wnTitle" style="font-size:20px;margin:8px 0">' + esc(s.title) + '</h3>' +
-        '<p style="margin:0 0 8px;line-height:1.5">' + s.text + '</p>' +
-        (s.where ? '<p class="sub" style="margin:0 0 8px">Where: ' + esc(s.where) + '</p>' : '') +
-        (s.wait && !ready() ? '<p class="hint" style="background:#fff4d6;color:#7a5300;border-radius:8px;padding:6px 10px">' + WAIT + '</p>' : '') +
-        (s.go ? '<button class="btn sec" data-wn="go" style="margin:4px 0 8px">Show me</button>' : '') +
-        '<div class="duo" style="margin-top:6px;align-items:center"><button class="btn sec" data-wn="back"' + (i === 0 ? ' disabled' : '') + '>‹ Back</button>' +
-        '<button class="btn" data-wn="' + (last ? 'close' : 'next') + '">' + (last ? 'Done' : 'Next ›') + '</button></div>' +
-        '<div style="display:flex;gap:5px;justify-content:center;margin-top:10px" aria-hidden="true">' + list.map((_, k) => '<i style="width:7px;height:7px;border-radius:50%;background:' + (k === i ? '#0a84ff' : '#d6d6db') + '"></i>').join('') + '</div>';
-    };
-    veil.addEventListener('click', e => {
-      const b = e.target.closest('[data-wn]');
-      if (!b) { if (e.target === veil) close(); return; }
-      const a = b.dataset.wn;
-      if (a === 'next') { i++; draw(); }
-      else if (a === 'back') { i--; draw(); }
-      else if (a === 'close') close();
-      else if (a === 'go') { const to = list[i].go; close(); if (typeof openSales === 'function') openSales(to); }
-    });
-    let x0 = null;
-    veil.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
-    veil.addEventListener('touchend', e => {
-      if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null;
-      if (dx < -50 && i < list.length - 1) { i++; draw(); } else if (dx > 50 && i > 0) { i--; draw(); }
-    });
-    document.addEventListener('keydown', function key(e) {
-      if (!document.body.contains(veil)) { document.removeEventListener('keydown', key); return; }
-      if (e.key === 'Escape') close();
-      else if (e.key === 'ArrowRight' && i < list.length - 1) { i++; draw(); }
-      else if (e.key === 'ArrowLeft' && i > 0) { i--; draw(); }
-    });
-    document.body.appendChild(veil);
-    draw();
-  }
-
-  window.whatsNew = open;
-  document.addEventListener('click', e => { if (e.target.closest('[data-whatsnew]')) { e.preventDefault(); open(true); } });
-  // Once on this phone, after the app has its web-app address (set up) and has loaded its settings
-  setTimeout(() => { if (localStorage.getItem('rs_url')) open(false); }, 2500);
+  const cfg = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:1115', chapters, ready,
+    theme: { accent: '#0a84ff', accentInk: '#fff', bg: '#fff', fg: '#111', line: '#d6d6db', strong: '#111' },
+    when: () => !!localStorage.getItem('rs_url') };
+  window.whatsNew = () => window.FlipTour.start(cfg);
+  document.addEventListener('click', e => { if (e.target.closest('[data-whatsnew]')) { e.preventDefault(); window.FlipTour.start(cfg); } });
+  window.FlipTour.auto(cfg, 2500);
 })();
