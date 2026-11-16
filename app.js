@@ -15,7 +15,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v58';
+const APP_VERSION = 'v59';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1301,6 +1301,15 @@ function openTrip(pre) {
   $('btnHome').textContent = homeAddr() ? '🏠 ' + homeAddr() : '🏠 Set home';
   $('tSub').textContent = 'Type where you went. We work out the miles. Don\'t claim fuel for this car as well.';
   routeIdle();
+  if (pre && pre.collectId) {   // a click & collect pick-up: home (or 📍 where you are) → the shop and back, linked to it
+    trip.collectId = pre.collectId;
+    $('tDate').value = pre.date || today();
+    $('tReason').value = pre.reason || '';
+    $('tReturn').checked = true;
+    renderStops([homeAddr() ? HOME : '', pre.to || '']);
+    $('tSub').textContent = 'Your trip to collect the order. Starts from home: tap 📍 to start from where you are. Check the miles, then save.';
+    if (homeAddr() && pre.to) lookupRoute();
+  }
   if (pre && (pre.saleRow || pre.saleId)) {   // drop-off for a sale: home → buyer and back, linked to that sale
     trip.saleRow = pre.saleRow; trip.saleId = pre.saleId;
     $('tDate').value = pre.date || today();
@@ -1431,7 +1440,7 @@ function buildTrip() {
     miles: miles, ret: false, returnIncluded: $('tReturn').checked,
     link: r ? r.link : '', source: r ? (edited ? 'Google Maps ' + r.miles + ', edited' : 'Google Maps') : 'Typed',
     _stops: raw, _route: r,
-    saleRow: trip.saleRow || undefined, saleId: trip.saleId || undefined
+    saleRow: trip.saleRow || undefined, saleId: trip.saleId || undefined, collectId: trip.collectId || undefined
   };
 }
 
@@ -1461,7 +1470,8 @@ async function saveTrip() {
     const r = await sendTrip(t);
     rememberTrip(t);
     toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' (' + r.rate + ')' + (t.saleRow || t.saleId ? ' · linked to the sale' : ''));
-    if (t.saleRow || t.saleId) { SALES = null; openSales(); } else show('vHome');
+    if (t.collectId) { toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' · linked to the collection'); openSales('slCollWrap'); }
+    else if (t.saleRow || t.saleId) { SALES = null; openSales(); } else show('vHome');
   } catch (err) {
     if (err.code === 'OFFLINE') {          // kept on the phone; sent (and the miles worked out) when signal returns
       t._routeStops = t.miles > 0 ? null : stopsForRoute();
@@ -1569,7 +1579,7 @@ document.addEventListener('click', e => {
 
 function setSalesCount(w) {
   if (w) { CFG.waiting = w; saveCache(); }   // shown at once next time, before the server answers
-  const n = w ? (w.needs || 0) + (w.toPost || 0) + (w.returnsSoon || 0) : 0;
+  const n = w ? (w.needs || 0) + (w.toPost || 0) + (w.returnsSoon || 0) + (w.toCollect || 0) : 0;
   $('salesLabel').innerHTML = 'Sales &amp; postage' + (n ? ' <span class="count">' + n + '</span>' : '');
   renderTodo(w);
 }
@@ -1580,6 +1590,8 @@ function renderTodo(w) {
   const s = n => n === 1 ? '' : 's', rows = [];
   const today = (w.postToday || 0) - (w.late || 0);
   if (w.late) rows.push(['🔴', w.late + ' parcel' + s(w.late) + ' late. Post now', 'slPostWrap']);
+  if (w.collectSoon) rows.push(['🔴', w.collectSoon + ' order' + s(w.collectSoon) + ' to collect: last day' + (w.collectSoon === 1 ? ' is' : 's are') + ' today or tomorrow', 'slCollWrap']);
+  else if (w.toCollect) rows.push(['🛍️', w.toCollect + ' order' + s(w.toCollect) + ' ready to collect', 'slCollWrap']);
   if (w.toPost) rows.push(['📦', w.toPost + ' parcel' + s(w.toPost) + ' to post' + (today > 0 ? ' (' + today + ' today)' : ''), 'slPostWrap']);
   if (w.toReturn) rows.push(['↩️', w.toReturn + ' thing' + s(w.toReturn) + ' to take back', 'slToRetWrap']);
   if (w.returnsSoon) rows.push(['⏳', w.returnsSoon + ' receipt' + s(w.returnsSoon) + ': last days to return', 'slRetWrap']);
@@ -1598,10 +1610,11 @@ function goTo(id) {
 
 // Counts from a loaded Sales screen, so home stays right after changes
 function countsFrom(d) {
-  const tp = d.toPost || [];
+  const tp = d.toPost || [], tc = (d.toCollect || []).filter(c => c.status === 'To collect');
   return { needs: (d.needs || []).length, toPost: tp.length, postToday: tp.filter(l => l.daysLeft !== null && l.daysLeft <= 0).length,
            late: tp.filter(l => l.daysLeft !== null && l.daysLeft < 0).length, returnsSoon: (d.returnsClosing || []).length,
-           toReturn: ((d.returns && d.returns.open) || []).filter(r => r.status === 'To return').length };
+           toReturn: ((d.returns && d.returns.open) || []).filter(r => r.status === 'To return').length,
+           toCollect: tc.length, collectSoon: tc.filter(c => c.daysLeft !== null && c.daysLeft <= 1).length };
 }
 // "Post today" / "Late" / "Post by Thu"
 function postTag(l) {
@@ -1714,6 +1727,7 @@ function renderSales() {
     <div class="duo" style="margin-top:8px"><button class="btn" data-lab="${i}">${l.files ? 'Show QR code' : 'Open label'}</button>
       <button class="btn sec" data-posted="${i}">✓ Posted</button></div></div></div>`).join('');
   if (d.toPost.length) setTimeout(() => prefetchLabels(d.toPost), 300);   // codes ready before you tap
+  renderCollect();
   $('slNeedsWrap').classList.toggle('hide', !d.needs.length);
   $('slNeeds').innerHTML = d.needs.map((o, i) => saleCard(o, i, 'need')).join('');
   const waiting = saleOut.map(o => o.req.sale), editing = new Set(saleOut.map(o => o.row).filter(Boolean));
@@ -2031,6 +2045,156 @@ $('vSales').addEventListener('click', async e => {
   }
   if (card) openSale(card.dataset.need !== undefined ? SALES.needs[Number(card.dataset.need)] : SALES.recent[Number(card.dataset.rec)]);
 });
+
+/* ---------- To collect: click & collect orders ---------- */
+function collectTitle(c) {
+  const it = c.items || [];
+  return it.length === 1 ? it[0].qty + ' × ' + it[0].name : it.length ? (c.qty || it.length) + ' items from ' + (c.retailer || c.store) : 'Order ' + (c.order || '') + (c.retailer ? ' from ' + c.retailer : '');
+}
+function collectTag(c) {
+  if (c.status === 'Collected') return '<span class="tag ok">Collected ' + esc(c.collectedOn || '') + '</span>';
+  if (c.daysLeft === null || c.daysLeft === undefined) return c.collectBy ? '<span class="tag">collect by ' + esc(c.collectBy) + '</span>' : '';
+  if (c.daysLeft < 0) return '<span class="tag late">Collection date passed</span>';
+  if (c.daysLeft === 0) return '<span class="tag late">Last day: collect today</span>';
+  if (c.daysLeft === 1) return '<span class="tag late">Collect by tomorrow</span>';
+  const dd = toDate(c.collectBy);
+  return '<span class="tag ' + (c.daysLeft <= 3 ? 'soon' : '') + '">collect by ' + esc(dd ? dd.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : c.collectBy) + ' · ' + c.daysLeft + ' days</span>';
+}
+function renderCollect() {
+  const list = (SALES && SALES.toCollect) || [];
+  $('slCollWrap').classList.toggle('hide', !list.length);
+  $('slColl').innerHTML = list.map((c, i) => `<div class="card scard" data-cview="${i}"><div class="sb">
+    <div class="st">${c.qty > 1 ? '<span class="qtybadge">' + c.qty + ' ×</span> ' : ''}${esc(c.items && c.items.length === 1 ? c.items[0].name : collectTitle(c))}</div>
+    <div class="sm">📍 ${esc([c.store || c.retailer, c.order ? '#' + c.order : ''].filter(Boolean).join(' · '))}</div>
+    ${c.total ? `<div class="sm">${money(c.total)}${c.qty > 1 && c.items.length === 1 ? ' · ' + money(c.items[0].each) + ' each' : ''}${c.purpose ? ' · for ' + esc(c.purpose) : ''}</div>` : ''}
+    <div class="tags">${collectTag(c)}</div>
+    ${c.status === 'Collected' ? `<div class="duo" style="margin-top:8px">${c.mileage ? '<span class="sub">🚗 trip logged</span>' : `<button class="btn sec" data-ctrip="${i}">🚗 Log the trip</button>`}
+      ${c.receipt ? '<span class="sub">🧾 receipt saved</span>' : `<button class="btn sec" data-crec="${i}">🧾 Add receipt</button>`}</div>`
+    : `<div class="duo" style="margin-top:8px"><button class="btn" data-cview="${i}">Details &amp; code</button><button class="btn sec" data-cdone="${i}">✓ Collected</button></div>`}
+  </div></div>`).join('');
+}
+$('slColl').onclick = e => {
+  const t = e.target.closest('[data-cview],[data-cdone],[data-ctrip],[data-crec]'); if (!t) return;
+  const L = SALES.toCollect, d = t.dataset;
+  if (d.cdone !== undefined) return collectDone(L[+d.cdone]);
+  if (d.ctrip !== undefined) return collectTrip(L[+d.ctrip]);
+  if (d.crec !== undefined) return collectReceipt(L[+d.crec]);
+  showCollect(L[+d.cview]);
+};
+
+// Code 128 barcode drawn from the order number (the email's own barcode image doesn't survive forwarding)
+const C128 = '11011001100,11001101100,11001100110,10010011000,10010001100,10001001100,10011001000,10011000100,10001100100,11001001000,11001000100,11000100100,10110011100,10011011100,10011001110,10111001100,10011101100,10011100110,11001110010,11001011100,11001001110,11011100100,11001110100,11101101110,11101001100,11100101100,11100100110,11101100100,11100110100,11100110010,11011011000,11011000110,11000110110,10100011000,10001011000,10001000110,10110001000,10001101000,10001100010,11010001000,11000101000,11000100010,10110111000,10110001110,10001101110,10111011000,10111000110,10001110110,11101110110,11010001110,11000101110,11011101000,11011100010,11011101110,11101011000,11101000110,11100010110,11101101000,11101100010,11100011010,11101111010,11001000010,11110001010,10100110000,10100001100,10010110000,10010000110,10000101100,10000100110,10110010000,10110000100,10011010000,10011000010,10000110100,10000110010,11000010010,11001010000,11110111010,11000010100,10001111010,10100111100,10010111100,10010011110,10111100100,10011110100,10011110010,11110100100,11110010100,11110010010,11011011110,11011110110,11110110110,10101111000,10100011110,10001011110,10111101000,10111100010,11110101000,11110100010,10111011110,10111101110,11101011110,11110101110,11010000100,11010010000,11010011100'.split(',');
+function barcodeSvg(text) {
+  text = String(text || '').trim(); if (!text) return '';
+  const digits = /^\d+$/.test(text) && text.length % 2 === 0;
+  const vals = digits ? [105].concat(text.match(/\d\d/g).map(Number)) : [104].concat([...text].map(ch => ch.charCodeAt(0) - 32).filter(v => v >= 0 && v < 95));
+  const chk = vals.reduce((s, v, i) => s + v * (i || 1), 0) % 103;
+  const bits = vals.concat([chk]).map(v => C128[v]).join('') + '1100011101011';
+  const q = 10, w = bits.length + q * 2;
+  let x = q, rects = '';
+  for (const b of bits) { if (b === '1') rects += `<rect x="${x}" y="0" width="1" height="60"/>`; x++; }
+  return `<svg class="barcode" viewBox="0 0 ${w} 60" preserveAspectRatio="none" role="img" aria-label="Barcode ${esc(text)}"><rect width="${w}" height="60" fill="#fff"/><g fill="#000">${rects}</g></svg>`;
+}
+const DAYS3 = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function hoursHtml(c) {
+  const q = encodeURIComponent([c.store || c.retailer, c.address].filter(Boolean).join(' ') + ' opening times');
+  if (!c.hours || !c.hours.length) return `<a class="btn sec" href="https://www.google.com/search?q=${q}" target="_blank" rel="noopener">🕘 Find opening times ↗</a>`;
+  const today = DAYS3[new Date().getDay()];
+  return '<div class="hours">' + c.hours.map(h => { const d = h.slice(0, 3); return `<div class="${d === today ? 'today' : ''}"><span>${d === today ? 'Today' : d}</span><span>${esc(h.slice(4))}</span></div>`; }).join('') + '</div>';
+}
+function collectSheetHtml(c) {
+  const maps = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent([c.store, c.address].filter(Boolean).join(', '));
+  return `<button class="close" data-close="1" aria-label="Close">✕</button>
+    <h3>${esc(collectTitle(c))}</h3>
+    ${c.qty ? `<div class="qtynote big">📦 Collect ${c.qty} item${c.qty === 1 ? '' : 's'}${c.items && c.items.length > 1 ? ' (' + c.items.length + ' products)' : ''}. Check you get them all.</div>` : ''}
+    <div class="tags" style="margin-bottom:8px">${collectTag(c)}</div>
+    ${(c.items || []).map(x => `<div class="crow"><b>${x.qty} × ${esc(x.name)}</b><br><span class="sub">${money(x.each)} each · ${money(x.total)}</span></div>`).join('')}
+    <p class="sub">${c.total ? 'Total ' + money(c.total) : ''}${c.purpose ? ' · for ' + esc(c.purpose) : ''}${c.order ? ' · order ' + esc(c.order) : ''}</p>
+    ${!c.inSheet && c.order ? '<p class="hint">This order isn\'t in your Sheet yet. Its email is waiting in Emailed receipts to check and save.</p>' : ''}
+    <h4 class="sech">Where</h4>
+    <p><b>${esc(c.store || c.retailer || '')}</b>${c.address ? '<br>' + esc(c.address) : ''}</p>
+    <div class="duo"><a class="btn sec" href="${maps}" target="_blank" rel="noopener">🧭 Directions</a><button class="btn sec" data-cal="1">📅 Remind me</button></div>
+    <h4 class="sech">Opening times</h4>${hoursHtml(c)}
+    ${c.status === 'To collect' ? `<h4 class="sech">Show at the counter</h4>
+    ${c.order ? barcodeSvg(c.order) + `<p class="ordbig">${esc(c.order)}</p><p class="hint">Barcode made from your order number. If it won't scan, read the number out or type it at the kiosk.</p>` : ''}
+    ${c.link ? '<a class="btn ghost" href="' + esc(c.link) + '" target="_blank" rel="noopener">Open the original email</a>' : ''}
+    <button class="btn" data-cdone2="1">✓ Collected</button>
+    <button class="btn ghost danger" data-ccancel="1">Cancel collection</button>` : ''}`;
+}
+function sheet(html) {
+  const veil = document.createElement('div');
+  veil.className = 'veil';
+  veil.innerHTML = '<div class="sheet">' + html + '</div>';
+  veil.onclick = e => { if (e.target === veil || e.target.dataset.close) veil.remove(); };
+  document.body.appendChild(veil);
+  return veil;
+}
+function showCollect(c) {
+  const v = sheet(collectSheetHtml(c));
+  v.querySelector('.sheet').addEventListener('click', e => {
+    const d = e.target.dataset;
+    if (d.cdone2) { v.remove(); collectDone(c); }
+    else if (d.ccancel) { v.remove(); collectCancel(c); }
+    else if (d.cal) collectReminder(c);
+  });
+}
+function collectReminder(c) {
+  const by = toDate(c.collectBy) || new Date(Date.now() + 864e5);
+  const st = new Date(by); st.setDate(st.getDate() - 1); st.setHours(10, 0, 0, 0);
+  if (st < new Date()) { st.setTime(Date.now() + 3600e3); }
+  addToCalendar({ start: st.toISOString(), mins: 30, name: 'collect ' + collectTitle(c), item: c.retailer || '', spot: c.store, addr: c.address });
+  toast('Reminder added for ' + st.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }));
+}
+async function collectSet(c, status) {
+  const r = await api('collectSet', { id: c.id, status });
+  SALES.toCollect = r; try { localStorage.setItem(LS_SALES, JSON.stringify(SALES)); } catch (e) {}
+  setSalesCount(countsFrom(SALES)); renderCollect();
+  return r;
+}
+async function collectDone(c) {
+  try { await collectSet(c, 'Collected'); }
+  catch (err) { toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for collections' : err.message, true); return; }
+  const now = (SALES.toCollect || []).find(x => x.id === c.id) || c;
+  const v = sheet(`<h3>✓ Collected</h3><p class="sub">${esc(collectTitle(c))} is marked collected in your Sheet ("To collect" tab).</p>
+    <button class="btn" data-t="1">🚗 Log the trip there and back</button>
+    <button class="btn sec" data-r="1">🧾 Add the collection receipt</button>
+    <button class="btn ghost" data-u="1">Undo</button><button class="btn ghost" data-close="1">Later</button>`);
+  v.querySelector('.sheet').addEventListener('click', async e => {
+    const d = e.target.dataset;
+    if (d.t) { v.remove(); collectTrip(now); }
+    else if (d.r) { v.remove(); collectReceipt(now); }
+    else if (d.u) { v.remove(); try { await collectSet(c, 'To collect'); toast('Back on your list'); } catch (err) { toast(err.message, true); } }
+  });
+}
+function collectCancel(c) {
+  const v = sheet(`<h3>Cancel this collection?</h3><p>${esc(collectTitle(c))}${c.store ? ' at ' + esc(c.store) : ''}.</p>
+    <p class="hint">This marks it Cancelled in your Sheet. It doesn't cancel the order with ${esc(c.retailer || 'the shop')}: do that with them if you need to.</p>
+    <button class="btn danger" data-y="1">Yes, cancel it</button><button class="btn ghost" data-close="1">No, keep it</button>`);
+  v.querySelector('.sheet').addEventListener('click', async e => {
+    if (!e.target.dataset.y) return;
+    v.remove();
+    try { await collectSet(c, 'Cancelled'); toast('Collection cancelled and logged'); } catch (err) { toast(err.message, true); }
+  });
+}
+function collectTrip(c) {
+  openTrip({ collectId: c.id, date: c.collectedOn || today(), reason: 'Collected ' + (c.retailer ? c.retailer + ' ' : '') + 'order' + (c.order ? ' ' + c.order : '') + ': ' + collectTitle(c),
+    to: c.address || c.store || '' });
+}
+function collectReceipt(c) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.setAttribute('capture', 'environment');
+  inp.onchange = async () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    toast('Saving the receipt…');
+    try {
+      const img = await enhance(await readFile(f));
+      const r = await api('collectReceipt', { id: c.id, image: img });
+      SALES.toCollect = r.list; renderCollect();
+      toast('🧾 Receipt saved to Drive and linked in your Sheet');
+    } catch (err) { toast(err.message, true); }
+  };
+  inp.click();
+}
 
 // Full-screen QR code for the drop-off counter
 /* Postage labels are kept on the phone (IndexedDB) once fetched, so the code opens at once and

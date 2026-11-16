@@ -102,6 +102,7 @@ extra = [
   'html.dark [style*="border:1px solid #d0d0d5"]{border-color:#3a3d45!important}',
   'html.dark [style*="background:#fff4d6"],html.dark [style*="background:#fff6d6"]{background:#3a2f12!important;color:#ffd98a!important}',
   'html.dark img.qrimg{background:#fff;padding:8px;border-radius:8px}',   # codes must stay black on white to scan
+  'html.dark .barcode{background:#fff}',
 ]
 block = START + "\n" + "\n".join(out + extra) + "\n" + END
 new = re.sub(re.escape(START) + r".*?" + re.escape(END), lambda m: block, html, flags=re.S) if START in html else html.replace("</style>", block + "\n</style>", 1)
