@@ -108,26 +108,6 @@
         { app: 'Sheet', text: 'Their row on the <b>Buyers</b> tab: times bought, total spent and last bought fill in.', mock: M.sheet('Buyers', ['name', 'username', 'times bought', 'total spent', 'last bought'], [['Priya Shah', 'priya_s', '1', '85', '20/11/2026']], [[0, 2], [0, 3], [0, 4]], ['Purchases', 'Sales', 'Buyers', 'Messages']) },
         { app: 'ListMe', text: 'They move from <b>Interested</b> to <b>Buyers</b> on ListMe\'s Leads page, with "bought N times".' },
       ] },
-    { id: 'rs-collect', day: D16, icon: '🛍️', title: 'To collect (click & collect)', summary: 'Code, opening times, directions, then trip and receipt',
-      steps: [
-        { title: 'Your To collect list', go: sales('slCollWrap'), target: '#slCollWrap',
-          missing: 'Nothing waiting to collect right now. Forward a shop\'s click & collect email to your receipts address and it shows like this:',
-          mock: M.receipts('<div class="c"><div class="st"><span class="tag">2 ×</span> Pokémon TCG 30th Battle</div><div class="sm">📍 Smyths Toys Solihull · #4100123456</div><div class="sm">£39.98 · for Resale Stock</div><span class="tag soon">collect by Thu 19 Nov · 3 days</span><div><span class="b">Details &amp; code</span><span class="b s">✓ Collected</span></div></div>', 'Sales → To collect'),
-          text: 'Forward a shop\'s "ready to collect" email to your receipts address and the order appears here: what\'s in it and how many, the shop, the order number, and the last day to collect. The home screen counts them and turns red on the last day or the day before.',
-          todo: ['Forward the shop\'s click &amp; collect email.', 'Open <b>Sales</b> and find <b>To collect</b>.'] },
-        { title: 'At the shop', go: sales('slCollWrap'), target: '#slColl [data-cview]',
-          missing: 'No orders to collect yet: the button is on each card.',
-          text: '<b>Details &amp; code</b> shows a barcode made from the order number to show at the counter (the email\'s own barcode doesn\'t survive forwarding), the opening times with today in bold, <b>Directions</b>, and <b>Remind me</b>, which adds a reminder to your phone\'s calendar the day before the last day.',
-          todo: ['Tap <b>Details &amp; code</b>.', 'Tap <b>Remind me</b> if you won\'t go today.', 'At the counter, show the barcode, or read out the number if it won\'t scan.'] },
-        { title: 'Collected', go: sales('slCollWrap'), target: '#slColl [data-cdone]',
-          missing: 'No orders to collect yet: the button is on each card.',
-          text: '<b>✓ Collected</b> marks it in your Sheet, then offers to log the trip there and back (linked to the collection) and to add the collection receipt. <b>Cancel collection</b> asks first. Needs today\'s Receipts script update (sh deploy.sh on your Mac).',
-          todo: ['Tap <b>✓ Collected</b>.', 'Tap <b>🚗 Log the trip there and back</b>, check the miles and save.', 'Tap <b>🧾 Add the collection receipt</b> if you got one.'] },
-      ],
-      effect: [
-        { app: 'Sheet', text: 'A <b>To collect</b> tab: each order, its status and collected date, with the trip and receipt linked.', mock: M.sheet('To collect', ['status', 'store', 'order', 'items', 'collect by', 'collected on'], [['Collected', 'Smyths Toys Solihull', '4100123456', '2 × Pokemon TCG 30th Battle', '19/11/2026', '17/11/2026']], [[0, 0], [0, 5]], ['Purchases', 'Sales', 'To collect', 'Mileage']) },
-        { app: 'Sheet', text: 'The trip goes on the <b>Mileage</b> tab, there and back, linked to the collection.' },
-      ] },
     { id: 'rs-across', day: D16, icon: '🔀', title: 'Your Receipts data in the other apps', summary: 'Leads in ListMe, Shops in FlipCheck',
       steps: [
         { title: 'Your other apps', go: go(() => show('vHome')), target: '#appSw', missing: 'Your other apps show at the top of the home screen once their addresses are in Settings.',
@@ -253,7 +233,7 @@
 
   chapters.forEach(c => { c.day = c.day || D15; });
   const all = NEWCH.filter(c => c.day === D16).concat(chapters, NEWCH.filter(c => c.day === D15));
-  const cfg = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:1116b', chapters: all, ready,
+  const cfg = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:1116c', chapters: all, ready,
     get theme() { const d = document.documentElement.classList.contains('dark');
       return d ? { accent: '#0a84ff', accentInk: '#fff', bg: '#1d2027', fg: '#e8e8ea', line: '#3a3d45', strong: '#fff' } : { accent: '#0a84ff', accentInk: '#fff', bg: '#fff', fg: '#111', line: '#d6d6db', strong: '#111' }; },
     when: () => !!localStorage.getItem('rs_url') };
