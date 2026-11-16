@@ -1,4 +1,4 @@
-/* Guided tour of the 15 and 16 November changes in Receipts. Each feature opens the real screen, points at the
+/* Guided tour of the 15 and 16 November changes in Receipts (16 Nov: To collect and return pick-ups added). Each feature opens the real screen, points at the
    real thing, says what to do, then shows what it does in the Google Sheet and in FlipCheck and ListMe.
    Opens once on this phone; reopen from Settings → What's new. Engine: tour-engine.js.
    Previews use example data only (this app is public, so no real data goes in it). */
@@ -16,7 +16,76 @@
   const D16 = 'New today · 16 Nov', D15 = 'Yesterday · 15 Nov';
   const MSGS = M.receipts('<div class="c"><div class="st">Saved messages</div><div class="sm">Shared with ListMe (the Messages tab in your Sheet): change one here or in ListMe and it changes in both.</div>' +
     '<div style="margin-top:6px"><b>Still available</b><div class="sm">Hi [Name], yes the [Item] is still available at £[Price]. I can do [Times]…</div></div><div><span class="b s">Edit</span><span class="b s">✕</span></div></div>', 'Settings → Collection');
+  // Today's: click & collect, and courier pick-up returns. Example data only (Argos / Amazon style, made-up orders).
+  const COLL_CARD = M.receipts('<div class="c"><div class="st"><span class="tag">3 ×</span> Ninja Air Fryer AF100</div><div class="sm">📍 Example Retail Park Argos · #1234567890</div><div class="sm">£179.97 · £59.99 each · for Resale Stock</div>' +
+    '<span class="tag late">Collect by tomorrow</span><div><span class="b">Details &amp; code</span><span class="b s">✓ Collected</span></div></div>', 'Sales → To collect');
+  const COLL_SHEET = M.receipts('<div class="c"><div class="st">3 × Ninja Air Fryer AF100</div><div class="sm" style="background:#fff4e5;color:#7a4a00;border-radius:8px;padding:6px 8px;margin:6px 0">📦 Collect 3 items. Check you get them all.</div>' +
+    '<div class="sm"><b>Example Retail Park Argos</b><br>1 Example Road, Townsville AB1 2CD</div><div><span class="b s">🧭 Directions</span><span class="b s">📅 Remind me</span></div>' +
+    '<div class="sm" style="margin-top:6px"><b style="color:#1a73e8">Today 9:00am–9:00pm</b> · Sun 10:00am–4:00pm</div>' +
+    '<div style="margin:8px 0;height:44px;background:repeating-linear-gradient(90deg,#000 0 2px,#fff 2px 4px,#000 4px 5px,#fff 5px 8px)"></div><div style="text-align:center;font-weight:700;letter-spacing:2px">1234567890</div></div>', 'Details & code');
+  const PICK_CARD = M.receipts('<div class="c"><div class="st">Desk lamp, black</div><div class="sm">Amazon · bought 10/11/2026 · £24.99 · #205-1111111-2222222</div>' +
+    '<span class="tag soon">🚚 UPS pick-up tomorrow · Mon-Fri: 9AM-5PM</span><span class="tag" style="background:#e8f6ee;color:#1b6b3a">About £24.99 back</span>' +
+    '<div class="sm">📍 Collected from TOWNSVILLE</div><div class="sm" style="margin-top:6px">1. <b>Print the label</b> <span class="b s">🖨 Print label</span><span class="b s">✓ Printed</span><br>2. <b>Pack it</b> · How to pack it (3)<br>3. <b>Hand it to the driver</b>, then tap ✓ Picked up</div>' +
+    '<div class="sm" style="margin-top:6px;color:#0a58ca">📅 Reschedule · 🔁 Change return method · ⏰ Remind me</div><div class="sm">📋 Order details to copy ▸</div>' +
+    '<div><span class="b">✓ Picked up</span><span class="b s">📷 Refund receipt</span></div><div class="sm" style="color:#0a58ca">✕ Cancel this return</div></div>', 'Sales → To return');
   const NEWCH = [
+    { id: 'rs-collect', day: D16, icon: '🛍️', title: 'To collect: click & collect', summary: 'What, how many, where, opening times, the code',
+      steps: [
+        { title: 'Forward the "ready to collect" email',
+          mock: M.email('info@argos.example', 'Your order is ready to collect - 1234567890', '3 items ready for collection from Example Retail Park Argos<br>You have until Mon 23 November to collect<br>Monday 9:00am – 9:00pm …<br>Ninja Air Fryer AF100 · Qty:3 · £179.97'),
+          text: 'When a shop emails that your order is ready, forward it to your receipts address like any receipt. It\'s read by rules (no AI request, so it\'s free): the items, how many, the price each, the store and address, its opening times and the last day to collect.',
+          todo: ['Forward the email.', 'Within a few minutes it\'s under <b>Sales → To collect</b>, and the home screen says <b>🛍️ 1 order ready to collect</b>.'] },
+        { title: 'Your To collect list', go: sales('slCollWrap'), target: '#slCollWrap',
+          missing: 'Nothing to collect right now. With an order waiting, it looks like this:', mock: COLL_CARD,
+          text: 'Each order shows how many, the price each, what it\'s for (from your Sheet), the store and the last day. The tag turns red on the last two days, and the home screen shows <b>🔴 last day</b> too.',
+          todo: ['Open <b>Sales</b> and scroll to <b>To collect</b>.'] },
+        { title: 'Before you go in', go: sales('slCollWrap'), target: '[data-cview]',
+          missing: 'No order to open yet. Its details look like this:', mock: COLL_SHEET,
+          text: '<b>Details &amp; code</b> shows everything before you go in: what you\'re collecting and how many, the address with <b>🧭 Directions</b>, the opening times (today highlighted, or <b>Find opening times ↗</b> if the email had none), and a barcode made from the order number for the counter or kiosk.',
+          todo: ['Tap <b>Details &amp; code</b>.', '<b>📅 Remind me</b> adds a calendar alert the day before the last day.', 'At the counter, show the barcode, or read out the number under it.'] },
+        { title: 'Collected (or cancelled)', go: sales('slCollWrap'), target: '[data-cdone]',
+          missing: 'The buttons are on each To collect card.',
+          text: '<b>✓ Collected</b> logs it with the date, then offers <b>🚗 Log the trip there and back</b> (from home, or 📍 from where you are) and <b>🧾 Add the collection receipt</b> (a photo, saved as evidence). <b>Cancel collection</b> asks "are you sure?" first, then logs it as Cancelled.',
+          todo: ['Tap <b>✓ Collected</b>.', 'Tap <b>🚗 Log the trip</b>, check the miles, save.', 'Tap <b>🧾 Add the collection receipt</b> and take the photo.'] },
+      ],
+      effect: [
+        { app: 'Sheet', text: 'A new <b>To collect</b> tab: one row per order, then <b>Collected</b> or <b>Cancelled</b> with the date, the trip and the receipt link.',
+          mock: M.sheet('To collect', ['retailer', 'store', 'items', 'collect by', 'status', 'collected on', 'mileage', 'receipt'], [['Argos', 'Example Retail Park Argos', '3 × Ninja Air Fryer AF100 @ £59.99', '23 November', 'Collected', '18/11/2026', 'Mileage row 42 · 6.4 miles', 'drive…/collection.jpg']], [[0, 4], [0, 5], [0, 6], [0, 7]], ['Purchases', 'Sales', 'To collect', 'Mileage']) },
+        { app: 'Sheet', text: 'The trip goes on your <b>Mileage</b> tab as a return trip, linked to the order. The receipt photo is also linked on the order\'s Purchases lines if they had none.' },
+        { app: 'Drive', text: 'The collection receipt photo goes in <b>Receipt Images</b>, private to you.' },
+      ] },
+    { id: 'rs-pickup', day: D16, icon: '🚚', title: 'Return pick-ups', summary: 'Countdown, print, pack, reschedule, cancel, copy',
+      steps: [
+        { title: 'Forward the return email',
+          mock: M.email('return@amazon.example', 'Your return of Desk lamp, black…', 'Your return request is confirmed.<br>Pick-up scheduled for the next business day. From TOWNSVILLE.<br>Total estimated refund £24.99<br><u>Print label</u> · <u>Reschedule</u> · <u>Change return method</u> · <u>Cancel</u>'),
+          text: 'When you book a return that a courier collects, forward the shop\'s confirmation. It\'s read by rules (free): the courier, the pick-up day and times, where from, how to pack it, the estimated refund, the reason, and the email\'s own buttons. "Your refund will be issued after pick-up" is no longer mistaken for the refund itself.',
+          todo: ['Forward the email to your receipts address.', 'It joins the order\'s return (by order number). If the order isn\'t in your Sheet, the return is started from the email.'] },
+        { title: 'The countdown', go: sales('slToRetWrap'), target: '.pkbox', wait: true,
+          missing: 'No pick-up booked right now. With one, the card looks like this:', mock: PICK_CARD,
+          text: 'The card says when the courier comes (<b>today</b> and <b>tomorrow</b> in red and amber), and the home screen says <b>🚚 Return pick-up today or tomorrow: print the label and pack it</b>. <b>⏰ Remind me</b> adds a calendar alert for 8:30 that morning.',
+          todo: ['Open <b>Sales → To return</b>.'] },
+        { title: 'Print, then tick', go: sales('slToRetWrap'), target: '[data-rprinted]', wait: true,
+          missing: 'The steps are on a pick-up card.',
+          text: '<b>🖨 Print label</b> opens the shop\'s own label page. Once it\'s printed, tap <b>✓ Printed</b> so you know it\'s done. <b>How to pack it</b> lists the shop\'s instructions.',
+          todo: ['Tap <b>🖨 Print label</b> and print it.', 'Tap <b>✓ Printed</b>.'] },
+        { title: 'Reschedule or cancel', go: sales('slToRetWrap'), target: '[data-rresched]', wait: true,
+          missing: 'These are on a pick-up card.',
+          text: '<b>📅 Reschedule</b> asks "are you sure?", opens the shop\'s reschedule page, then asks for the new day so the countdown is right. <b>✕ Cancel this return</b> asks first, opens the shop\'s cancel page, then asks you to confirm once it\'s cancelled. If the shop\'s "return cancelled" email comes first, the return is cancelled in your Sheet for you.',
+          todo: ['Tap <b>📅 Reschedule</b> → <b>Yes</b> → pick a day on their page → put it in here.', 'Or <b>✕ Cancel this return</b> → <b>Yes</b> → cancel on their page → <b>✓ It\'s cancelled</b>.'] },
+        { title: 'Order details to copy', go: sales('slToRetWrap'), target: '.cpbox', wait: true,
+          missing: 'On each return card.',
+          text: 'Shop return pages ask for things from the order. <b>📋 Order details to copy</b> lists them (order number, item, quantity, price, date, reason, the email used for the order, refund), each with a copy button to paste straight into their page.',
+          todo: ['Open <b>📋 Order details to copy</b>.', 'Tap 📋 next to one, then paste it into the shop\'s page.'] },
+        { title: 'Picked up, then the refund', go: sales('slToRetWrap'), target: '[data-rsent]', wait: true,
+          missing: 'On each return card.',
+          text: 'Tap <b>✓ Picked up</b> when the driver has it (a "picked up" email from the shop does it for you). When the refund comes, forward the refund email or scan the receipt: it\'s joined to this return by its order number, even if the order was never in your Sheet.' },
+      ],
+      effect: [
+        { app: 'Sheet', text: 'The return\'s row on <b>Returns</b> gets the method, courier, pick-up day, printed date and estimated refund; then <b>Sent back</b>, and <b>Refunded</b> with the proof. Cancelled ones say <b>Cancelled</b> with the date.',
+          mock: M.sheet('Returns', ['status', 'item', 'method', 'courier', 'pickup date', 'printed on', 'refund estimate'], [['To return', 'Desk lamp, black', 'Pick-up', 'UPS', '17/11/2026', '16/11/2026', '24.99']], [[0, 2], [0, 3], [0, 4], [0, 5], [0, 6]], ['Purchases', 'Sales', 'Returns', 'To collect']) },
+        { app: 'Sheet', text: 'The order\'s line on <b>Purchases</b> gets a note on its item: "Return started", then "Picked up", "Refunded £24.99" (or "Return cancelled"), so the story is on the purchase too.' },
+      ] },
+
     { id: 'rs-msgs', day: D16, icon: '✉️', title: 'Saved messages, shared with ListMe', summary: 'One list, edit it in either app',
       steps: [
         { title: 'Your saved messages', go: go(() => openSettings()), target: '#stTpls', mock: MSGS, mockAlways: true,

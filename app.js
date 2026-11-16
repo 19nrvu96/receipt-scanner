@@ -1593,6 +1593,7 @@ function renderTodo(w) {
   if (w.collectSoon) rows.push(['🔴', w.collectSoon + ' order' + s(w.collectSoon) + ' to collect: last day' + (w.collectSoon === 1 ? ' is' : 's are') + ' today or tomorrow', 'slCollWrap']);
   else if (w.toCollect) rows.push(['🛍️', w.toCollect + ' order' + s(w.toCollect) + ' ready to collect', 'slCollWrap']);
   if (w.toPost) rows.push(['📦', w.toPost + ' parcel' + s(w.toPost) + ' to post' + (today > 0 ? ' (' + today + ' today)' : ''), 'slPostWrap']);
+  if (w.pickupSoon) rows.push(['🚚', w.pickupSoon + ' return pick-up' + s(w.pickupSoon) + ' today or tomorrow: print the label and pack it', 'slToRetWrap']);
   if (w.toReturn) rows.push(['↩️', w.toReturn + ' thing' + s(w.toReturn) + ' to take back', 'slToRetWrap']);
   if (w.returnsSoon) rows.push(['⏳', w.returnsSoon + ' receipt' + s(w.returnsSoon) + ': last days to return', 'slRetWrap']);
   if (w.needs) rows.push(['⚠️', w.needs + ' sale' + s(w.needs) + ' need' + (w.needs === 1 ? 's' : '') + ' a check', 'slNeedsWrap']);
@@ -1614,6 +1615,7 @@ function countsFrom(d) {
   return { needs: (d.needs || []).length, toPost: tp.length, postToday: tp.filter(l => l.daysLeft !== null && l.daysLeft <= 0).length,
            late: tp.filter(l => l.daysLeft !== null && l.daysLeft < 0).length, returnsSoon: (d.returnsClosing || []).length,
            toReturn: ((d.returns && d.returns.open) || []).filter(r => r.status === 'To return').length,
+           pickupSoon: ((d.returns && d.returns.open) || []).filter(r => r.status === 'To return' && r.pickupDays !== null && r.pickupDays !== undefined && r.pickupDays <= 1).length,
            toCollect: tc.length, collectSoon: tc.filter(c => c.daysLeft !== null && c.daysLeft <= 1).length };
 }
 // "Post today" / "Late" / "Post by Thu"
@@ -1755,15 +1757,90 @@ function renderToReturn(d) {
     : '<span class="tag ' + (r.daysLeft <= 2 ? 'late' : r.daysLeft <= 7 ? 'soon' : '') + '">' + (r.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(r.returnBy))) + '</span>';
   $('slToRet').innerHTML = open.map((r, i) => `<div class="card scard"><div class="sb">
     <div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>
-    <div class="sm">${[esc(r.store), 'bought ' + esc(r.bought), money(r.amount), r.order ? '#' + esc(r.order) : '', r.from && r.from !== 'Receipts' ? 'from ' + esc(r.from) : ''].filter(Boolean).join(' · ')}</div>
-    <div class="tags">${r.status === 'Sent back' ? '<span class="tag">Returned ' + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}<span class="tag">${r.extended ? '🎄 Extended return date' : r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>${r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
+    <div class="sm">${[esc(r.store), r.bought ? 'bought ' + esc(r.bought) : '', r.amount ? money(r.amount) : '', r.order ? '#' + esc(r.order) : '', r.from && r.from !== 'Receipts' ? 'from ' + esc(r.from) : ''].filter(Boolean).join(' · ')}</div>
+    <div class="tags">${r.status === 'Sent back' ? '<span class="tag">Returned ' + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}${r.returnBy ? `<span class="tag">${r.extended ? '🎄 Extended return date' : r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>` : ''}${r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
     ${r.notes ? '<div class="sm" style="margin-top:4px">' + esc(r.notes) + '</div>' : ''}
+    ${pickupHtml(r, i)}
     ${r.files || r.link ? `<button class="btn" data-rqr="${i}" style="margin-top:10px">Show return QR code</button>` : ''}
-    <div class="duo" style="margin-top:8px">${r.status === 'To return' ? `<button class="btn ${r.files || r.link ? 'sec' : ''}" data-rsent="${i}">✓ Returned it</button>` : `<button class="btn sec" data-rsorted="${i}">Already sorted</button>`}
+    <div class="duo" style="margin-top:8px">${r.status === 'To return' ? `<button class="btn ${r.files || r.link ? 'sec' : ''}" data-rsent="${i}">${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Returned it'}</button>` : `<button class="btn sec" data-rsorted="${i}">Already sorted</button>`}
       <button class="btn ${r.status === 'Sent back' ? '' : 'sec'}" data-rscan="${i}">📷 Refund receipt</button></div>
     ${r.email ? `<a class="link" href="${esc(r.email.split('\n')[0])}" target="_blank" rel="noopener" style="margin-top:8px;display:inline-block">Open the return email</a>` : ''}
-    ${r.status === 'To return' ? `<button class="link" data-rcancel="${i}" style="margin-top:8px">↩︎ Not returning it after all</button>` : ''}</div></div>`).join('')
+    ${r.status === 'To return' ? `<button class="link" data-rcancel="${i}" style="margin-top:8px">${r.links && r.links.cancel ? '✕ Cancel this return' : '↩︎ Not returning it after all'}</button>` : ''}</div></div>`).join('')
     + (done.length ? `<details class="more"><summary>Returned recently (${done.length})</summary>${done.map(r => `<div class="rdone">✅ ${esc(r.item)} · ${r.status === 'Refunded' ? money(r.refundAmount) + ' back ' + esc(dayName(r.refundedOn)) : 'sorted'}${r.proof ? `<a href="${esc(r.proof.split('\n')[0])}" target="_blank" rel="noopener">refund proof</a>` : ''}</div>`).join('')}</details>` : '');
+}
+
+// Pick-up returns (a courier collects it): the day with a countdown, print the label, how to pack,
+// the shop's own buttons (reschedule, change method, cancel), and the order's details to copy into the shop's page.
+function pickupTag(r) {
+  if (!r.pickupDate) return '';
+  const d = r.pickupDays, when = d === 0 ? 'today' : d === 1 ? 'tomorrow' : d < 0 ? 'was ' + dayName(r.pickupDate) : dayName(r.pickupDate) + ' (in ' + d + ' days)';
+  return `<span class="tag ${d !== null && d <= 0 ? 'late' : d === 1 ? 'soon' : ''}">🚚 ${esc(r.courier || 'Courier')} pick-up ${esc(when)}${r.pickupWindow ? ' · ' + esc(r.pickupWindow) : ''}</span>`;
+}
+function copyRows(r) {
+  const rows = [['Order number', r.order], ['Item', r.item], ['Quantity', r.qty], ['Price paid', r.each ? money(r.each) + (r.qty > 1 ? ' each' : '') : r.amount ? money(r.amount) : ''],
+    ['Bought on', r.bought], ['Shop', r.store], ['Reason', r.reason], ['Email used for the order', r.orderEmail], ['Paid with', r.payment],
+    ['Estimated refund', r.refundEstimate ? money(r.refundEstimate) : ''], ['Pick-up from', r.pickupFrom]].filter(x => x[1] !== '' && x[1] !== undefined && x[1] !== null);
+  return rows.map(([k, v]) => `<div class="cprow"><span class="sm">${esc(k)}</span><b>${esc(v)}</b><button type="button" class="cpbtn" data-copy="${esc(v)}" aria-label="Copy ${esc(k)}">📋</button></div>`).join('');
+}
+function pickupHtml(r, i) {
+  const L = r.links || {}, has = r.method || Object.keys(L).length || r.pickupDate;
+  if (!has || r.status !== 'To return') return r.order || r.item ? `<details class="more cpbox"><summary>📋 Order details to copy</summary>${copyRows(r)}</details>` : '';
+  const link = (k, label) => L[k] ? `<a class="link" href="${esc(L[k])}" target="_blank" rel="noopener">${label}</a>` : '';
+  return `<div class="pkbox">
+    <div class="tags">${pickupTag(r)}${r.method && r.method !== 'Pick-up' ? '<span class="tag">📍 ' + esc(r.method) + '</span>' : ''}${r.refundEstimate ? '<span class="tag ok">About ' + money(r.refundEstimate) + ' back</span>' : ''}</div>
+    ${r.pickupFrom ? `<div class="sm">📍 Collected from ${esc(r.pickupFrom)}</div>` : ''}
+    <ol class="pksteps">
+      <li class="${r.printedOn ? 'done' : ''}"><b>Print the label</b>${!r.labelNeeded ? '<span class="sm"> (the email says the driver can bring one)</span>' : ''}
+        <div class="pkrow">${L.print ? `<a class="btn sec sm2" href="${esc(L.print)}" target="_blank" rel="noopener" data-rprint="${i}">🖨 Print label</a>` : ''}
+        ${r.printedOn ? '<span class="tag ok">Printed ' + esc(dayName(r.printedOn)) + '</span>' : `<button class="btn sec sm2" data-rprinted="${i}">✓ Printed</button>`}</div></li>
+      <li><b>Pack it</b>${r.instructions && r.instructions.length ? `<details><summary class="sm">How to pack it (${r.instructions.length})</summary><ul class="sm">${r.instructions.map(x => '<li>' + esc(x) + '</li>').join('')}</ul></details>` : ''}</li>
+      <li><b>${r.method === 'Pick-up' ? 'Hand it to the driver' : 'Send it back'}</b>, then tap <b>${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Returned it'}</b> below</li>
+    </ol>
+    <div class="pklinks">${L.reschedule ? `<button class="link" data-rresched="${i}">📅 Reschedule</button>` : ''}${link('change', '🔁 Change return method')}${link('share', '📤 Share label')}${link('manage', 'Return page')}
+      ${r.pickupDate ? `<button class="link" data-rcal="${i}">⏰ Remind me</button>` : ''}</div>
+    <details class="more cpbox"><summary>📋 Order details to copy</summary>${copyRows(r)}</details>
+  </div>`;
+}
+const RET_OPEN = () => (SALES && SALES.returns && SALES.returns.open) || [];
+async function returnUpdate(r, ch) {
+  const x = await api('returnUpdate', Object.assign({ id: r.id }, ch));
+  Object.assign(r, x); renderToReturn(SALES); try { localStorage.setItem(LS_SALES, JSON.stringify(SALES)); } catch (e) {}
+  return x;
+}
+function confirmSheet(title, body, yes, no, onYes) {
+  const v = sheet(`<h3>${title}</h3>${body}<button class="btn" data-y="1">${yes}</button><button class="btn ghost" data-close="1">${no}</button>`);
+  v.querySelector('.sheet').addEventListener('click', e => { if (e.target.dataset.y) { v.remove(); onYes(); } });
+  return v;
+}
+function returnReschedule(r) {
+  confirmSheet('Reschedule the pick-up?', `<p>${esc(r.item)}${r.pickupDate ? ' · now ' + esc(dayName(r.pickupDate)) : ''}</p><p class="hint">This opens ${esc(r.store || 'the shop')}'s page to pick a new day. Then come back and put the new day in.</p>`,
+    'Yes, open the reschedule page', 'No, keep this day', () => {
+      window.open(r.links.reschedule, '_blank', 'noopener');
+      const v = sheet(`<h3>New pick-up day</h3><p class="hint">Picked a new day on ${esc(r.store || 'the shop')}'s page? Put it here so the countdown is right.</p>
+        <input id="rsDate" type="date"><button class="btn" data-s="1">Save the new day</button><button class="btn ghost" data-close="1">Skip</button>`);
+      v.querySelector('.sheet').addEventListener('click', async e => {
+        if (!e.target.dataset.s) return;
+        const val = v.querySelector('#rsDate').value; if (!val) { toast('Pick the day', true); return; }
+        const [y, m, d] = val.split('-');
+        v.remove();
+        try { await returnUpdate(r, { pickupDate: d + '/' + m + '/' + y }); toast('Pick-up moved to ' + dayName(d + '/' + m + '/' + y)); } catch (err) { toast(err.message, true); }
+      });
+    });
+}
+function returnCancelFlow(r) {
+  if (!(r.links && r.links.cancel)) {   // nothing booked with the shop: just stop the return here
+    return confirmSheet('Not returning it after all?', `<p>${esc(r.item)}</p><p class="hint">It goes back on your reminders as if you never decided.</p>`, 'Yes, keep it', 'No, still returning it', async () => {
+      try { await api('returnCancel', { id: r.id }); SALES = null; await openSales('slToRetWrap'); toast('OK, keeping it'); } catch (err) { toast(err.message, true); }
+    });
+  }
+  confirmSheet('Cancel this return?', `<p>${esc(r.item)}${r.order ? ' · order ' + esc(r.order) : ''}</p>
+    <p class="hint">First cancel it with ${esc(r.store || 'the shop')}: this opens their cancel page. When their page says it's cancelled, come back and tap <b>It's cancelled</b>. If their "return cancelled" email arrives first, it's done for you.</p>`,
+    'Yes, open the cancel page', 'No, keep the return', () => {
+      window.open(r.links.cancel, '_blank', 'noopener');
+      confirmSheet('Is it cancelled?', `<p class="hint">Only tap this once ${esc(r.store || 'the shop')} shows the return as cancelled.</p>`, '✓ It\'s cancelled', 'Not yet', async () => {
+        try { await returnUpdate(r, { cancelled: true }); SALES = null; await openSales('slToRetWrap'); toast('Return cancelled and logged in your Sheet'); } catch (err) { toast(err.message, true); }
+      });
+    });
 }
 
 // The return's QR code / label, kept on the phone like postage labels (key "r:<id>").
@@ -1978,15 +2055,20 @@ $('vSales').addEventListener('click', async e => {
   const RO = (SALES && SALES.returns && SALES.returns.open) || [];
   if (t.dataset.rqr !== undefined) return showReturnCode(RO[Number(t.dataset.rqr)]);
   if (t.dataset.rscan !== undefined) { RETURN_FOR = RO[Number(t.dataset.rscan)].id; pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); return; }
+  if (t.dataset.copy !== undefined) { try { await navigator.clipboard.writeText(t.dataset.copy); toast('Copied: ' + t.dataset.copy.slice(0, 40)); } catch (err) { toast('Couldn\'t copy: press and hold it instead', true); } return; }
+  if (t.dataset.rprinted !== undefined) { const r = RO[+t.dataset.rprinted]; t.disabled = true; try { await returnUpdate(r, { printed: true }); toast('Label printed ✓'); } catch (err) { t.disabled = false; toast(err.message, true); } return; }
+  if (t.dataset.rresched !== undefined) return returnReschedule(RO[+t.dataset.rresched]);
+  if (t.dataset.rcal !== undefined) { const r = RO[+t.dataset.rcal], d = toDate(r.pickupDate); if (d) { d.setHours(8, 30, 0, 0); addToCalendar({ start: d.toISOString(), mins: 60, summary: (r.courier || 'Courier') + ' pick-up: ' + r.item, alarm: 'Pick-up today: label on, parcel by the door', spot: r.pickupFrom }); toast('Reminder added for ' + dayName(r.pickupDate)); } return; }
+  if (t.dataset.rcancel !== undefined) return returnCancelFlow(RO[+t.dataset.rcancel]);
   if (t.dataset.rsent !== undefined || t.dataset.rcancel !== undefined || t.dataset.rsorted !== undefined) {
     const r = RO[Number(t.dataset.rsent ?? t.dataset.rcancel ?? t.dataset.rsorted)];
     const act = t.dataset.rsent !== undefined ? 'returnSent' : t.dataset.rcancel !== undefined ? 'returnCancel' : 'returnSorted';
-    if (act === 'returnSent' && !confirm('Handed "' + r.item + '" back or dropped it off?')) return;
+    if (act === 'returnSent' && !confirm(r.method === 'Pick-up' ? 'Has ' + (r.courier || 'the courier') + ' picked up "' + r.item + '"?' : 'Handed "' + r.item + '" back or dropped it off?')) return;
     t.disabled = true;
     try {
       await api(act, { id: r.id });
       SALES = null; await openSales('slToRetWrap');
-      toast(act === 'returnSent' ? 'Marked returned. Scan the refund receipt or forward the refund email when it comes.' : act === 'returnCancel' ? 'OK, keeping it' : 'Ticked off');
+      toast(act === 'returnSent' ? (r.method === 'Pick-up' ? 'Marked picked up. ' : 'Marked returned. ') + 'Scan the refund receipt or forward the refund email when it comes.' : act === 'returnCancel' ? 'OK, keeping it' : 'Ticked off');
     } catch (err) { t.disabled = false; toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message, true); }
     return;
   }
@@ -2142,7 +2224,7 @@ function collectReminder(c) {
   const by = toDate(c.collectBy) || new Date(Date.now() + 864e5);
   const st = new Date(by); st.setDate(st.getDate() - 1); st.setHours(10, 0, 0, 0);
   if (st < new Date()) { st.setTime(Date.now() + 3600e3); }
-  addToCalendar({ start: st.toISOString(), mins: 30, name: 'collect ' + collectTitle(c), item: c.retailer || '', spot: c.store, addr: c.address });
+  addToCalendar({ start: st.toISOString(), mins: 30, summary: 'Collect from ' + (c.retailer || c.store || 'the shop') + ': ' + collectTitle(c), alarm: 'Last day to collect is ' + dayName(c.collectBy), spot: c.store, addr: c.address });
   toast('Reminder added for ' + st.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }));
 }
 async function collectSet(c, status) {
@@ -3390,9 +3472,9 @@ function addToCalendar(bk) {
   const f = d => d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + 'T' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0') + '00';
   const esc2 = t => String(t || '').replace(/[\\;,]/g, m => '\\' + m).replace(/\n/g, '\\n');
   const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Receipts//Collections//EN', 'BEGIN:VEVENT', 'UID:' + Date.now() + '@receipts', 'DTSTAMP:' + f(new Date()),
-    'DTSTART:' + f(st), 'DTEND:' + f(en), 'SUMMARY:' + esc2('Collection: ' + bk.name + (bk.item ? ' – ' + bk.item : '')),
+    'DTSTART:' + f(st), 'DTEND:' + f(en), 'SUMMARY:' + esc2(bk.summary || ('Collection: ' + bk.name + (bk.item ? ' – ' + bk.item : ''))),
     'LOCATION:' + esc2([bk.spot, bk.addr].filter(Boolean).join(', ')), 'DESCRIPTION:' + esc2((bk.mobile ? 'Mobile: ' + bk.mobile + '\n' : '') + 'Booked in Receipts'),
-    'BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', 'DESCRIPTION:Collection in 30 minutes', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    'BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', 'DESCRIPTION:' + esc2(bk.alarm || 'Collection in 30 minutes'), 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
   try {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = 'collection.ics';
