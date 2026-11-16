@@ -15,7 +15,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases'];
-const APP_VERSION = 'v62';
+const APP_VERSION = 'v63';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1740,6 +1740,8 @@ setInterval(flushPosted, 30000);
 function renderSales() {
   const d = SALES || { needs: [], recent: [], toPost: [] };
   if ((postedOut.length || postedHeld.size) && d.toPost) d.toPost = d.toPost.filter(l => postedOut.indexOf(l.id) < 0 && !postedHeld.has(l.id));   // tapped Posted, still sending
+  // A courier's drop-off receipt the old script filed as a label (16 Nov): not something to post. The update files it as the drop-off.
+  if (d.toPost) d.toPost = d.toPost.filter(l => !(!l.files && !l.link && !l.order && /^(your )?digital receipt$|drop-?off receipt|proof of postage/i.test(String(l.item || '').trim())));
   setSalesCount(countsFrom(d));
   $('slPostWrap').classList.toggle('hide', !d.toPost.length);
   $('slPost').innerHTML = d.toPost.map((l, i) => `<div class="card scard"><div class="sb">
