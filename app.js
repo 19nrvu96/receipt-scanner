@@ -14,8 +14,8 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v61';
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases'];
+const APP_VERSION = 'v62';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1319,8 +1319,20 @@ function openTrip(pre) {
     $('tSub').textContent = 'The drop-off for your sale. Check the route and miles, then save. It\'s linked to the sale.';
     if (homeAddr() && pre.to) lookupRoute();
   }
+  if (pre && pre.journey) {   // from Trips to log, a Purchases card or ✓ Posted: home → each place (→ home), linked so it's never claimed twice
+    const j = pre.journey;
+    trip.labelIds = j.labelIds || []; trip.purchaseIds = j.purchaseIds || [];
+    $('tDate').value = j.date || today();
+    $('tReason').value = j.reason || '';
+    $('tReturn').checked = j.ret !== false;
+    renderStops([homeAddr() ? HOME : ''].concat(j.stops && j.stops.length ? j.stops : ['']));
+    if (j.miles && !(j.stops || []).filter(Boolean).length) $('tMiles').value = j.miles;
+    $('tSub').textContent = j.sub || 'Check the route and miles, then save. It\'s linked, so it\'s never claimed twice.';
+    if (homeAddr() && (j.stops || []).filter(Boolean).length) lookupRoute();
+  }
   tripCalc();
   show('vTrip');
+  renderTripTodo(!pre);
 }
 
 function fillPlaces() {
@@ -1440,7 +1452,8 @@ function buildTrip() {
     miles: miles, ret: false, returnIncluded: $('tReturn').checked,
     link: r ? r.link : '', source: r ? (edited ? 'Google Maps ' + r.miles + ', edited' : 'Google Maps') : 'Typed',
     _stops: raw, _route: r,
-    saleRow: trip.saleRow || undefined, saleId: trip.saleId || undefined, collectId: trip.collectId || undefined
+    saleRow: trip.saleRow || undefined, saleId: trip.saleId || undefined, collectId: trip.collectId || undefined,
+    labelIds: trip.labelIds && trip.labelIds.length ? trip.labelIds : undefined, purchaseIds: trip.purchaseIds && trip.purchaseIds.length ? trip.purchaseIds : undefined
   };
 }
 
@@ -1470,7 +1483,13 @@ async function saveTrip() {
     const r = await sendTrip(t);
     rememberTrip(t);
     toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' (' + r.rate + ')' + (t.saleRow || t.saleId ? ' · linked to the sale' : ''));
-    if (t.collectId) { toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' · linked to the collection'); openSales('slCollWrap'); }
+    if (t.labelIds || t.purchaseIds) {
+      TRIPS = null;
+      if (t.labelIds) dropSession({ mode: 'logged', place: t._stops[t._stops.length - 1] || '', tripText: 'Mileage row ' + r.row + ' · ' + r.miles + ' miles' });
+      toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' · linked to ' + [t.labelIds ? t.labelIds.length + ' parcel' + (t.labelIds.length === 1 ? '' : 's') : '', t.purchaseIds ? 'the purchase' : ''].filter(Boolean).join(' and '));
+      loadTrips().then(list => { if (list.length) openTrip(); else show('vHome'); }).catch(() => show('vHome'));
+    }
+    else if (t.collectId) { toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' · linked to the collection'); openSales('slCollWrap'); }
     else if (t.saleRow || t.saleId) { SALES = null; openSales(); } else show('vHome');
   } catch (err) {
     if (err.code === 'OFFLINE') {          // kept on the phone; sent (and the miles worked out) when signal returns
@@ -1597,11 +1616,12 @@ function renderTodo(w) {
   if (w.toReturn) rows.push(['↩️', w.toReturn + ' thing' + s(w.toReturn) + ' to take back', 'slToRetWrap']);
   if (w.returnsSoon) rows.push(['⏳', w.returnsSoon + ' receipt' + s(w.returnsSoon) + ': last days to return', 'slRetWrap']);
   if (w.needs) rows.push(['⚠️', w.needs + ' sale' + s(w.needs) + ' need' + (w.needs === 1 ? 's' : '') + ' a check', 'slNeedsWrap']);
+  if (w.tripsToLog) rows.push(['🚗', w.tripsToLog + ' trip' + s(w.tripsToLog) + ' to log in your mileage', 'trips']);
   $('todo').classList.toggle('hide', !rows.length);
   $('todo').innerHTML = rows.slice(0, 4).map(r => `<button data-todo="${r[2]}"><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`).join('');
 }
 // Tapping a to-do opens Sales at that section
-$('todo').onclick = e => { const b = e.target.closest('[data-todo]'); if (b) openSales(b.dataset.todo); };
+$('todo').onclick = e => { const b = e.target.closest('[data-todo]'); if (!b) return; if (b.dataset.todo === 'trips') openTrip(); else openSales(b.dataset.todo); };
 function goTo(id) {
   const el = $(id);
   if (!el || el.classList.contains('hide')) return;
@@ -1616,7 +1636,8 @@ function countsFrom(d) {
            late: tp.filter(l => l.daysLeft !== null && l.daysLeft < 0).length, returnsSoon: (d.returnsClosing || []).length,
            toReturn: ((d.returns && d.returns.open) || []).filter(r => r.status === 'To return').length,
            pickupSoon: ((d.returns && d.returns.open) || []).filter(r => r.status === 'To return' && r.pickupDays !== null && r.pickupDays !== undefined && r.pickupDays <= 1).length,
-           toCollect: tc.length, collectSoon: tc.filter(c => c.daysLeft !== null && c.daysLeft <= 1).length };
+           toCollect: tc.length, collectSoon: tc.filter(c => c.daysLeft !== null && c.daysLeft <= 1).length,
+           tripsToLog: TRIPS ? TRIPS.length : ((CFG.waiting || {}).tripsToLog || 0) };
 }
 // "Post today" / "Late" / "Post by Thu"
 function postTag(l) {
@@ -1705,7 +1726,7 @@ async function flushPosted() {
   if (postedFlushing || !postedOut.length) return;
   postedFlushing = true;
   for (const id of postedOut.slice()) {
-    try { await api('labelDone', { id }); postedOut = postedOut.filter(x => x !== id); lsSet(LS_POSTED, postedOut); }
+    try { await api('labelDone', Object.assign({ id }, postedTrip()[id] || {})); postedOut = postedOut.filter(x => x !== id); lsSet(LS_POSTED, postedOut); const pt = postedTrip(); delete pt[id]; lsSet(LS_POSTED_TRIP, pt); }
     catch (err) {
       if (err.code === 'OFFLINE') break;
       postedOut = postedOut.filter(x => x !== id); lsSet(LS_POSTED, postedOut);
@@ -2120,9 +2141,11 @@ $('vSales').addEventListener('click', async e => {
     postedHeld.add(l.id);
     SALES.toPost = SALES.toPost.filter(x => x.id !== l.id);
     renderSales();
+    let tripSheet = null;
     undoBar('✓ Marked as posted', UNDO_SECS,
-      () => { postedHeld.delete(l.id); SALES.toPost = SALES.toPost.concat([l]); renderSales(); toast('Back on your list'); },
+      () => { postedHeld.delete(l.id); SALES.toPost = SALES.toPost.concat([l]); renderSales(); toast('Back on your list'); if (tripSheet) tripSheet.remove(); delete postedTrip()[l.id]; },
       () => { postedHeld.delete(l.id); postedOut = postedOut.filter(x => x !== l.id).concat([l.id]); lsSet(LS_POSTED, postedOut); labDel(l.id); flushPosted(); });
+    tripSheet = offerDropTrip(l);
     return;
   }
   if (card) openSale(card.dataset.need !== undefined ? SALES.needs[Number(card.dataset.need)] : SALES.recent[Number(card.dataset.rec)]);
@@ -2989,6 +3012,7 @@ document.addEventListener('visibilitychange', () => {
 if (localStorage.getItem(LS_URL)) {
   show('vHome'); if (CFG.waiting) renderTodo(CFG.waiting); renderAppSwitch(); refreshConfig();
   if (location.hash === '#returns') { history.replaceState(null, '', location.pathname); openSales('slToRetWrap'); }   // from FlipList / FlipCheck
+  if (location.hash === '#purchases') { history.replaceState(null, '', location.pathname); openPurchases(); }   // from FlipCheck's Bought it box
 }
 else { show('vSetup'); }
 setTimeout(() => { try { if (localStorage.getItem(LS_URL) && !localStorage.getItem('rs_intro')) showIntro(); } catch (e) {} }, 0);
@@ -3957,3 +3981,145 @@ async function loadStockMatches() {
   } catch (e) {}
 }
 try { if (BUYERS) fillBuyerLists(); crmSync(); renderHomeMatch(); } catch (e) {}
+
+/* ---------- Trips to log: drop-offs (✓ Posted, drop-off receipt emails) and FlipCheck collections ---------- */
+var TRIPS = null;
+const LS_POSTED_TRIP = 'rs_posted_trip', LS_DROP_SESSION = 'rs_drop_session', LS_DROP_PLACES = 'rs_drop_places';
+function postedTrip() { try { return JSON.parse(localStorage.getItem(LS_POSTED_TRIP) || '{}') || {}; } catch (e) { return {}; } }
+function setPostedTrip(id, v) { const pt = postedTrip(); pt[id] = v; lsSet(LS_POSTED_TRIP, pt); }
+// Several parcels in one go: the first one asks, the rest join the same trip for 3 hours
+function dropSession(v) {
+  if (v) { lsSet(LS_DROP_SESSION, Object.assign({ at: Date.now() }, v)); return; }
+  try { const d = JSON.parse(localStorage.getItem(LS_DROP_SESSION) || 'null'); return d && Date.now() - d.at < 3 * 3600e3 ? d : null; } catch (e) { return null; }
+}
+const DROP_TYPES = [['Locker', '🔐 Locker'], ['ParcelShop', '🏪 ParcelShop'], ['Post Office', '📮 Post Office'], ['Pickup point', '📍 Pickup point'], ['Home', '🏠 Collected from home']];
+const dropGuess = courier => /inpost/i.test(courier || '') ? 'Locker' : /evri|hermes/i.test(courier || '') ? 'ParcelShop' : /royal mail|parcelforce/i.test(courier || '') ? 'Post Office' : /dpd|yodel|ups/i.test(courier || '') ? 'Pickup point' : '';
+async function loadTrips() {
+  TRIPS = await api('tripsToLog', {});
+  if (CFG.waiting) { CFG.waiting.tripsToLog = TRIPS.length; renderTodo(CFG.waiting); }
+  return TRIPS;
+}
+function offerDropTrip(l) {
+  const ses = dropSession();
+  if (ses) {   // same outing as the parcel before
+    if (ses.mode === 'logged') { setPostedTrip(l.id, { trip: 'linked', tripText: ses.tripText, dropType: ses.type || '', dropAt: ses.place || '' }); toast('Part of the trip you just logged'); }
+    else if (ses.mode === 'later') { setPostedTrip(l.id, { trip: 'later', dropType: ses.type || '', dropAt: ses.place || '' }); toast('Added to the same trip, saved for later'); }
+    else if (ses.mode === 'none') setPostedTrip(l.id, { trip: 'none', dropType: ses.type || '' });
+    return null;
+  }
+  const places = lsList(LS_DROP_PLACES);
+  let type = dropGuess(l.courier);
+  const v = sheet(`<h3>Log the trip to drop it off?</h3>
+    <p class="hint">Driving to post a sale counts as business miles. ${esc(l.courier || 'Where')}${l.courier ? ': where' : ''} did it go?</p>
+    <div class="chips" id="dtType">${DROP_TYPES.map(t => `<button data-dt="${t[0]}" class="${t[0] === type ? 'on' : ''}">${t[1]}</button>`).join('')}</div>
+    <div id="dtWhere"><p class="sub" style="margin:8px 0 4px">Where (optional)</p><input id="dtPlace" class="search" list="dtPlaces" placeholder="e.g. InPost locker, Tesco Shirley" autocomplete="off">
+      <datalist id="dtPlaces">${places.map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
+    <button class="btn" data-dtnow="1">🚗 Log the trip now</button>
+    <button class="btn sec" data-dtlater="1">Save it for later</button>
+    <button class="btn ghost" data-dtnone="1">No trip for this one</button>
+    <p class="hint">Posting a few today? Save it for later and log one trip at the end. Forward the drop-off receipt email (InPost, Evri, Post Office) to your receipts address and the place fills itself in.</p>`);
+  const sh = v.querySelector('.sheet');
+  const home = () => type === 'Home';
+  const sync = () => { sh.querySelectorAll('[data-dt]').forEach(b => b.classList.toggle('on', b.dataset.dt === type)); sh.querySelector('#dtWhere').classList.toggle('hide', home()); sh.querySelector('[data-dtnow]').classList.toggle('hide', home()); sh.querySelector('[data-dtlater]').classList.toggle('hide', home()); sh.querySelector('[data-dtnone]').textContent = home() ? 'Done: no trip needed' : 'No trip for this one'; };
+  sync();
+  sh.addEventListener('click', e => {
+    const d = e.target.closest('button') && e.target.closest('button').dataset; if (!d) return;
+    const place = (sh.querySelector('#dtPlace').value || '').trim();
+    if (place) lsSet(LS_DROP_PLACES, [place].concat(places.filter(p => p !== place)).slice(0, 12));
+    const dropType = home() ? '' : type;
+    if (d.dt) { type = d.dt; sync(); return; }
+    if (d.dtnone) { v.remove(); setPostedTrip(l.id, { trip: 'none', dropType }); dropSession({ mode: 'none', type: dropType }); return; }
+    if (d.dtlater) { v.remove(); setPostedTrip(l.id, { trip: 'later', dropType, dropAt: place }); dropSession({ mode: 'later', type: dropType, place }); TRIPS = null; toast('Saved for later: it\'s on Trips to log'); return; }
+    if (d.dtnow) {
+      v.remove(); setPostedTrip(l.id, { dropType, dropAt: place });
+      openTrip({ journey: { labelIds: [l.id], date: today(), stops: [place], reason: 'Dropping off ' + (l.qty > 1 ? l.qty + ' × ' : '') + (l.item || 'a parcel') + (dropType ? ' (' + dropType.toLowerCase() + ')' : ''),
+        sub: 'Your trip to drop off the parcel. Starts from home: tap 📍 to start from where you are. Posting more on the way? Add a stop.' } });
+    }
+  });
+  return v;
+}
+// The list on the mileage page (only when it's opened plain, not for a particular trip)
+async function renderTripTodo(plain) {
+  const box = $('tTodo');
+  if (!plain) { box.classList.add('hide'); return; }
+  const draw = list => {
+    if (!list || !list.length) { box.classList.add('hide'); return; }
+    const byDay = {};
+    list.forEach(x => { (byDay[x.date] = byDay[x.date] || []).push(x); });
+    box.classList.remove('hide');
+    box.innerHTML = `<div class="ttodo"><h3 class="sech">Trips to log <span class="count">${list.length}</span></h3>
+      ${Object.keys(byDay).map(day => { const g = byDay[day]; return `<div class="ttday"><div class="ttdh"><b>${esc(dayName(day) || day)}</b>${g.length > 1 ? `<button class="btn sm2" data-tjall="${esc(day)}">Log these ${g.length} as one trip</button>` : ''}</div>
+        ${g.map(x => `<div class="ttrow"><div><div class="st">${x.kind === 'buy' ? '🛍️ Collected: ' + esc(x.items.slice(0, 3).join(', ')) + (x.items.length > 3 ? ' +' + (x.items.length - 3) : '') : '📦 Drop-off: ' + esc(x.items.join(', '))}</div>
+          <div class="sm">${x.kind === 'buy' ? esc(x.store || '') + (x.place ? ' · ' + esc(x.place) : '') + (x.miles ? ' · about ' + x.miles + ' miles each way' : '') + ' · from FlipCheck'
+            : (x.place ? esc(x.type ? x.type + ': ' : '') + esc(x.place) : esc(x.type || x.courier || '') + ' · place not known yet: forward the drop-off receipt, or type it') + (x.time ? ' · ' + esc(x.time) : '')}</div></div>
+          <div class="ttbtns"><button class="btn sm2" data-tj="${esc(x.key)}">Log it</button><button class="btn ghost sm2" data-tjskip="${esc(x.key)}">Not needed</button></div></div>`).join('')}</div>`; }).join('')}</div>`;
+  };
+  draw(TRIPS);
+  try { draw(await loadTrips()); } catch (e) { if (!/Unknown action/.test(e.message)) console.warn(e); }
+}
+function journeyFor(list) {
+  const stops = [], labelIds = [], purchaseIds = [], why = [];
+  list.forEach(x => {
+    const stop = x.postcode && x.place && x.place.indexOf(x.postcode) < 0 ? x.place + ', ' + x.postcode : x.place;
+    if (stop && stops.indexOf(stop) < 0) stops.push(stop);
+    labelIds.push(...(x.labelIds || [])); if (x.purchaseId) purchaseIds.push(x.purchaseId);
+    why.push(x.kind === 'buy' ? 'collecting ' + (x.items[0] || 'stock') + (x.items.length > 1 ? ' + ' + (x.items.length - 1) + ' more' : '') : 'dropping off ' + x.items.length + ' parcel' + (x.items.length === 1 ? '' : 's'));
+  });
+  const one = list.length === 1 ? list[0] : null;
+  return { date: list[0].date, stops, labelIds, purchaseIds, miles: one && one.kind === 'buy' && !stops.length ? one.miles : null,
+    reason: why.join(' and ').replace(/^./, c => c.toUpperCase()), sub: list.length > 1 ? 'One trip for all of these. Check the order of the stops, then save.' : '' };
+}
+$('tTodo').onclick = async e => {
+  const b = e.target.closest('button'); if (!b || !TRIPS) return;
+  if (b.dataset.tj) { const x = TRIPS.find(t => t.key === b.dataset.tj); if (x) openTrip({ journey: journeyFor([x]) }); return; }
+  if (b.dataset.tjall) { const g = TRIPS.filter(t => t.date === b.dataset.tjall); if (g.length) openTrip({ journey: journeyFor(g) }); return; }
+  if (b.dataset.tjskip) {
+    const key = b.dataset.tjskip;
+    TRIPS = TRIPS.filter(t => t.key !== key); renderTripTodo(true);
+    try { TRIPS = await api('tripSkip', { keys: key.split(',') }); if (CFG.waiting) { CFG.waiting.tripsToLog = TRIPS.length; renderTodo(CFG.waiting); } renderTripTodo(true); toast('Taken off the list'); }
+    catch (err) { toast(err.message, true); }
+  }
+};
+
+/* ---------- Purchases: everything logged, newest first, and where it came from ---------- */
+var PURCH = null, PU_FROM = '';
+const PU_ICON = { 'Receipt photo': '📷', 'Email': '✉️', 'Typed in': '✍️', 'FlipCheck': '📊', 'ListMe': '🏷️' };
+async function openPurchases() {
+  show('vPurchases');
+  if (!PURCH) { try { PURCH = JSON.parse(localStorage.getItem('rs_purchases')); } catch (e) {} }
+  if (PURCH) renderPurchases(); else $('puList').innerHTML = '<p class="sub">Loading…</p>';
+  try { PURCH = await api('purchases', { limit: 200 }); try { localStorage.setItem('rs_purchases', JSON.stringify(PURCH)); } catch (e) {} renderPurchases(); }
+  catch (err) { if (!PURCH) $('puList').innerHTML = '<p class="sub">' + esc(/Unknown action/.test(err.message) ? 'This page needs your Sheet\'s script update (due tomorrow morning). Your purchases are all safe in the Sheet.' : err.message) + '</p>'; }
+}
+function renderPurchases() {
+  const d = PURCH || { items: [], counts: {} }, q = $('puSearch').value.trim().toLowerCase();
+  const froms = Object.keys(d.counts || {}).sort((a, b) => d.counts[b] - d.counts[a]);
+  $('puFrom').innerHTML = froms.length > 1 ? [['', 'All']].concat(froms.map(f => [f, (PU_ICON[f] || '') + ' ' + f + ' ' + d.counts[f]])).map(f => `<button data-pf="${esc(f[0])}" class="${PU_FROM === f[0] ? 'on' : ''}">${esc(f[1])}</button>`).join('') : '';
+  const list = d.items.filter(g => (!PU_FROM || g.from === PU_FROM) &&
+    (!q || (g.store + ' ' + g.notes + ' ' + g.order + ' ' + g.lines.map(l => l.item).join(' ')).toLowerCase().includes(q)));
+  const docLabel = g => /#\/a\//.test(g.doc) ? 'FlipCheck analysis' : /mail\.|outlook|live\.com/.test(g.doc) ? 'Email' : 'Receipt';
+  const listing = g => (String(g.notes).match(/Listing: (https?:\/\/\S+)/) || [])[1];
+  $('puList').innerHTML = list.length ? list.slice(0, 120).map((g, i) => `<div class="card pucard">
+    <div class="puhead"><div><div class="st">${esc(g.store || 'Purchase')}</div><div class="sm">${esc(g.date)}${g.logged ? ' · logged ' + esc(g.logged.slice(0, 10) === g.date ? g.logged.slice(11) : g.logged) : ''}</div></div>
+      <div class="amt">${money(g.total)}</div></div>
+    <div class="tags"><span class="tag pufrom">${PU_ICON[g.from] || ''} ${esc(g.from)}</span>${g.refund ? '<span class="tag ok">refund</span>' : ''}${g.payment ? '<span class="tag">' + esc(g.payment) + '</span>' : ''}${g.order ? '<span class="tag">#' + esc(g.order) + '</span>' : ''}</div>
+    <ul class="pulines">${g.lines.slice(0, 8).map(l => `<li><span>${l.qty > 1 ? l.qty + ' × ' : ''}${esc(l.item)}${l.refunded ? ' <span class="tag ok">refunded</span>' : ''}</span><b>${money(l.total)}</b></li>`).join('')}${g.lines.length > 8 ? `<li class="sub">+ ${g.lines.length - 8} more</li>` : ''}</ul>
+    <div class="ouacts">${g.doc ? `<a href="${esc(g.doc.split('\n')[0])}" target="_blank" rel="noopener">${docLabel(g)} ↗</a>` : ''}${listing(g) ? `<a href="${esc(listing(g))}" target="_blank" rel="noopener">Listing ↗</a>` : ''}
+      ${g.trip ? (g.tripLogged ? '<span class="done">🚗 Trip logged</span>' : `<button data-putrip="${i}">🚗 Log the trip${g.trip.miles ? ' (' + g.trip.miles + ' mi each way)' : ''}</button>`) : ''}</div>
+  </div>`).join('') : '<p class="sub" style="padding:10px 0">' + (q || PU_FROM ? 'Nothing matches.' : 'Nothing logged yet.') + '</p>';
+  $('puList').dataset.n = String(list.length);
+  PU_SHOWN = list;
+}
+var PU_SHOWN = [];
+$('puSearch').oninput = renderPurchases;
+$('puFrom').onclick = e => { const b = e.target.closest('[data-pf]'); if (!b) return; PU_FROM = b.dataset.pf; renderPurchases(); };
+$('puList').onclick = e => {
+  const b = e.target.closest('[data-putrip]'); if (!b) return;
+  const g = PU_SHOWN[Number(b.dataset.putrip)]; if (!g) return;
+  openTrip({ journey: { date: g.date, stops: [g.trip.to].filter(Boolean), purchaseIds: [g.id], miles: g.trip.miles,
+    reason: 'Collecting ' + (g.lines[0] ? g.lines[0].item : 'stock') + (g.lines.length > 1 ? ' + ' + (g.lines.length - 1) + ' more' : '') + ' (' + g.store + ')',
+    sub: 'Your trip to collect it. Dropped off parcels on the way? Add a stop, and log those from Trips to log.' } });
+};
+$('btnPurchases').onclick = openPurchases;
+$('btnPuBack').onclick = () => show('vHome');
+

@@ -1,4 +1,4 @@
-/* Guided tour of the 15 and 16 November changes in Receipts (16 Nov: To collect and return pick-ups added). Each feature opens the real screen, points at the
+/* Guided tour of the 15 and 16 November changes in Receipts (16 Nov: To collect, return pick-ups, Purchases and drop-off trips added). Each feature opens the real screen, points at the
    real thing, says what to do, then shows what it does in the Google Sheet and in FlipCheck and ListMe.
    Opens once on this phone; reopen from Settings → What's new. Engine: tour-engine.js.
    Previews use example data only (this app is public, so no real data goes in it). */
@@ -14,6 +14,19 @@
     '<div><span class="b">Show return QR code</span></div><div><span class="b s">✓ Returned it</span><span class="b s">📷 Refund receipt</span></div></div>', 'Sales → To return');
 
   const D16 = 'New today · 16 Nov', D15 = 'Yesterday · 15 Nov';
+  // Tonight's: Purchases page, drop-off trips. Made-up example data.
+  const PU_CARD = M.receipts('<div class="c"><div class="st">Facebook Marketplace <span style="float:right">£50.00</span></div><div class="sm">16/11/2026 · logged 20:09</div>' +
+    '<span class="tag" style="background:#eef3fb;color:#1d4f91">📊 FlipCheck</span><span class="tag">Cash</span>' +
+    '<div class="sm">Games console, handheld · £31.20<br>Racing game · £10.40<br>Platform game · £8.40</div>' +
+    '<div><span class="b s">FlipCheck analysis ↗</span><span class="b s">Listing ↗</span><span class="b s">🚗 Log the trip (8.5 mi each way)</span></div></div>', 'Purchases');
+  const DROP_SHEET = M.receipts('<div class="c"><div class="st">Log the trip to drop it off?</div><div class="sm">Driving to post a sale counts as business miles. InPost: where did it go?</div>' +
+    '<span class="tag" style="background:#0a84ff;color:#fff">🔐 Locker</span><span class="tag">🏪 ParcelShop</span><span class="tag">📮 Post Office</span><span class="tag">🏠 Collected from home</span>' +
+    '<div class="sm">Where (optional): <i>Locker, Example Superstore</i></div><div><span class="b">🚗 Log the trip now</span><span class="b s">Save it for later</span></div></div>', 'Sales → ✓ Posted');
+  const TRIPS_CARD = M.receipts('<div class="c"><div class="st">Trips to log <span class="tag">2</span></div><div class="sm"><b>Mon 16 Nov</b> <span class="b s">Log these 2 as one trip</span></div>' +
+    '<div class="sm">📦 <b>Drop-off: Pipe fittings</b><br>Locker: 24/7 Locker - Example Superstore, Townsville · 18:05</div>' +
+    '<div class="sm">🛍️ <b>Collected: Games console + 2 games</b><br>Facebook Marketplace · Townsville · about 8.5 miles each way · from FlipCheck</div>' +
+    '<div><span class="b">Log it</span><span class="b s">Not needed</span></div></div>', 'Log a trip');
+
   const MSGS = M.receipts('<div class="c"><div class="st">Saved messages</div><div class="sm">Shared with ListMe (the Messages tab in your Sheet): change one here or in ListMe and it changes in both.</div>' +
     '<div style="margin-top:6px"><b>Still available</b><div class="sm">Hi [Name], yes the [Item] is still available at £[Price]. I can do [Times]…</div></div><div><span class="b s">Edit</span><span class="b s">✕</span></div></div>', 'Settings → Collection');
   // Today's: click & collect, and courier pick-up returns. Example data only (Argos / Amazon style, made-up orders).
@@ -84,6 +97,44 @@
         { app: 'Sheet', text: 'The return\'s row on <b>Returns</b> gets the method, courier, pick-up day, printed date and estimated refund; then <b>Sent back</b>, and <b>Refunded</b> with the proof. Cancelled ones say <b>Cancelled</b> with the date.',
           mock: M.sheet('Returns', ['status', 'item', 'method', 'courier', 'pickup date', 'printed on', 'refund estimate'], [['To return', 'Desk lamp, black', 'Pick-up', 'UPS', '17/11/2026', '16/11/2026', '24.99']], [[0, 2], [0, 3], [0, 4], [0, 5], [0, 6]], ['Purchases', 'Sales', 'Returns', 'To collect']) },
         { app: 'Sheet', text: 'The order\'s line on <b>Purchases</b> gets a note on its item: "Return started", then "Picked up", "Refunded £24.99" (or "Return cancelled"), so the story is on the purchase too.' },
+      ] },
+
+    { id: 'rs-purchases', day: D16, icon: '🛍️', title: 'Purchases: everything you logged', summary: 'Newest first, where each came from, FlipCheck buys too',
+      steps: [
+        { title: 'One page for every purchase', go: go(() => openPurchases()), target: '#puList', wait: true,
+          missing: 'Nothing logged yet. With purchases, it looks like this:', mock: PU_CARD,
+          text: 'Home → <b>Purchases</b>. One card per receipt, email or purchase, newest first. Each says where it was logged from: 📷 receipt photo, ✉️ email, ✍️ typed in, or 📊 <b>FlipCheck</b>.',
+          todo: ['Tap <b>Purchases</b> on the home screen.', 'Tap a chip (e.g. <b>📊 FlipCheck</b>) to see just those, or search an item, shop or order number.'] },
+        { title: 'Bought in FlipCheck', go: go(() => openPurchases()), target: '#puFrom', wait: true,
+          missing: 'The chips appear once you have purchases from more than one place.',
+          text: 'In FlipCheck, an analysis now has a <b>Bought it?</b> box: what you paid, the day, how you paid. <b>Save: I bought it</b> marks the ledger as Bought, adds it here (one line per item, the price split by what each sells for) and sends it to ListMe. A private seller has no return window, so no "last days to return" for these.',
+          todo: ['In FlipCheck, open the analysis and scroll to <b>Next</b>.', 'Fill in <b>Paid</b> and <b>Paid by</b>, tick <b>Add to Receipts</b>, tap <b>Save: I bought it</b>.'] },
+        { title: 'The trip to collect it', go: go(() => openPurchases()), target: '[data-putrip]', wait: true,
+          missing: 'On a FlipCheck card where you drove to collect it.',
+          text: 'FlipCheck knows how far the seller was, so the card offers <b>🚗 Log the trip</b>: the form opens filled in (home → the seller → home). Once saved it says <b>🚗 Trip logged</b>.' },
+      ],
+      effect: [
+        { app: 'Sheet', text: 'Each line on <b>Purchases</b> has a new last column, <b>logged from</b>. FlipCheck buys have the analysis as the document link and the trip in the notes.',
+          mock: M.sheet('Purchases', ['item', 'total cost', 'store', 'payment method', 'notes', 'logged from'], [['Games console, handheld', '31.20', 'Facebook Marketplace', 'Cash', 'Bought through FlipCheck · Trip: 8.5 miles each way to Townsville', 'FlipCheck'], ['Racing game', '10.40', 'Facebook Marketplace', 'Cash', 'Bought through FlipCheck · …', 'FlipCheck']], [[0, 5], [1, 5]], ['Purchases', 'Sales', 'Mileage']) },
+      ] },
+
+    { id: 'rs-droptrips', day: D16, icon: '🚗', title: 'Drop-off trips', summary: 'Posted? Log the trip now, later, or let the receipt fill it in',
+      steps: [
+        { title: 'Posted asks about the trip', go: sales('slPostWrap'), target: '[data-posted]', wait: true,
+          missing: 'Nothing to post right now. When you tap ✓ Posted, this comes up:', mock: DROP_SHEET,
+          text: 'After <b>✓ Posted</b>: was it a <b>locker</b>, <b>ParcelShop</b>, <b>Post Office</b>, a <b>pickup point</b>, or <b>collected from home</b>? Then <b>Log the trip now</b>, <b>Save it for later</b>, or <b>No trip</b>. Posting several? Only the first asks: the rest join the same trip for 3 hours.',
+          todo: ['Tap <b>✓ Posted</b> on a parcel.', 'Pick where it went, then <b>Save it for later</b> if you\'ve more to drop off.'] },
+        { title: 'The drop-off receipt fills it in', mock: M.email('inpost@inpost.example', 'Your digital receipt', 'Thanks for dropping off your parcel.<br>Parcel number <b>JJD0000000000000001</b><br>Drop-off time <b>16/11/2026 18:05</b><br>Drop-off point <b>24/7 Locker - Example Superstore, 1 High Street, Townsville AB1 2CD</b>'),
+          text: 'Forward the drop-off receipt (InPost, Evri, Royal Mail, DPD, Yodel) to your receipts address. It\'s read by rules (free), matched to the parcel by its number, and fills in where and when it went. If you forgot to tap Posted, it marks it posted too.',
+          todo: ['Forward the courier\'s "dropped off" email to your receipts address.'] },
+        { title: 'Trips to log', go: go(() => openTrip()), target: '#tTodo', wait: true,
+          missing: 'Nothing waiting right now. With some, the top of the trip page looks like this:', mock: TRIPS_CARD,
+          text: 'Home → <b>🚗 Trips to log</b>, or open <b>Log a trip</b>. Drop-offs saved for later or filled in from a receipt, and FlipCheck collections, grouped by day. <b>Log these as one trip</b> puts them all on one route (home → each place → home). <b>Not needed</b> takes one off.',
+          todo: ['Open <b>Log a trip</b>.', 'Tap <b>Log it</b> or <b>Log these as one trip</b>, check the miles, <b>Save trip</b>.'] },
+      ],
+      effect: [
+        { app: 'Sheet', text: '<b>To post</b> gets four new columns: <b>drop-off type</b>, <b>drop-off</b>, <b>drop-off time</b> and <b>trip</b> (Later, None, or the Mileage row once logged). The <b>Mileage</b> row says what it covered.',
+          mock: M.sheet('To post', ['item', 'status', 'tracking', 'drop-off type', 'drop-off', 'drop-off time', 'trip'], [['Pipe fittings', 'Posted', 'JJD0000000000000001', 'Locker', '24/7 Locker - Example Superstore, Townsville AB1 2CD', '16/11/2026 18:05', 'Mileage row 43 · 17 miles']], [[0, 3], [0, 4], [0, 5], [0, 6]], ['Purchases', 'Sales', 'To post', 'Mileage']) },
       ] },
 
     { id: 'rs-msgs', day: D16, icon: '✉️', title: 'Saved messages, shared with ListMe', summary: 'One list, edit it in either app',
@@ -233,7 +284,7 @@
 
   chapters.forEach(c => { c.day = c.day || D15; });
   const all = NEWCH.filter(c => c.day === D16).concat(chapters, NEWCH.filter(c => c.day === D15));
-  const cfg = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:1116c', chapters: all, ready,
+  const cfg = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:1116d', chapters: all, ready,
     get theme() { const d = document.documentElement.classList.contains('dark');
       return d ? { accent: '#0a84ff', accentInk: '#fff', bg: '#1d2027', fg: '#e8e8ea', line: '#3a3d45', strong: '#fff' } : { accent: '#0a84ff', accentInk: '#fff', bg: '#fff', fg: '#111', line: '#d6d6db', strong: '#111' }; },
     when: () => !!localStorage.getItem('rs_url') };

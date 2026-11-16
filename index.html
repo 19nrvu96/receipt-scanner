@@ -436,6 +436,13 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 .telrow{display:flex;gap:6px}.telrow select{width:auto;flex:0 0 auto;padding-left:8px;padding-right:8px}.telrow input{flex:1;min-width:0}
 .rfind{margin-top:6px}.rfind input{width:100%;padding:10px 12px;border:1px solid #d0d0d5;border-radius:10px;font:inherit;font-size:15px}
 .rfres button{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e0e0e5;border-radius:10px;padding:8px 10px;margin-top:4px;font:inherit;font-size:14px;cursor:pointer}
+input.ro{background:#f4f5f7;color:#555}
+.pucard{padding:12px 14px}.puhead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.puhead .amt{font-weight:700;font-size:17px}
+.pulines{list-style:none;margin:8px 0 0;padding:0}.pulines li{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid #eee;font-size:15px}.pulines li b{font-weight:600;white-space:nowrap}
+.tag.pufrom{background:#eef3fb;color:#1d4f91}
+.ttodo{background:#fff;border:1px solid #e3e3e8;border-radius:14px;padding:4px 14px 10px;margin:4px 0 14px}.ttodo .count{background:#0a84ff;color:#fff;border-radius:999px;padding:1px 8px;font-size:13px;margin-left:4px}
+.ttday{border-top:1px solid #eee;padding-top:8px;margin-top:6px}.ttdh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+.ttrow{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0}.ttrow .st{font-weight:600}.ttbtns{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
 .search{width:100%;padding:13px 14px;border:1px solid #d0d0d5;border-radius:12px;font-size:16px;font-family:inherit;margin-bottom:8px;background:#fff}
 .bchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .bchip{font-size:12px;padding:2px 8px;border-radius:999px;background:#eef0f3;color:#333}
@@ -644,6 +651,12 @@ html.dark .sheet-bg .psheet{background:#2d2d31}
 html.dark .wrow{border-bottom:1px solid #464646}
 html.dark .rfind input{border:1px solid #59595e}
 html.dark .rfres button{background:#242424;border:1px solid #4b4b52}
+html.dark input.ro{background:#2d2f32;color:#b2b2b2}
+html.dark .pulines li{border-top:1px solid #464646}
+html.dark .tag.pufrom{background:#1b2c47;color:#7fabe6}
+html.dark .ttodo{background:#242424;border:1px solid #494950}
+html.dark .ttodo .count{color:#ffffff}
+html.dark .ttday{border-top:1px solid #464646}
 html.dark .search{border:1px solid #59595e;background:#242424}
 html.dark .bchip{background:#333539;color:#d1d1d1}
 html.dark .bchip.good{background:#224d2e;color:#88dda0}
@@ -711,6 +724,7 @@ html.dark .barcode{background:#fff}
       <button class="big" id="btnTrip"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14M6 17v2M18 17v2M4 13l2-6h12l2 6v4H4z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg></span> <span>Log a trip</span></button>
       <button class="big" id="btnRepay"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 19H7c2-2 2-5 1-8M6 11h8M15 6.5A3.5 3.5 0 0 0 8.5 8c0 1 .3 2 .7 3"/></svg></span> <span>Pay back</span></button>
     </div>
+    <button class="big wide" id="btnPurchases"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg></span> <span>Purchases<small>Everything you've logged, newest first, and where from</small></span></button>
     <button class="big wide" id="btnNumbers"><span class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span> <span>Your numbers<small id="numHint">Profit, tax pot and stock</small></span></button>
     <div id="usage" class="usage hide" aria-live="polite"></div>
     <div class="status"><span id="homeStatus">Ready</span></div>
@@ -883,11 +897,20 @@ html.dark .barcode{background:#fff}
   <section id="vStock" class="hide">
     <div class="hdr"><button class="back" id="btnStockBack">‹</button><h2 style="margin:0;flex:1">Stock</h2></div>
     <div class="ncard"><div class="nrow"><span>Lines</span><b id="skLines">…</b></div><div class="nrow"><span>Units left</span><b id="skUnits">…</b></div><div class="nrow"><span>Value at cost</span><b id="skValue">…</b></div></div>
-    <input id="skSearch" type="search" placeholder="Search your stock" autocomplete="off" style="width:100%;padding:13px 14px;border:1px solid #d0d0d5;border-radius:12px;font-size:16px;font-family:inherit;margin-bottom:8px;background:#fff">
+    <input id="skSearch" type="search" class="search" placeholder="Search your stock" autocomplete="off">
     <div class="seg" id="skSort"><button data-v="old" class="on">Oldest</button><button data-v="value">Value</button><button data-v="az">A–Z</button></div>
     <p class="hint">Tap an item to log its sale. It's linked to this purchase, so profit and the count update.</p>
     <div id="skAge" class="agebox hide"></div>
     <div id="skList" class="card" style="padding:4px 14px"></div>
+  </section>
+
+  <!-- PURCHASES: everything logged, newest first, and where it came from -->
+  <section id="vPurchases" class="hide">
+    <div class="hdr"><button class="back" id="btnPuBack">‹</button><h2 style="margin:0;flex:1">Purchases</h2></div>
+    <input id="puSearch" type="search" class="search" placeholder="Search items, shops, order numbers" autocomplete="off">
+    <div class="chips" id="puFrom" role="group" aria-label="Logged from"></div>
+    <p class="hint" id="puHint">Newest first. Each card is one receipt, email or purchase, with where it was logged from.</p>
+    <div id="puList"></div>
   </section>
 
   <!-- BUYERS (CRM) -->
@@ -1042,6 +1065,7 @@ html.dark .barcode{background:#fff}
       <h2 style="margin:0;flex:1">Log a business trip</h2>
     </div>
     <p class="hint" id="tSub">Type where you went. We work out the miles.</p>
+    <div id="tTodo" class="hide"></div>
     <div id="tRepeatWrap" class="hide"><label>Repeat a recent trip</label><div class="chips" id="tRepeat"></div></div>
     <label>Date</label><input id="tDate" inputmode="numeric" placeholder="DD/MM/YYYY">
     <label>Route</label>
@@ -1172,7 +1196,7 @@ html.dark .barcode{background:#fff}
       <button class="lnk" id="btnPickBuyer" type="button" style="background:none;border:0;color:#0a58ca;font:inherit;padding:4px 0;text-decoration:underline">Choose from your buyers</button>
       <div id="saBuyerHint" class="sub hide"></div>
       <div class="duo"><div><label>Listed at (£)</label><input id="saListed" type="number" step="0.01" inputmode="decimal" placeholder="Your asking price"></div>
-        <div><label>Sold for (£)</label><input id="saSoldFor" readonly tabindex="-1" style="background:#f4f5f7;color:#555" placeholder="From sale price"></div></div>
+        <div><label>Sold for (£)</label><input id="saSoldFor" class="ro" readonly tabindex="-1" placeholder="From sale price"></div></div>
       <p class="hint" id="saListedHint">Listed at is what you first asked. Sold for comes from the sale price above.</p>
       <label>How did it go?</label>
       <div class="seg" id="saExp"><button data-v="Good">👍 Good</button><button data-v="Fine">👌 Fine</button><button data-v="Bad">👎 Bad</button></div>
@@ -1299,9 +1323,9 @@ html.dark .barcode{background:#fff}
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=61"></script>
-<script src="app.js?v=61"></script>
-<script src="tour-engine.js?v=61"></script>
-<script src="whatsnew.js?v=61"></script>
+<script src="help.js?v=62"></script>
+<script src="app.js?v=62"></script>
+<script src="tour-engine.js?v=62"></script>
+<script src="whatsnew.js?v=62"></script>
 </body>
 </html>
