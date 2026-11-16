@@ -754,11 +754,12 @@ html.dark img.qrimg{background:#fff;padding:8px;border-radius:8px}
         <button class="btn sec" id="btnSpSave">Save spot</button>
       </details>
       <label>Saved messages</label>
+      <p class="hint" id="stTplNote"></p>
       <div id="stTpls"></div>
       <details class="more" id="stTplAdd"><summary>＋ Add a saved message</summary>
         <label>Name</label><input id="tpName" placeholder="e.g. Where to meet">
         <label>Message</label><textarea id="tpText" rows="6"></textarea>
-        <p class="hint">Use [Name], [Item], [Price], [Spot] (the meeting place), [Directions] and [Times] (your next free collection times): they're filled in for each person.</p>
+        <p class="hint">Use [Name], [Item], [Price], [Spot] (the meeting place), [Directions] and [Times] (your next free collection times): they're filled in for each person. ListMe also fills [Features], [Condition] and [Link] from the listing.</p>
         <button class="btn sec" id="btnTpSave">Save message</button>
       </details>
     </div>
@@ -872,7 +873,7 @@ html.dark img.qrimg{background:#fff;padding:8px;border-radius:8px}
   <section id="vBuyers" class="hide">
     <div class="hdr"><button class="back" id="btnBuyersBack">‹</button><h2 style="margin:0;flex:1">Buyers</h2><button class="btn sec" id="btnBuyerAdd" style="width:auto;margin:0;padding:8px 12px">＋ Add</button></div>
     <input id="byQ" type="search" placeholder="Search names, interests, notes" autocomplete="off" class="search">
-    <div class="chips" id="byFilter"><button data-f="" class="on">All</button><button data-f="Collects">Collects (cash)</button><button data-f="Drop-off">Drop-off</button><button data-f="Online">Online</button><button data-f="msg">Can message</button></div>
+    <div class="chips" id="byFilter"><button data-f="" class="on">All</button><button data-f="Collects">Collects (cash)</button><button data-f="Drop-off">Drop-off</button><button data-f="Online">Online</button><button data-f="msg">Can message</button><button data-f="lead">Not bought yet</button></div>
     <div class="byctl"><select id="bySort" aria-label="Sort"><option value="recent">Most recent</option><option value="spent">Spent most</option><option value="times">Bought most</option><option value="near">Nearest</option><option value="az">A–Z</option></select>
       <button class="btn sec" id="btnBySelect" style="width:auto;margin:0;padding:8px 12px">Select</button></div>
     <div id="bySelBar" class="selbar hide"><span id="bySelN">0 picked</span><button class="lnk" id="bySelAll">Pick all who can be messaged</button><button class="btn" id="btnByMsg" style="width:auto;margin:0;padding:10px 14px">Message</button></div>
@@ -1276,9 +1277,9 @@ html.dark img.qrimg{background:#fff;padding:8px;border-radius:8px}
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=57"></script>
-<script src="app.js?v=57"></script>
-<script src="tour-engine.js?v=57"></script>
-<script src="whatsnew.js?v=57"></script>
+<script src="help.js?v=58"></script>
+<script src="app.js?v=58"></script>
+<script src="tour-engine.js?v=58"></script>
+<script src="whatsnew.js?v=58"></script>
 </body>
 </html>

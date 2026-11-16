@@ -15,7 +15,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach'];
-const APP_VERSION = 'v57';
+const APP_VERSION = 'v58';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2781,6 +2781,7 @@ async function openSettings() {
     $('stCrm').checked = !!d.crm; if (CFG.crm !== !!d.crm) { CFG.crm = !!d.crm; saveCache(); crmSync(); }
     $('stSaver').checked = d.readMode === 'saver';
     try { renderColl(); } catch (e) {}
+    syncTpls();
     srcSync();
     $('stHist').innerHTML = (d.history || []).map(h => `<p class="hist">Before ${esc(h.until)}: ${esc(h.label)}${h.tab ? ' · saved in the "' + esc(h.tab) + '" tab' : ''}</p>`).join('');
     stSync(); renderWhere();
@@ -3076,12 +3077,34 @@ const DEF_TPLS = [
 ];
 const getSpots = () => { try { return JSON.parse(localStorage.getItem(LS_SPOTS)) || []; } catch (e) { return []; } };
 const getTpls = () => { try { return JSON.parse(localStorage.getItem(LS_TPLS)) || DEF_TPLS; } catch (e) { return DEF_TPLS; } };
+// Saved messages are shared with ListMe: they live on the Sheet's Messages tab, and this phone keeps a copy
+// for when there's no signal. Messages saved on this phone before are moved to the Sheet once.
+const LS_TPLS_SHARED = 'rs_tpls_shared', LS_TPLS_MOVED = 'rs_tpls_moved';
+var tplsShared = localStorage.getItem(LS_TPLS_SHARED) === '1';
+async function syncTpls() {
+  try {
+    let r = await api('templates', {});
+    if (!localStorage.getItem(LS_TPLS_MOVED)) {
+      let mine = null; try { mine = JSON.parse(localStorage.getItem(LS_TPLS)); } catch (e) {}
+      if (mine && mine.length) r = await api('templatesImport', { templates: mine.map(t => ({ name: t.name, text: t.text })) });
+      try { localStorage.setItem(LS_TPLS_MOVED, '1'); } catch (e) {}
+    }
+    putList(LS_TPLS, (r.templates || []).map(t => ({ id: t.id, name: t.name, text: t.text })));
+    tplsShared = true; try { localStorage.setItem(LS_TPLS_SHARED, '1'); } catch (e) {}
+    try { renderColl(); } catch (e) {}
+    return true;
+  } catch (err) {
+    if (/Unknown action/.test(err.message)) { tplsShared = false; try { localStorage.removeItem(LS_TPLS_SHARED); } catch (e) {} }
+    return false;
+  }
+}
 const putList = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 let spEdit = -1, tpEdit = -1;
 function renderColl() {
   $('stHome').value = homeAddr();
   const sp = getSpots(), tp = getTpls();
   $('stSpots').innerHTML = sp.length ? sp.map((x, i) => `<div class="sitem"><span><b>${esc(x.name)}</b>${x.addr ? '<br><small class="sub">' + esc(x.addr) + '</small>' : ''}${x.dir ? '<br><small class="sub">' + esc(x.dir) + '</small>' : ''}</span><button data-spe="${i}">Edit</button><button data-spd="${i}">✕</button></div>`).join('') : '<p class="sub">None yet.</p>';
+  $('stTplNote').textContent = tplsShared ? 'Shared with ListMe (the Messages tab in your Sheet): change one here or in ListMe and it changes in both.' : '';
   $('stTpls').innerHTML = tp.map((x, i) => `<div class="sitem"><span><b>${esc(x.name)}</b><br><small class="sub">${esc(x.text.slice(0, 90))}${x.text.length > 90 ? '…' : ''}</small></span><button data-tpe="${i}">Edit</button><button data-tpd="${i}">✕</button></div>`).join('');
 }
 $('stHome').addEventListener('change', () => { const h = $('stHome').value.trim(); try { h ? localStorage.setItem(LS_HOME, h) : localStorage.removeItem(LS_HOME); } catch (e) {} toast(h ? 'Home saved' : 'Home cleared'); });
@@ -3091,11 +3114,17 @@ $('btnSpSave').onclick = () => {
   const sp = getSpots(); spEdit > -1 ? sp[spEdit] = x : sp.push(x); putList(LS_SPOTS, sp);
   spEdit = -1; $('spName').value = $('spAddr').value = $('spDir').value = ''; $('stSpotAdd').open = false; renderColl(); toast('Spot saved');
 };
-$('btnTpSave').onclick = () => {
+$('btnTpSave').onclick = async () => {
   const x = { name: $('tpName').value.trim(), text: $('tpText').value.trim() };
   if (!x.name || !x.text) { toast('Add a name and the message', true); return; }
-  const tp = getTpls(); tpEdit > -1 ? tp[tpEdit] = x : tp.push(x); putList(LS_TPLS, tp);
-  tpEdit = -1; $('tpName').value = $('tpText').value = ''; $('stTplAdd').open = false; renderColl(); toast('Message saved');
+  const tp = getTpls();
+  if (tplsShared) {   // to the Sheet, so ListMe has it too
+    const b = $('btnTpSave'); b.disabled = true;
+    try { const r = await api('templateSave', { template: Object.assign({ id: tpEdit > -1 ? tp[tpEdit].id : undefined }, x) }); putList(LS_TPLS, r.templates.map(t => ({ id: t.id, name: t.name, text: t.text }))); }
+    catch (err) { b.disabled = false; toast(err.message, true); return; }
+    b.disabled = false;
+  } else { tpEdit > -1 ? tp[tpEdit] = x : tp.push(x); putList(LS_TPLS, tp); }
+  tpEdit = -1; $('tpName').value = $('tpText').value = ''; $('stTplAdd').open = false; renderColl(); toast(tplsShared ? 'Message saved here and in ListMe' : 'Message saved');
 };
 $('stSpots').onclick = e => {
   const ed = e.target.dataset.spe, del = e.target.dataset.spd, sp = getSpots();
@@ -3105,7 +3134,13 @@ $('stSpots').onclick = e => {
 $('stTpls').onclick = e => {
   const ed = e.target.dataset.tpe, del = e.target.dataset.tpd, tp = getTpls();
   if (ed !== undefined) { tpEdit = +ed; $('tpName').value = tp[ed].name; $('tpText').value = tp[ed].text; $('stTplAdd').open = true; }
-  if (del !== undefined) { tp.splice(+del, 1); putList(LS_TPLS, tp); renderColl(); }
+  if (del !== undefined) {
+    if (tplsShared && tp[del] && tp[del].id) {
+      api('templateDelete', { id: tp[del].id }).then(r => { putList(LS_TPLS, r.templates.map(t => ({ id: t.id, name: t.name, text: t.text }))); renderColl(); toast('Deleted here and in ListMe'); }).catch(err => toast(err.message, true));
+      return;
+    }
+    tp.splice(+del, 1); putList(LS_TPLS, tp); renderColl();
+  }
 };
 
 /* ---------- Collection times ----------
@@ -3223,7 +3258,7 @@ function renderPick() {
   const all = (BUYERS && BUYERS.buyers) || [], hit = q ? new Set(buyerSearch(q, all).map(h => h.b)) : null;
   const bs = all.filter(b => !q || hit.has(b) || String(b['interested in'] || '').toLowerCase().includes(q))
     .sort((a, b) => dayNum(b['last bought']) - dayNum(a['last bought']));
-  $('bpickList').innerHTML = bs.length ? bs.map(b => `<button class="skrow" data-pk="${esc(b.key)}"><span>${esc(bName(b))}<span class="sm">${esc(buyerLine(b)) || 'No sales yet'}</span></span></button>`).join('') : '<p class="sub">Nobody yet. Type their name in the box instead.</p>';
+  $('bpickList').innerHTML = bs.length ? bs.map(b => `<button class="skrow" data-pk="${esc(b.key)}"><span>${esc(bName(b))}<span class="sm">${esc(buyerLine(b)) || 'Not bought yet (lead)'}</span></span></button>`).join('') : '<p class="sub">Nobody yet. Type their name in the box instead.</p>';
 }
 $('btnPickBuyer').onclick = async () => { $('bpick').classList.remove('hide'); $('bpickQ').value = ''; renderPick(); if (!BUYERS) { try { await loadBuyers(); renderPick(); } catch (e) {} } };
 $('bpickQ').oninput = renderPick;
@@ -3353,7 +3388,7 @@ const howTag = b => b['usually buys by'] ? `<span class="bchip ${b['usually buys
 function buyersShown() {
   const q = $('byQ').value.trim().toLowerCase(), bs = (BUYERS && BUYERS.buyers) || [];
   const list = bs.filter(b => (!q || [b.name, b.username, b['interested in'], b.notes, b.email, b.platforms, b.postcode].join(' ').toLowerCase().includes(q))
-    && (!byFilter || (byFilter === 'msg' ? b.canMessage : b['usually buys by'] === byFilter)));
+    && (!byFilter || (byFilter === 'msg' ? b.canMessage : byFilter === 'lead' ? !(Number(b['times bought']) > 0) : b['usually buys by'] === byFilter)));
   const by = $('bySort').value, n = x => Number(x) || 0;
   return list.sort(by === 'spent' ? (a, b) => n(b['total spent']) - n(a['total spent']) : by === 'times' ? (a, b) => n(b['times bought']) - n(a['times bought'])
     : by === 'near' ? (a, b) => { const m = x => x['miles from home'] === '' || x['miles from home'] == null ? 1e9 : n(x['miles from home']); return m(a) - m(b); }
@@ -3361,8 +3396,8 @@ function buyersShown() {
 }
 function renderBuyers() {
   const list = buyersShown();
-  $('byList').innerHTML = !BUYERS ? '<p class="sub">Loading…</p>' : list.length ? list.map(b => `<button class="skrow${bySelecting && !canPick(b) ? ' off' : ''}" data-bk="${esc(b.key)}">${bySelecting ? `<input type="checkbox" class="pick" ${byPicked.has(b.key) ? 'checked' : ''} ${canPick(b) ? '' : 'disabled'} tabindex="-1">` : ''}<span style="flex:1">${esc(bName(b))}${b.name && b.username ? ' <small class="sub">@' + esc(b.username) + '</small>' : ''}<span class="sm">${esc(buyerLine(b)) || 'No sales yet'}${bySelecting && !b.canMessage ? ' · ' + (mkt(b) ? '⚠️ ' + mkt(b) + ' policy: contact at your own risk' : 'hasn\'t said yes to messages') : ''}</span><span class="bchips">${howTag(b)}</span>${buyerChips(b)}</span>${bySelecting ? '' : '<span class="go" style="align-self:center">›</span>'}</button>`).join('')
-    : '<p class="sub" style="padding:10px 0">' + ($('byQ').value || byFilter ? 'Nobody matches.' : 'No buyers yet. Add a name when you log a sale, or tap ＋ Add.') + '</p>';
+  $('byList').innerHTML = !BUYERS ? '<p class="sub">Loading…</p>' : list.length ? list.map(b => `<button class="skrow${bySelecting && !canPick(b) ? ' off' : ''}" data-bk="${esc(b.key)}">${bySelecting ? `<input type="checkbox" class="pick" ${byPicked.has(b.key) ? 'checked' : ''} ${canPick(b) ? '' : 'disabled'} tabindex="-1">` : ''}<span style="flex:1">${esc(bName(b))}${b.name && b.username ? ' <small class="sub">@' + esc(b.username) + '</small>' : ''}<span class="sm">${esc(buyerLine(b)) || 'Not bought yet (lead)'}${bySelecting && !b.canMessage ? ' · ' + (mkt(b) ? '⚠️ ' + mkt(b) + ' policy: contact at your own risk' : 'hasn\'t said yes to messages') : ''}</span><span class="bchips">${howTag(b)}</span>${buyerChips(b)}</span>${bySelecting ? '' : '<span class="go" style="align-self:center">›</span>'}</button>`).join('')
+    : '<p class="sub" style="padding:10px 0">' + ($('byQ').value || byFilter ? 'Nobody matches.' : 'No buyers yet. Add a name when you log a sale, or tap ＋ Add (also for someone you spoke to who hasn\'t bought yet).') + '</p>';
   $('bySelBar').classList.toggle('hide', !bySelecting);
   $('bySelN').textContent = byPicked.size + ' picked';
   $('btnBySelect').textContent = bySelecting ? 'Done' : 'Select';
@@ -3516,6 +3551,8 @@ function openOutreach(buyers, item, from) {
   $('ouTpl').innerHTML = '<option value="">Your last message</option>' + getTpls().map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
   $('ouSpot').innerHTML = '<option value="">None</option>' + getSpots().map((x, i) => `<option value="${i}">${esc(x.name)}</option>`).join('');
   show('vOutreach'); renderOutreach(); loadGuide();
+  // The latest saved messages (they may have been changed in ListMe)
+  syncTpls().then(ok => { if (ok && $('vOutreach') && !$('vOutreach').classList.contains('hide')) { const v = $('ouTpl').value; $('ouTpl').innerHTML = '<option value="">Your last message</option>' + getTpls().map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join(''); $('ouTpl').value = v; } });
 }
 // The photo stays in this page's memory only: it goes straight from your phone to the app you share to.
 var ouPhoto = null;

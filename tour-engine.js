@@ -4,7 +4,7 @@
    with example data, so no real data is ever baked into the app).
 
    FlipTour.start(cfg, { menu })   cfg = { app, name, key, chapters, ready?: async () => bool }
-   chapter = { id, icon, title, summary, steps: [step], effect?: [{ app, text, mock? }] }
+   chapter = { id, icon, title, summary, day?, steps: [step], effect?: [{ app, text, mock? }] }   (day groups the menu, newest first)
    step    = { title, text, todo?: [..], go?: '#/hash' | async fn, target?: 'css' | fn, mock?: html, wait?: bool, missing?: text }
    Classic script (no modules) so the Receipts app can load it too. */
 (function () {
@@ -15,7 +15,8 @@
 .ft-card{position:fixed;left:50%;transform:translateX(-50%);z-index:9999;width:min(540px,calc(100vw - 20px));max-height:min(64vh,640px);overflow:auto;
   background:var(--ft-bg);color:var(--ft-fg);border:1px solid var(--ft-line);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.45);padding:14px 16px 12px;
   font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-overflow-scrolling:touch}
-.ft-card.bottom{bottom:calc(10px + env(safe-area-inset-bottom,0px))}.ft-card.top{top:calc(10px + env(safe-area-inset-top,0px))}
+/* ft-at-top / ft-at-bottom, not top / bottom: ListMe's header is class "top" and its styles would land on the card */
+.ft-card.ft-at-bottom{bottom:calc(10px + env(safe-area-inset-bottom,0px))}.ft-card.ft-at-top{top:calc(10px + env(safe-area-inset-top,0px))}
 .ft-card.min{max-height:none;padding:8px 12px}
 .ft-head{display:flex;align-items:center;gap:8px;font-size:12px;opacity:.8}
 .ft-head .sp{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -36,6 +37,14 @@
 .ft-btn.pri{background:var(--ft-accent);color:var(--ft-accent-ink);border-color:var(--ft-accent)}
 .ft-btn:disabled{opacity:.4;cursor:default}
 .ft-menu{display:grid;gap:6px;margin:8px 0}
+.ft-day{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;opacity:.75;margin:12px 0 0}
+.ft-day.new{opacity:1;color:var(--ft-accent)}
+.ft-mk .ch{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;color:#fff;font-weight:800;font-size:11px;margin:4px 4px 0 0;vertical-align:middle}
+.ft-mk .ch.wa{background:#25d366}.ft-mk .ch.sms{background:#34c759}.ft-mk .ch.call{background:#0a84ff}.ft-mk .ch.mail{background:#ea4335}.ft-mk .ch.fbm{background:#0084ff}.ft-mk .ch.ig{background:#d6249f}.ft-mk .ch.v{background:#09b1ba}.ft-mk .ch.e{background:#e53238}
+.ft-mk .bell{display:inline-block;padding:1px 6px;border-radius:6px;background:#2f230b;color:#ffbe3d;font-weight:700;font-size:11px}
+.ft-mk .why{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;margin:3px 3px 0 0;background:#2a3150}.ft-mk .why.w{background:#0f2a1c;color:#4fe08a}.ft-mk .why.i{background:#2f230b;color:#ffbe3d}
+.ft-mk .ta{white-space:pre-wrap;background:#0e1124;border:1px solid #2a3150;border-radius:8px;padding:6px 8px;margin-top:6px;font-size:12px}
+.ft-mk .dot{display:inline-grid;place-items:center;width:22px;height:18px;border-radius:5px;font-size:10px;font-weight:700;background:#1d2238;color:#9aa3c7;margin-left:3px}.ft-mk .dot.g{background:#0f2a1c;color:#4fe08a}
 .ft-menu button{display:flex;gap:10px;align-items:center;text-align:left;font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--ft-line);background:transparent;color:inherit;cursor:pointer}
 .ft-menu button .t{flex:1}.ft-menu button small{display:block;opacity:.75;font-size:12px}
 .ft-flow{display:grid;gap:4px;margin:8px 0}
@@ -116,8 +125,14 @@
 
   function place() {   // ring around the target, card where it doesn't cover it
     if (!T) return;
+    // The page redrew under the tour (fresh data came in): find the same thing again
+    if (T.el && !document.contains(T.el) && !T.menu) {
+      const t = T.steps[T.i] && T.steps[T.i].s.target; let n = null;
+      try { n = typeof t === 'function' ? t() : t ? document.querySelector(t) : null; } catch (e) {}
+      if (n) T.el = n;
+    }
     const { ring, dim, card, el } = T;
-    if (!el || !document.contains(el)) { ring.style.display = 'none'; dim.style.display = T.min ? 'none' : 'block'; card.className = 'ft-card bottom' + (T.min ? ' min' : ''); return; }
+    if (!el || !document.contains(el)) { ring.style.display = 'none'; dim.style.display = T.min ? 'none' : 'block'; card.className = 'ft-card ft-at-bottom' + (T.min ? ' min' : ''); return; }
     const r = el.getBoundingClientRect(), pad = 6;
     dim.style.display = 'none';
     ring.style.display = T.min ? 'none' : 'block';
@@ -127,7 +142,7 @@
     const underBottom = Math.max(0, r.bottom - (innerHeight - ch - gap)), underTop = Math.max(0, ch + gap - r.top);
     const top = underBottom > underTop || (underBottom === underTop && r.top + r.height / 2 > innerHeight * 0.55);
     if (T.side !== (top ? 'top' : 'bottom')) T.side = top ? 'top' : 'bottom';
-    card.className = 'ft-card ' + T.side + (T.min ? ' min' : '');
+    card.className = 'ft-card ft-at-' + T.side + (T.min ? ' min' : '');
   }
 
   async function show(idx) {
@@ -171,15 +186,18 @@
     }
     if (T.menu) {
       const done = store.get(T.cfg.key).done || {};
+      // Grouped by the day each change came in, newest first
+      const groups = [];
+      T.cfg.chapters.forEach((c, k) => { let g = groups.find(x => x.d === (c.day || '')); if (!g) groups.push(g = { d: c.day || '', list: [] }); g.list.push([c, k]); });
       card.innerHTML = `<div class="ft-head"><span class="sp">${esc(T.cfg.name)} · guided tour</span><button class="ft-ib" data-ft="close" aria-label="Close">✕</button></div>
-        <h3>What changed, feature by feature</h3><p>Pick one, or start at the top. Each one opens the screen, points at the real thing, tells you what to do, then shows what it changes in your other apps and the Sheet.</p>
-        <div class="ft-menu">${T.cfg.chapters.map((c, k) => `<button data-ft="ch" data-k="${k}"><span style="font-size:22px">${c.icon}</span><span class="t"><b>${esc(c.title)}</b><small>${esc(c.summary || '')}</small></span><span>${done[c.id] ? '✓' : '›'}</span></button>`).join('')}</div>
+        <h3>What changed, feature by feature</h3><p>Newest first. Pick one, or start at the top. Each one opens the screen, points at the real thing, tells you what to do, then shows what it changes in your other apps and the Sheet.</p>
+        ${groups.map((g, gi) => `${g.d ? `<div class="ft-day${gi === 0 && groups.length > 1 ? ' new' : ''}">${esc(g.d)}</div>` : ''}<div class="ft-menu">${g.list.map(([c, k]) => `<button data-ft="ch" data-k="${k}"><span style="font-size:22px">${c.icon}</span><span class="t"><b>${esc(c.title)}</b><small>${esc(c.summary || '')}</small></span><span>${done[c.id] ? '✓' : '›'}</span></button>`).join('')}</div>`).join('')}
         <div class="ft-nav"><button class="ft-btn" data-ft="close">Later</button><span class="ft-dots"></span><button class="ft-btn pri" data-ft="ch" data-k="0">Start ›</button></div>`;
       T.el = null; place(); return;
     }
     const wait = s.wait && T.ready === false;
     const effect = s.effect ? `<div class="ft-flow">${s.effect.map((x, k) => `${k ? '<div class="arrow" aria-hidden="true">↓</div>' : ''}<div class="ft-step"><span class="ft-chip ${esc(x.app)}">${esc(x.app)}</span>${x.text}${x.mock || ''}</div>`).join('')}</div>` : '';
-    card.innerHTML = `<div class="ft-head"><span style="font-size:16px">${ch.icon}</span><span class="sp">${esc(ch.title)} · ${st.si + 1} of ${st.n}</span>
+    card.innerHTML = `<div class="ft-head"><span style="font-size:16px">${ch.icon}</span><span class="sp">${ch.day ? esc(ch.day.split('·').pop().trim()) + ' · ' : ''}${esc(ch.title)} · ${st.si + 1} of ${st.n}</span>
         <button class="ft-ib" data-ft="menu" aria-label="All features">☰</button><button class="ft-ib" data-ft="min" aria-label="Hide the card to see the screen">▾</button><button class="ft-ib" data-ft="close" aria-label="Close the tour">✕</button></div>
       <h3>${esc(s.title)}</h3>
       ${loading && s.target ? '<p class="ft-miss">Opening it…</p>' : ''}
@@ -208,7 +226,7 @@
     if (!document.getElementById('ft-css')) { const st = document.createElement('style'); st.id = 'ft-css'; st.textContent = css; document.head.appendChild(st); }
     const ring = document.createElement('div'); ring.className = 'ft-ring';
     const dim = document.createElement('div'); dim.className = 'ft-dim';
-    const card = document.createElement('div'); card.className = 'ft-card bottom'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-label', cfg.name + ' guided tour');
+    const card = document.createElement('div'); card.className = 'ft-card ft-at-bottom'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-label', cfg.name + ' guided tour');
     const th = cfg.theme || {};
     [ring, dim, card].forEach(x => { x.style.setProperty('--ft-accent', th.accent || '#0a84ff'); x.style.setProperty('--ft-accent-ink', th.accentInk || '#fff'); x.style.setProperty('--ft-bg', th.bg || '#fff'); x.style.setProperty('--ft-fg', th.fg || '#111'); x.style.setProperty('--ft-line', th.line || 'rgba(127,127,127,.35)'); x.style.setProperty('--ft-strong', th.strong || 'inherit'); });
     document.body.append(dim, ring, card);

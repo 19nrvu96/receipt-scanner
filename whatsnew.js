@@ -1,4 +1,4 @@
-/* Guided tour of the 15 November changes in Receipts. Each feature opens the real screen, points at the
+/* Guided tour of the 15 and 16 November changes in Receipts. Each feature opens the real screen, points at the
    real thing, says what to do, then shows what it does in the Google Sheet and in FlipCheck and ListMe.
    Opens once on this phone; reopen from Settings → What's new. Engine: tour-engine.js.
    Previews use example data only (this app is public, so no real data goes in it). */
@@ -13,6 +13,39 @@
     '<span class="tag soon">Last day Fri 27 Nov</span><span class="tag">🏬 Shop: often 28–30 days</span><span class="tag">QR code saved</span>' +
     '<div><span class="b">Show return QR code</span></div><div><span class="b s">✓ Returned it</span><span class="b s">📷 Refund receipt</span></div></div>', 'Sales → To return');
 
+  const D16 = 'New today · 16 Nov', D15 = 'Yesterday · 15 Nov';
+  const MSGS = M.receipts('<div class="c"><div class="st">Saved messages</div><div class="sm">Shared with ListMe (the Messages tab in your Sheet): change one here or in ListMe and it changes in both.</div>' +
+    '<div style="margin-top:6px"><b>Still available</b><div class="sm">Hi [Name], yes the [Item] is still available at £[Price]. I can do [Times]…</div></div><div><span class="b s">Edit</span><span class="b s">✕</span></div></div>', 'Settings → Collection');
+  const NEWCH = [
+    { id: 'rs-msgs', day: D16, icon: '✉️', title: 'Saved messages, shared with ListMe', summary: 'One list, edit it in either app',
+      steps: [
+        { title: 'Your saved messages', go: go(() => openSettings()), target: '#stTpls', mock: MSGS, mockAlways: true,
+          text: 'Your saved messages now live in your Sheet (a new <b>Messages</b> tab) instead of only on this phone, so ListMe uses the same ones. Any you saved on this phone before are moved there the first time. Change one here and it changes in ListMe, and the other way round. ListMe also fills <b>[Features]</b>, <b>[Condition]</b> and <b>[Link]</b> from the listing.',
+          todo: ['Open <b>Settings</b> and scroll to <b>Saved messages</b>.', 'Edit one, or add one under <b>＋ Add a saved message</b>.', 'Needs today\'s script update: run <b>sh deploy.sh</b> on your Mac.'] },
+      ],
+      effect: [
+        { app: 'Sheet', text: 'The <b>Messages</b> tab: name, message, when it was changed.', mock: M.sheet('Messages', ['name', 'message', 'updated'], [['Where to meet', 'Hi [Name], for security I don\'t meet people at my door…', '16/11/2026 07:00'], ['Still available', 'Hi [Name], yes the [Item] is still available at £[Price]…', '16/11/2026 07:00']], [[0, 0], [1, 0]], ['Purchases', 'Sales', 'Buyers', 'Messages']) },
+        { app: 'ListMe', text: 'On each item with possible buyers (🔔), and on the new Leads page, these messages are filled in from the listing, ready to send by WhatsApp, text or email.' },
+      ] },
+    { id: 'rs-leads', day: D16, icon: '👥', title: 'Leads: spoken to, not bought yet', summary: 'They become buyers when they buy',
+      steps: [
+        { title: 'Not bought yet', go: go(() => openBuyers()), target: '[data-f=lead]',
+          text: 'People you\'ve spoken to who haven\'t bought yet are on the Buyers tab too: add them with <b>＋ Add</b> here, or <b>+ Add a lead</b> in ListMe after a chat. The new <b>Not bought yet</b> filter shows just them.',
+          todo: ['Open <b>Sales → Buyers</b>.', 'Tap <b>Not bought yet</b>.'] },
+        { title: 'When they buy', go: sales(), target: '#btnNewSale',
+          text: 'Log the sale and pick them under <b>Choose from your buyers</b> (or type their name). They become a buyer in both apps, with the sale counted on their row, even if you saved them by their username and the sale has their name (or the other way round).' },
+      ],
+      effect: [
+        { app: 'Sheet', text: 'Their row on the <b>Buyers</b> tab: times bought, total spent and last bought fill in.', mock: M.sheet('Buyers', ['name', 'username', 'times bought', 'total spent', 'last bought'], [['Priya Shah', 'priya_s', '1', '85', '20/11/2026']], [[0, 2], [0, 3], [0, 4]], ['Purchases', 'Sales', 'Buyers', 'Messages']) },
+        { app: 'ListMe', text: 'They move from <b>Interested</b> to <b>Buyers</b> on ListMe\'s Leads page, with "bought N times".' },
+      ] },
+    { id: 'rs-dark', day: D15, icon: '🌙', title: 'Dark mode', summary: 'Automatic, light or dark',
+      steps: [
+        { title: 'Look', go: go(() => openSettings()), target: '#stTheme',
+          text: '<b>Automatic</b> follows your phone (dark at night if your phone is). <b>Light</b> or <b>Dark</b> keeps it that way. QR codes stay black on white so they still scan.',
+          todo: ['Open <b>Settings → Look</b>.', 'Pick one: it changes straight away.'] },
+      ] },
+  ];
   const chapters = [
     { id: 'rs-toreturn', icon: '↩️', title: 'To return', summary: 'Last day, returned, refund proof',
       steps: [
@@ -123,7 +156,9 @@
       ] },
   ];
 
-  const cfg = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:1115', chapters, ready,
+  chapters.forEach(c => { c.day = c.day || D15; });
+  const all = NEWCH.filter(c => c.day === D16).concat(chapters, NEWCH.filter(c => c.day === D15));
+  const cfg = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:1116', chapters: all, ready,
     get theme() { const d = document.documentElement.classList.contains('dark');
       return d ? { accent: '#0a84ff', accentInk: '#fff', bg: '#1d2027', fg: '#e8e8ea', line: '#3a3d45', strong: '#fff' } : { accent: '#0a84ff', accentInk: '#fff', bg: '#fff', fg: '#111', line: '#d6d6db', strong: '#111' }; },
     when: () => !!localStorage.getItem('rs_url') };
