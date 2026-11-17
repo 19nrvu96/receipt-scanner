@@ -16,7 +16,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases'];
-const APP_VERSION = 'v66';
+const APP_VERSION = 'v67';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -614,8 +614,8 @@ function buildReview(result, source) {
   $('pMethod').classList.toggle('on', state.method === 'Delivery');
 
   // Already saved? (same order number, or same store, date and total) — checked by your Sheet, free
-  $('dupBanner').textContent = meta.possibleDuplicate ? '⚠️ ' + meta.possibleDuplicate + '. Check before saving.' : '';
-  $('dupBanner').classList.toggle('hide', !meta.possibleDuplicate);
+  $('dupBanner').textContent = meta.possibleDuplicate ? '⚠️ ' + meta.possibleDuplicate + '. Check before saving.' : meta.returnDone ? '✅ This refund completed your return of ' + meta.returnDone.item + (meta.returnDone.to ? ' (to ' + meta.returnDone.to + ')' : '') + '. Save to log the money.' : '';
+  $('dupBanner').classList.toggle('hide', !meta.possibleDuplicate && !meta.returnDone);
 
   // Refunds: each line is matched to the purchase it refunds, which is then marked returned
   if (state.refund) {
@@ -1618,15 +1618,23 @@ function renderTodo(w) {
   else if (w.toCollect) rows.push(['🛍️', w.toCollect + ' order' + s(w.toCollect) + ' ready to collect', 'slCollWrap']);
   if (w.toPost) rows.push(['📦', w.toPost + ' parcel' + s(w.toPost) + ' to post' + (today > 0 ? ' (' + today + ' today)' : ''), 'slPostWrap']);
   if (w.pickupSoon) rows.push(['🚚', w.pickupSoon + ' return pick-up' + s(w.pickupSoon) + ' today or tomorrow: print the label and pack it', 'slToRetWrap']);
+  const seen = seenRefunds();
+  (w.refundsDone || []).filter(x => !seen[x.id]).forEach(x => rows.unshift(['✅', 'Return completed: ' + x.item.slice(0, 40) + ', ' + money(x.amount) + ' refunded' + (x.to ? ' to ' + x.to : '') + (x.by ? '. Should arrive by ' + dayName(x.by) : ''), 'slToRetWrap', x.id]));
   if (w.toReturn) rows.push(['↩️', w.toReturn + ' thing' + s(w.toReturn) + ' to take back', 'slToRetWrap']);
+  if (w.onWay) rows.push(['🚚', w.onWay + ' return' + s(w.onWay) + ' on the way back: the refund email will follow', 'slToRetWrap']);
   if (w.returnsSoon) rows.push(['⏳', w.returnsSoon + ' receipt' + s(w.returnsSoon) + ': last days to return', 'slRetWrap']);
   if (w.needs) rows.push(['⚠️', w.needs + ' sale' + s(w.needs) + ' need' + (w.needs === 1 ? 's' : '') + ' a check', 'slNeedsWrap']);
   if (w.tripsToLog) rows.push(['🚗', w.tripsToLog + ' trip' + s(w.tripsToLog) + ' to log in your mileage', 'trips']);
   $('todo').classList.toggle('hide', !rows.length);
-  $('todo').innerHTML = rows.slice(0, 4).map(r => `<button data-todo="${r[2]}"><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`).join('');
+  $('todo').innerHTML = rows.slice(0, 5).map(r => `<button data-todo="${r[2]}"${r[3] ? ` data-seen="${esc(r[3])}"` : ''}><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`).join('');
 }
+// Completed-refund notices show until tapped
+const LS_SEEN_REF = 'rs_seen_refunds';
+function seenRefunds() { try { return JSON.parse(localStorage.getItem(LS_SEEN_REF) || '{}'); } catch (e) { return {}; } }
 // Tapping a to-do opens Sales at that section
-$('todo').onclick = e => { const b = e.target.closest('[data-todo]'); if (!b) return; if (b.dataset.todo === 'trips') openTrip(); else openSales(b.dataset.todo); };
+$('todo').onclick = e => { const b = e.target.closest('[data-todo]'); if (!b) return;
+  if (b.dataset.seen) { const s = seenRefunds(); s[b.dataset.seen] = Date.now(); try { localStorage.setItem(LS_SEEN_REF, JSON.stringify(s)); } catch (err) {} }
+  if (b.dataset.todo === 'trips') openTrip(); else openSales(b.dataset.todo); };
 function goTo(id) {
   const el = $(id);
   if (!el || el.classList.contains('hide')) return;
@@ -1641,6 +1649,9 @@ function countsFrom(d) {
            late: tp.filter(l => l.daysLeft !== null && l.daysLeft < 0).length, returnsSoon: (d.returnsClosing || []).length,
            toReturn: ((d.returns && d.returns.open) || []).filter(r => r.status === 'To return').length,
            pickupSoon: ((d.returns && d.returns.open) || []).filter(r => r.status === 'To return' && r.pickupDays !== null && r.pickupDays !== undefined && r.pickupDays <= 1).length,
+           onWay: ((d.returns && d.returns.open) || []).filter(r => r.status === 'Sent back').length,
+           refundsDone: ((d.returns && d.returns.done) || []).filter(r => (r.status === 'Completed' || r.status === 'Refunded') && (x => x instanceof Date && (Date.now() - x) < 8 * 864e5)(toDate(r.refundedOn))).slice(0, 3)
+             .map(r => ({ id: r.id, item: r.item, amount: r.refundAmount, to: r.refundTo, by: r.refundBy, on: r.refundedOn })),
            toCollect: tc.length, collectSoon: tc.filter(c => c.daysLeft !== null && c.daysLeft <= 1).length,
            tripsToLog: TRIPS ? TRIPS.length : ((CFG.waiting || {}).tripsToLog || 0) };
 }
@@ -1778,7 +1789,7 @@ function renderSales() {
 // Things going back to the shop (the Returns tab): last day, QR code, returned, refund proof.
 function renderToReturn(d) {
   const R = d.returns || { open: [], done: [] };
-  const open = R.open || [], done = (R.done || []).filter(x => x.status === 'Refunded' || x.status === 'Sorted');
+  const open = R.open || [], done = (R.done || []).filter(x => x.status === 'Completed' || x.status === 'Refunded' || x.status === 'Sorted');
   $('slToRetWrap').classList.toggle('hide', !open.length && !done.length);
   if (open.length) setTimeout(() => prefetchReturnCodes(open), 400);   // the code opens with no signal at the counter
   const lastDay = r => r.daysLeft === null ? '' : r.daysLeft < 0 ? '<span class="tag late">Past the last day (' + esc(dayName(r.returnBy)) + '): ask the shop</span>'
@@ -1789,6 +1800,9 @@ function renderToReturn(d) {
     <div class="tags">${r.status === 'Sent back' ? '<span class="tag">' + (r.tracking || r.method === 'Pick-up' ? '🚚 On its way back since ' : 'Returned ') + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}${r.returnBy ? `<span class="tag">${r.extended ? '🎄 Extended return date' : r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>` : ''}${r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
     ${r.notes ? '<div class="sm" style="margin-top:4px">' + esc(r.notes) + '</div>' : ''}
     ${r.tracking || r.returnProof ? `<div class="sm" style="margin-top:4px">📦 ${esc([r.courier, r.tracking].filter(Boolean).join(' '))}${r.sentTo ? ' → ' + esc(r.sentTo) : ''}${r.returnProof ? ` · <a href="${esc(r.returnProof)}" target="_blank" rel="noopener">courier receipt</a>` : ''}</div>` : ''}
+    ${r.status === 'Sent back' ? refundNextHtml(r) : ''}
+    ${r.refundTo ? `<div class="sm" style="margin-top:4px">💷 Refund to ${esc(r.refundTo)}${r.refundTime ? ' · arrives ' + esc(r.refundTime) + ' after it\'s issued' : ''} <button class="link" data-rto="${i}">change</button></div>`
+      : r.online || r.method ? `<div class="sm" style="margin-top:4px">💷 Where does the refund go? <button class="link" data-rto="${i}">Choose</button></div>` : ''}
     ${pickupHtml(r, i)}
     ${r.files || r.link ? `<button class="btn" data-rqr="${i}" style="margin-top:10px">Show return QR code</button>` : ''}
     <div class="duo" style="margin-top:8px">${r.status === 'To return' ? `<button class="btn ${r.files || r.link ? 'sec' : ''}" data-rsent="${i}">${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Returned it'}</button>` : `<button class="btn sec" data-rsorted="${i}">Already sorted</button>`}
@@ -1797,7 +1811,27 @@ function renderToReturn(d) {
     ${(r.online || r.method) && !r.returnProof ? `<button class="link" data-rscan="${i}" style="margin-top:6px">📷 Refund receipt${r.online ? ' (or forward the refund email)' : ''}</button>` : ''}
     ${r.email ? `<a class="link" href="${esc(r.email.split('\n')[0])}" target="_blank" rel="noopener" style="margin-top:8px;display:inline-block">Open the return email</a>` : ''}
     ${r.status === 'To return' ? `<button class="link" data-rcancel="${i}" style="margin-top:8px">${r.links && r.links.cancel ? '✕ Cancel this return' : '↩︎ Not returning it after all'}</button>` : ''}</div></div>`).join('')
-    + (done.length ? `<details class="more"><summary>Returned recently (${done.length})</summary>${done.map(r => `<div class="rdone">✅ ${esc(r.item)} · ${r.status === 'Refunded' ? money(r.refundAmount) + ' back ' + esc(dayName(r.refundedOn)) : 'sorted'}${r.proof ? `<a href="${esc(r.proof.split('\n')[0])}" target="_blank" rel="noopener">refund proof</a>` : ''}</div>`).join('')}</details>` : '');
+    + (done.length ? `<details class="more"><summary>Returned recently (${done.length})</summary>${done.map(r => `<div class="rdone">✅ ${esc(r.item)} · ${r.status !== 'Sorted' ? 'Completed: ' + money(r.refundAmount) + ' refunded ' + esc(dayName(r.refundedOn)) + (r.refundTo ? ' to ' + esc(r.refundTo) : '') + (r.refundBy ? ' · should arrive by ' + esc(dayName(r.refundBy)) : '') : 'sorted'}${r.proof ? `<a href="${esc(r.proof.split('\n')[0])}" target="_blank" rel="noopener">refund proof</a>` : ''}</div>`).join('')}</details>` : '');
+}
+
+// Take a photo now, or pick one already in your photos
+function pickPhotoSource(title, sub, set) {
+  const v = sheet(`<button class="close" data-close="1" aria-label="Close">✕</button><h3>📷 ${esc(title)}</h3><p class="sub">${esc(sub)}</p>
+    <button class="btn" data-src="cam">📷 Take a photo</button><button class="btn sec" data-src="lib">🖼 Choose from photos</button>`);
+  v.querySelector('.sheet').addEventListener('click', e => {
+    const s = e.target.dataset.src; if (!s) return;
+    v.remove(); set(); pages = []; job = null; lastSource = s; $(s === 'cam' ? 'inpCam' : 'inpLib').click();
+  });
+}
+
+// What happens after it's on its way back: the refund email, where the money goes, how long it takes
+function refundNextHtml(r) {
+  const shop = r.store || 'The shop', to = r.refundTo ? ' to your ' + esc(r.refundTo.replace(/^your /i, '')) : '';
+  const amt = r.refundEstimate ? money(r.refundEstimate) : 'the refund';
+  return `<div class="nextbox"><b>What happens next</b><ol class="sm">
+    <li>${esc(shop)} checks the return, then emails to confirm ${amt}${to}.</li>
+    <li>${r.online ? 'Make sure that email reaches your receipts address (forwarded, or your email rule). ' : ''}It's read automatically: the return is marked <b>Completed</b> in your Sheet and you get a ✅ notification here.</li>
+    <li>${r.refundTime ? 'The money usually reaches you ' + esc(r.refundTime) + ' after the refund is issued.' : 'Card refunds usually take 3–5 working days to show; shop balance or gift card ones are quicker.'}</li></ol></div>`;
 }
 
 // A courier's receipt (UPS collection, Evri drop-off…): not a purchase. Ties it to the return going back
@@ -1841,8 +1875,11 @@ function showParcelReceipt(j) {
     try {
       const r = await api('parcelReceipt', { target: o.kind === 'return' ? { kind: 'return', id: o.id } : { kind: 'label', ids: [o.id] }, parcel: p, image: (j.pages[0] || {}).dataUrl || '' });
       v.remove(); await jobDel(j.id); job = null; refreshJobs(); SALES = null;
-      toast(r.already ? 'Already filed: nothing changed' : o.kind === 'return' ? '✓ On its way back: ' + (p.carrier || 'courier') + ' receipt saved. Not refunded yet.' : '✓ Posted: drop-off saved');
-      openSales(o.kind === 'return' ? 'slToRetWrap' : undefined);
+      await openSales(o.kind === 'return' ? 'slToRetWrap' : undefined);
+      if (o.kind === 'return' && !r.already) {
+        const ret = Object.assign({}, RET_OPEN().find(x => x.id === o.id) || {}, r.ret || {});
+        sheet(`<h3>🚚 On its way back</h3><p class="sub">${esc(ret.item || o.label)}: ${esc(p.carrier || 'courier')} receipt saved${p.tracking ? ' (tracking ' + esc(p.tracking) + ')' : ''}. Not refunded yet.</p>${refundNextHtml(ret)}<button class="btn" data-close="1">OK</button>`);
+      } else toast(r.already ? 'Already filed: nothing changed' : '✓ Posted: drop-off saved');
     } catch (err) {
       btn.disabled = false; btn.textContent = o.kind === 'return' ? '✓ Mark it sent back' : '✓ Mark it posted';
       toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for courier receipts' : err.message, true);
@@ -2135,8 +2172,20 @@ $('vSales').addEventListener('click', async e => {
   if (t.dataset.lab !== undefined) return showLabel(SALES.toPost[Number(t.dataset.lab)]);
   const RO = (SALES && SALES.returns && SALES.returns.open) || [];
   if (t.dataset.rqr !== undefined) return showReturnCode(RO[Number(t.dataset.rqr)]);
-  if (t.dataset.rscan !== undefined) { RETURN_FOR = RO[Number(t.dataset.rscan)].id; PARCEL_FOR = null; pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); return; }
-  if (t.dataset.rparcel !== undefined) { PARCEL_FOR = RO[Number(t.dataset.rparcel)].id; RETURN_FOR = null; pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); return; }
+  if (t.dataset.rscan !== undefined) { const r = RO[Number(t.dataset.rscan)]; return pickPhotoSource('Refund receipt', 'The shop\'s refund receipt for ' + r.item + '. For an online order the refund email does this for you.', () => { RETURN_FOR = r.id; PARCEL_FOR = null; }); }
+  if (t.dataset.rto !== undefined) {
+    const r = RO[Number(t.dataset.rto)], shop = r.store || 'the shop';
+    const v = sheet(`<button class="close" data-close="1" aria-label="Close">✕</button><h3>💷 Where does the refund go?</h3><p class="sub">${esc(r.item)}. What you picked when you started the return with ${esc(shop)}.</p>
+      <button class="btn" data-to="Original payment method">Original payment method${r.payment ? ' (' + esc(r.payment) + ')' : ''}</button>
+      <button class="btn sec" data-to="${esc(/amazon/i.test(shop) ? 'Amazon gift card balance' : shop + ' balance / gift card')}">${esc(/amazon/i.test(shop) ? 'Amazon balance (gift card)' : shop + ' balance / gift card')}</button>`);
+    v.querySelector('.sheet').addEventListener('click', async e => {
+      const to = e.target.dataset.to; if (!to) return;
+      v.remove();
+      try { await returnUpdate(r, { refundTo: to }); toast('Refund to: ' + to); } catch (err) { toast(err.message, true); }
+    });
+    return;
+  }
+  if (t.dataset.rparcel !== undefined) { const r = RO[Number(t.dataset.rparcel)]; return pickPhotoSource((r.method === 'Pick-up' ? 'Collection' : 'Drop-off') + ' receipt', 'The courier\'s receipt for ' + r.item + '. It\'s saved as proof it\'s on its way back: not as a refund.', () => { PARCEL_FOR = r.id; RETURN_FOR = null; }); }
   if (t.dataset.copy !== undefined) { try { await navigator.clipboard.writeText(t.dataset.copy); toast('Copied: ' + t.dataset.copy.slice(0, 40)); } catch (err) { toast('Couldn\'t copy: press and hold it instead', true); } return; }
   if (t.dataset.rprinted !== undefined) { const r = RO[+t.dataset.rprinted]; t.disabled = true; try { await returnUpdate(r, { printed: true }); toast('Label printed ✓'); } catch (err) { t.disabled = false; toast(err.message, true); } return; }
   if (t.dataset.rresched !== undefined) return returnReschedule(RO[+t.dataset.rresched]);
