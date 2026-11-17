@@ -15,7 +15,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases'];
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v64';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2167,14 +2167,30 @@ function collectTag(c) {
   const dd = toDate(c.collectBy);
   return '<span class="tag ' + (c.daysLeft <= 3 ? 'soon' : '') + '">collect by ' + esc(dd ? dd.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : c.collectBy) + ' · ' + c.daysLeft + ' days</span>';
 }
+// Identical lines in one order are the same email read twice (e.g. forwarded twice): count them once
+function collectItems(c) {
+  const seen = {};
+  return (c.items || []).filter(x => { const k = x.qty + '|' + x.name + '|' + x.each; if (seen[k]) return false; seen[k] = 1; return true; });
+}
+function collectFor(c) {
+  const it = collectItems(c);
+  return it.length ? it.map(x => x.qty + ' × ' + x.name).join(', ') : collectTitle(c);
+}
+// "Order 1 of 2 at Argos Shirley": when several orders wait at one shop, each has its own barcode
+function collectNth(c) {
+  const open = ((SALES && SALES.toCollect) || []).filter(x => x.status === 'To collect');
+  const here = open.filter(x => (x.store || x.retailer) === (c.store || c.retailer));
+  return here.length > 1 && c.status === 'To collect' ? { n: here.indexOf(c) + 1, of: here.length } : null;
+}
 function renderCollect() {
   const list = (SALES && SALES.toCollect) || [];
+  list.forEach(c => { const it = collectItems(c); if (it.length < (c.items || []).length) { c.items = it; c.qty = it.reduce((s, x) => s + x.qty, 0); } });
   $('slCollWrap').classList.toggle('hide', !list.length);
   $('slColl').innerHTML = list.map((c, i) => `<div class="card scard" data-cview="${i}"><div class="sb">
     <div class="st">${c.qty > 1 ? '<span class="qtybadge">' + c.qty + ' ×</span> ' : ''}${esc(c.items && c.items.length === 1 ? c.items[0].name : collectTitle(c))}</div>
     <div class="sm">📍 ${esc([c.store || c.retailer, c.order ? '#' + c.order : ''].filter(Boolean).join(' · '))}</div>
     ${c.total ? `<div class="sm">${money(c.total)}${c.qty > 1 && c.items.length === 1 ? ' · ' + money(c.items[0].each) + ' each' : ''}${c.purpose ? ' · for ' + esc(c.purpose) : ''}</div>` : ''}
-    <div class="tags">${collectTag(c)}</div>
+    <div class="tags">${collectTag(c)}${collectNth(c) ? ' <span class="tag">order ' + collectNth(c).n + ' of ' + collectNth(c).of + ' here · own barcode</span>' : ''}</div>
     ${c.status === 'Collected' ? `<div class="duo" style="margin-top:8px">${c.mileage ? '<span class="sub">🚗 trip logged</span>' : `<button class="btn sec" data-ctrip="${i}">🚗 Log the trip</button>`}
       ${c.receipt ? '<span class="sub">🧾 receipt saved</span>' : `<button class="btn sec" data-crec="${i}">🧾 Add receipt</button>`}</div>`
     : `<div class="duo" style="margin-top:8px"><button class="btn" data-cview="${i}">Details &amp; code</button><button class="btn sec" data-cdone="${i}">✓ Collected</button></div>`}
@@ -2222,8 +2238,9 @@ function collectSheetHtml(c) {
     <p><b>${esc(c.store || c.retailer || '')}</b>${c.address ? '<br>' + esc(c.address) : ''}</p>
     <div class="duo"><a class="btn sec" href="${maps}" target="_blank" rel="noopener">🧭 Directions</a><button class="btn sec" data-cal="1">📅 Remind me</button></div>
     <h4 class="sech">Opening times</h4>${hoursHtml(c)}
-    ${c.status === 'To collect' ? `<h4 class="sech">Show at the counter</h4>
-    ${c.order ? barcodeSvg(c.order) + `<p class="ordbig">${esc(c.order)}</p><p class="hint">Barcode made from your order number. If it won't scan, read the number out or type it at the kiosk.</p>` : ''}
+    ${c.status === 'To collect' ? `<h4 class="sech">Show at the counter${collectNth(c) ? ' (order ' + collectNth(c).n + ' of ' + collectNth(c).of + ')' : ''}</h4>
+    <p class="bcfor">This barcode is for: <b>${esc(collectFor(c))}</b></p>
+    ${c.order ? barcodeSvg(c.order) + `<p class="ordbig">${esc(c.order)}</p><p class="hint">Barcode made from your order number. If it won't scan, read the number out or type it at the kiosk.${collectNth(c) ? ' Your other order here has its own card and barcode.' : ''}</p>` : ''}
     ${c.link ? '<a class="btn ghost" href="' + esc(c.link) + '" target="_blank" rel="noopener">Open the original email</a>' : ''}
     <button class="btn" data-cdone2="1">✓ Collected</button>
     <button class="btn ghost danger" data-ccancel="1">Cancel collection</button>` : ''}`;
