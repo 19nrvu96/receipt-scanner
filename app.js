@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v77';
+const APP_VERSION = 'v78';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -541,7 +541,24 @@ function showErrImg() {
 
 // Review-screen failures are separate from extraction failures: the scan
 // already succeeded and is kept in lastResult, so no new Gemini request is needed.
+// Emailed receipts: links to the email itself, and to any return or refund emails on the same order, to check by hand
+function renderMailLinks(q) {
+  const box = $('rvMail'), rets = (q && q.returns) || [];
+  if (!q || (!q.link && !rets.length)) { box.classList.add('hide'); box.innerHTML = ''; return; }
+  const a = (u, t) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)} ↗</a>`;
+  const links = [q.link ? a(q.link, 'Order email') : ''];
+  let line = '';
+  rets.forEach(r => {
+    r.emails.forEach((u, i) => links.push(a(u, i ? 'Return update' : 'Return email')));
+    r.proof.forEach(u => links.push(a(u, 'Refund email')));
+    line = line || (r.refundAmount ? 'Refunded ' + money(r.refundAmount) + ' for this order.'
+      : r.refundEstimate ? 'You started a return on this order. The shop says you get ' + money(r.refundEstimate) + ' back.' : 'You started a return on this order.');
+  });
+  box.innerHTML = '<b>📧 Check the emails</b><div>' + esc((line ? line + ' ' : '') + 'Open them to compare the prices with what\'s below.') + '</div><div class="ouacts">' + links.filter(Boolean).join('') + '</div>';
+  box.classList.remove('hide');
+}
 function showReview(result, source) {
+  renderMailLinks(null);
   try {
     buildReview(result, source);
   } catch (err) {
@@ -1302,6 +1319,7 @@ $('qList').onclick = async e => {
     showReview(q.result, 'email');
     if (state) {
       state.queueId = q.id;
+      renderMailLinks(q);
       const sender = q.result.meta?.orderEmail;
       if (sender) toast('From ' + sender);
     }
@@ -4973,6 +4991,8 @@ function retById(id) {
   const all = [].concat((PEND && PEND.open) || [], (PEND && PEND.done) || [], RET_OPEN());
   return all.find(r => r.id === id);
 }
+// The shop's return email(s) on a return card, to check by hand
+const retMail = r => String(r.email || '').split('\n').filter(u => /^https?:/.test(u)).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">${i ? 'Return update' : 'Return email'} ↗</a>`).join('');
 function pendCardHtml(r, top) {
   return `<div class="card scard pend${top ? ' swipe' : ''}" data-rid="${esc(r.id)}"${top ? ' data-rkey="sent:' + esc(r.id) + '"' : ''}><div class="sb">
     ${top ? '<button class="pendx" data-ract="read" aria-label="Mark as read">✕</button>' : ''}
@@ -4980,6 +5000,7 @@ function pendCardHtml(r, top) {
     <div class="sm">${[esc(r.store), r.order ? '#' + esc(r.order) : '', r.refundEstimate ? 'about ' + money(r.refundEstimate) + ' back' : ''].filter(Boolean).join(' · ')}</div>
     <div class="tags"><span class="tag">🚚 On its way back since ${esc(dayName(r.sentOn))}</span>${r.refundTo ? '<span class="tag">💷 to ' + esc(r.refundTo) + '</span>' : ''}</div>
     ${r.tracking || r.returnProof ? `<div class="sm" style="margin-top:4px">📦 ${esc([r.courier, r.tracking].filter(Boolean).join(' '))}${r.returnProof ? ` · <a href="${esc(r.returnProof)}" target="_blank" rel="noopener">${/mail\./.test(r.returnProof) ? 'courier email' : 'courier receipt'}</a>` : ''}</div>` : ''}
+    ${retMail(r) ? '<div class="ouacts">' + retMail(r) + '</div>' : ''}
     <details class="more"><summary>What happens next</summary>${refundNextHtml(r)}</details>
     <div class="duo" style="margin-top:8px"><button class="btn sec" data-ract="sorted">Refund came another way</button><button class="btn sec" data-ract="scan">📷 Refund receipt</button></div>
     ${!r.returnProof ? `<button class="link" data-ract="parcel" style="margin-top:6px">📷 Add the ${r.method === 'Pick-up' ? 'collection' : 'drop-off'} receipt</button>` : ''}
@@ -5061,7 +5082,7 @@ function doneCardHtml(r) {
     <div class="puhead"><div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>${r.refundAmount ? '<div class="amt">' + money(r.refundAmount) + '</div>' : ''}</div>
     <div class="sm">${[esc(r.store), r.order ? '#' + esc(r.order) : '', r.sentOn ? 'sent back ' + esc(dayName(r.sentOn)) : ''].filter(Boolean).join(' · ')}</div>
     <div class="tags">${isRefundedRet(r) ? '<span class="tag ok">✅ Refunded ' + esc(dayName(r.refundedOn)) + '</span>' : '<span class="tag ok">✅ Sorted, no amount logged</span>'}${r.refundTo ? '<span class="tag">💷 ' + esc(r.refundTo) + '</span>' : ''}${by}${short}</div>
-    ${/^https?:/.test(proof) || r.row ? `<div class="ouacts">${/^https?:/.test(proof) ? `<a href="${esc(proof)}" target="_blank" rel="noopener">${/mail\.|outlook/.test(proof) ? 'Refund email' : 'Refund proof'} ↗</a>` : ''}${r.row ? '<button data-ract="go">See the purchase ›</button>' : ''}</div>` : ''}
+    ${/^https?:/.test(proof) || r.row || retMail(r) ? `<div class="ouacts">${/^https?:/.test(proof) ? `<a href="${esc(proof)}" target="_blank" rel="noopener">${/mail\.|outlook/.test(proof) ? 'Refund email' : 'Refund proof'} ↗</a>` : ''}${retMail(r)}${r.row ? '<button data-ract="go">See the purchase ›</button>' : ''}</div>` : ''}
     ${proof && !/^https?:/.test(proof) ? '<div class="sm" style="margin-top:4px">' + esc(proof.slice(0, 90)) + '</div>' : ''}
   </div></div>`;
 }
