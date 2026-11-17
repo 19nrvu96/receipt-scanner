@@ -45,8 +45,8 @@
   const SELL_ROW = M.receipts('<div class="c" style="display:flex;gap:10px;align-items:center"><div style="width:44px;height:44px;border-radius:10px;background:#eef0f4"></div><div style="flex:1"><div class="st">Example games console</div><div class="sm">Paid £60 · listed £85 · 2 left</div><div class="sm" style="color:#b25e00;font-weight:700">52 days old</div></div><span class="b" style="background:#14804a">Sell this</span></div>', 'Stock');
   const SELL_SCREEN = M.receipts('<div class="c"><div class="st">Example games console</div><div class="sm">Paid £60 · listed £85 · 2 left</div>' +
     '<div style="font-size:28px;font-weight:700;border:2px solid #d0d0d5;border-radius:12px;padding:4px 10px;margin:8px 0">£75</div><div class="sm"><b>12% off asking</b> · Profit <b>£15</b> after costs</div>' +
-    '<div style="margin-top:8px"><span class="b" style="background:#14804a;display:block;margin-bottom:6px">Cash · logs it now</span><span class="b" style="background:#3d3f8f;display:block">Card · take it in SumUp · fee about £1.27</span></div></div>', 'Sell in person');
-  const SELL_CARD = M.receipts('<div class="c"><div class="st">Take £75 in SumUp, then tap Done</div><div class="sm">Card fee £1.27 (1.69%). Change it in Settings → Selling.</div><div><span class="b">Done, they paid</span><span class="b s">The card didn\'t go through</span></div></div>', 'Card');
+    '<div style="margin-top:8px"><span class="b" style="background:#14804a;display:block;margin-bottom:6px">Cash · logs it now</span><span class="b" style="background:#3d3f8f;display:block">Card · take it in Monzo · fee about £1.25</span></div></div>', 'Sell in person');
+  const SELL_CARD = M.receipts('<div class="c"><div class="st">Take £75 in Monzo, then tap Done</div><div class="sm">Card fee £1.25 (1.4% + 20p). Change it in Settings → Selling.</div><div><span class="b">Done, they paid</span><span class="b s">The card didn\'t go through</span></div></div>', 'Card');
   const SELLCH = [
     { id: 'rs-sellthis', day: D17, icon: '💷', title: 'Sell in person in three taps', summary: 'Find it, check the price, tap how they paid',
       steps: [
@@ -69,7 +69,7 @@
       ],
       effect: [
         { app: 'Sheet', text: 'One row on the Sales tab: In person, price, listed at, % off asking, Cash or Card (and which app), the card fee, <b>payment status</b> Paid, linked to its purchase, so profit and days to sell work.',
-          mock: M.sheet('Sales', ['item', 'sale price', 'platform fees', 'payment method', 'payment status', 'profit'], [['Example games console', '75', '1.27', 'Card reader', 'Paid', '13.73']], [[0, 4]], ['Purchases', 'Sales', 'Listed']) },
+          mock: M.sheet('Sales', ['item', 'sale price', 'platform fees', 'payment method', 'payment status', 'profit'], [['Example games console', '75', '1.25', 'Card reader', 'Paid', '13.75']], [[0, 4]], ['Purchases', 'Sales', 'Listed']) },
         { app: 'ListMe', text: 'Next time ListMe opens it marks the item sold, and the 🔔 lists the other sites to end it on. ListMe\'s <b>Sold → In person</b> opens this same screen.' },
         { app: 'FlipCheck', text: 'If you bought it through FlipCheck, its deal moves to <b>Sold</b> with the real price and profit next to the estimate.' },
       ] },
