@@ -10,12 +10,13 @@ let pages = [];            // photos of the receipt being captured: [{ dataUrl, 
 let job = null;            // the photo job being read or reviewed (see the offline queue below)
 let lastSource = 'cam';
 let RETURN_FOR = null;     // a refund photo taken from a return's card: attached to that return when saved
+let PARCEL_FOR = null;     // a collection / drop-off receipt taken from a return's card: on its way back, never refunded
 let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases'];
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -340,6 +341,7 @@ async function pagesDone() {
   const j = { id: 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), created: Date.now(),
               pages: pages.map(pg => ({ dataUrl: pg.dataUrl })), status: 'pending', tries: 0 };
   if (RETURN_FOR) { j.returnId = RETURN_FOR; RETURN_FOR = null; }
+  if (PARCEL_FOR) { j.parcelFor = PARCEL_FOR; PARCEL_FOR = null; }
   pages = [];
   await jobPut(j);
   if (navigator.onLine === false) {
@@ -382,6 +384,8 @@ let busyJob = null;   // id of the job being read right now
 const jobImages = j => j.pages.map(pg => ({ base64: pg.dataUrl.split(',')[1], mimeType: 'image/jpeg' }));
 // Also send the first photo the old way, so a Sheet whose script isn't updated yet still reads it
 const withLegacy = imgs => imgs && imgs.length ? { images: imgs, imageBase64: imgs[0].base64, mimeType: imgs[0].mimeType } : {};
+// A photo taken with a return's "Collection receipt" button is read as a courier's receipt
+const readReq = j => Object.assign(withLegacy(jobImages(j)), j.parcelFor ? { expect: 'parcel' } : {});
 
 // Reads a job while you watch: spinner, then the review screen.
 async function readJobNow(j) {
@@ -390,7 +394,7 @@ async function readJobNow(j) {
   $('workMsg').textContent = 'Reading receipt' + (j.pages.length > 1 ? ' (' + j.pages.length + ' photos)' : '') + '…';
   busyJob = j.id;
   try {
-    const result = await api('extract', withLegacy(jobImages(j)));
+    const result = await api('extract', readReq(j));
     j.status = 'ready'; j.result = result; j.error = '';
     await jobPut(j);
     busyJob = null;
@@ -438,7 +442,7 @@ async function jobTick() {
   if (!next || busyJob) { ticking = false; return; }
   busyJob = next.id;
   try {
-    next.result = await api('extract', withLegacy(jobImages(next)));
+    next.result = await api('extract', readReq(next));
     next.status = 'ready'; next.error = '';
     await jobPut(next);
     toast('📥 A receipt photo is ready to review');
@@ -502,7 +506,7 @@ $('jList').onclick = async e => {
 
 function openJob(j) {
   job = j; lastSource = 'cam'; lastResult = j.result;
-  if (j.result && j.result.docType === 'courier_receipt') { show('vHome'); showParcelReceipt(j); return; }
+  if (j.parcelFor || (j.result && j.result.docType === 'courier_receipt')) { show('vHome'); showParcelReceipt(j); return; }
   showReview(j.result, 'cam');
   if (state) state.jobId = j.id;
 }
@@ -1782,13 +1786,15 @@ function renderToReturn(d) {
   $('slToRet').innerHTML = open.map((r, i) => `<div class="card scard"><div class="sb">
     <div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>
     <div class="sm">${[esc(r.store), r.bought ? 'bought ' + esc(r.bought) : '', r.amount ? money(r.amount) : '', r.order ? '#' + esc(r.order) : '', r.from && r.from !== 'Receipts' ? 'from ' + esc(r.from) : ''].filter(Boolean).join(' · ')}</div>
-    <div class="tags">${r.status === 'Sent back' ? '<span class="tag">Returned ' + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}${r.returnBy ? `<span class="tag">${r.extended ? '🎄 Extended return date' : r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>` : ''}${r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
+    <div class="tags">${r.status === 'Sent back' ? '<span class="tag">' + (r.tracking || r.method === 'Pick-up' ? '🚚 On its way back since ' : 'Returned ') + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}${r.returnBy ? `<span class="tag">${r.extended ? '🎄 Extended return date' : r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>` : ''}${r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
     ${r.notes ? '<div class="sm" style="margin-top:4px">' + esc(r.notes) + '</div>' : ''}
     ${r.tracking || r.returnProof ? `<div class="sm" style="margin-top:4px">📦 ${esc([r.courier, r.tracking].filter(Boolean).join(' '))}${r.sentTo ? ' → ' + esc(r.sentTo) : ''}${r.returnProof ? ` · <a href="${esc(r.returnProof)}" target="_blank" rel="noopener">courier receipt</a>` : ''}</div>` : ''}
     ${pickupHtml(r, i)}
     ${r.files || r.link ? `<button class="btn" data-rqr="${i}" style="margin-top:10px">Show return QR code</button>` : ''}
     <div class="duo" style="margin-top:8px">${r.status === 'To return' ? `<button class="btn ${r.files || r.link ? 'sec' : ''}" data-rsent="${i}">${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Returned it'}</button>` : `<button class="btn sec" data-rsorted="${i}">Already sorted</button>`}
-      <button class="btn ${r.status === 'Sent back' ? '' : 'sec'}" data-rscan="${i}">📷 Refund receipt</button></div>
+      ${r.online || r.method ? (!r.returnProof ? `<button class="btn sec" data-rparcel="${i}">📷 ${r.method === 'Pick-up' ? 'Collection' : 'Drop-off'} receipt</button>` : `<button class="btn ${r.status === 'Sent back' ? '' : 'sec'}" data-rscan="${i}">📷 Refund receipt</button>`)
+        : `<button class="btn ${r.status === 'Sent back' ? '' : 'sec'}" data-rscan="${i}">📷 Refund receipt</button>`}</div>
+    ${(r.online || r.method) && !r.returnProof ? `<button class="link" data-rscan="${i}" style="margin-top:6px">📷 Refund receipt${r.online ? ' (or forward the refund email)' : ''}</button>` : ''}
     ${r.email ? `<a class="link" href="${esc(r.email.split('\n')[0])}" target="_blank" rel="noopener" style="margin-top:8px;display:inline-block">Open the return email</a>` : ''}
     ${r.status === 'To return' ? `<button class="link" data-rcancel="${i}" style="margin-top:8px">${r.links && r.links.cancel ? '✕ Cancel this return' : '↩︎ Not returning it after all'}</button>` : ''}</div></div>`).join('')
     + (done.length ? `<details class="more"><summary>Returned recently (${done.length})</summary>${done.map(r => `<div class="rdone">✅ ${esc(r.item)} · ${r.status === 'Refunded' ? money(r.refundAmount) + ' back ' + esc(dayName(r.refundedOn)) : 'sorted'}${r.proof ? `<a href="${esc(r.proof.split('\n')[0])}" target="_blank" rel="noopener">refund proof</a>` : ''}</div>`).join('')}</details>` : '');
@@ -1797,21 +1803,26 @@ function renderToReturn(d) {
 // A courier's receipt (UPS collection, Evri drop-off…): not a purchase. Ties it to the return going back
 // (Sent back, tracking, where it went, the photo as proof) or to a parcel you're posting (Posted, where and when).
 function showParcelReceipt(j) {
-  const p = j.result.parcel || {}, m = j.result.match || { candidates: { returns: [], labels: [] } };
+  const p = (j.result && j.result.parcel) || {}, m = (j.result && j.result.match) || { candidates: { returns: [], labels: [] } };
   const C = m.candidates || { returns: [], labels: [] };
+  if (j.parcelFor && !C.returns.some(r => r.id === j.parcelFor)) {   // taken from that return's card: it's an option even if the read didn't find it
+    const r0 = RET_OPEN().find(r => r.id === j.parcelFor);
+    if (r0) C.returns = [{ id: r0.id, item: r0.item, store: r0.store, order: r0.order, courier: r0.courier, method: r0.method, status: r0.status }].concat(C.returns);
+  }
   const opts = C.returns.map(r => ({ key: 'r:' + r.id, kind: 'return', id: r.id, label: '↩️ Return: ' + r.item, sub: [r.store, r.order ? '#' + r.order : '', r.courier ? r.courier + (r.method ? ' ' + r.method.toLowerCase() : '') : ''].filter(Boolean).join(' · ') }))
     .concat(C.labels.map(l => ({ key: 'l:' + l.id, kind: 'label', id: l.id, label: '📦 To post: ' + (l.item || 'parcel'), sub: [l.platform, l.courier, l.tracking].filter(Boolean).join(' · ') })));
-  let pickKey = m.kind ? (m.kind === 'return' ? 'r:' : 'l:') + m.ids[0] : (opts.length === 1 ? opts[0].key : '');
+  let pickKey = j.parcelFor ? 'r:' + j.parcelFor : m.kind ? (m.kind === 'return' ? 'r:' : 'l:') + m.ids[0] : (opts.length === 1 ? opts[0].key : '');
+  const fromCard = !!j.parcelFor;
   const why = { reference: 'its return reference ' + esc(p.reference) + ' is on this return', tracking: 'the tracking number matches', order: 'the order number matches',
     pickup: 'same courier, pick-up booked for that day', courier: 'the only open return with ' + esc(p.carrier) }[m.how] || '';
   const facts = [['Courier', p.service && p.carrier && p.service.toLowerCase().indexOf(p.carrier.toLowerCase()) === 0 ? p.service : [p.carrier, p.service].filter(Boolean).join(' · ')], ['Tracking', p.tracking], ['Reference', p.reference],
     ['Date', p.date ? dayName(p.date) + (p.time ? ' ' + p.time : '') : ''], ['Going to', p.sentTo], ['Dropped off at', p.dropOff], ['Contents', p.contents], ['Postage paid', p.postage != null ? money(p.postage) : '']]
     .filter(x => x[1]).map(([k, v]) => `<div class="cprow"><span class="sm">${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
   const v = sheet(`<button class="close" data-close="1" aria-label="Close">✕</button>
-    <h3>📦 ${esc(p.carrier || 'Courier')} receipt</h3>
-    <p class="sub">This isn't a purchase: it's proof a parcel was handed over. Tick what it's for and it's filed there.</p>
-    <div class="pkbox">${facts}</div>
-    ${m.kind ? `<p class="hint" style="margin-top:8px">✓ Matched: ${why}.${m.already ? ' Already marked as gone: this adds the receipt to it.' : ''}</p>` : opts.length ? '<p class="hint" style="margin-top:8px">Which is it for?</p>' : ''}
+    <h3>📦 ${esc(p.carrier || 'Courier')}${fromCard ? ' collection' : ''} receipt</h3>
+    <p class="sub">Proof it's on its way back. Saved with the return as <b>Sent back</b>: it doesn't mark anything as refunded. The refund comes from the shop's email (or a refund receipt) later.</p>
+    ${facts ? `<div class="pkbox">${facts}</div>` : '<p class="hint">Couldn\'t read the tracking details from this photo. It\'s still saved with the return as proof.</p>'}
+    ${m.kind && !fromCard ? `<p class="hint" style="margin-top:8px">✓ Matched: ${why}.${m.already ? ' Already marked as gone: this adds the receipt to it.' : ''}</p>` : !fromCard && opts.length ? '<p class="hint" style="margin-top:8px">Which is it for?</p>' : ''}
     ${opts.length ? `<div class="pcopts">${opts.map(o => `<label class="pcopt"><input type="radio" name="pcfor" value="${esc(o.key)}" ${o.key === pickKey ? 'checked' : ''}><span><b>${esc(o.label)}</b><br><span class="sm">${esc(o.sub)}</span></span></label>`).join('')}</div>`
       : '<p class="hint">Nothing open to match it to: no returns waiting and no parcels to post. You can keep the photo here and try again later.</p>'}
     <button class="btn" data-pcsave="1" ${pickKey ? '' : 'disabled'}>${(pickKey || '').startsWith('l:') ? '✓ Mark it posted' : '✓ Mark it sent back'}</button>
@@ -1830,7 +1841,7 @@ function showParcelReceipt(j) {
     try {
       const r = await api('parcelReceipt', { target: o.kind === 'return' ? { kind: 'return', id: o.id } : { kind: 'label', ids: [o.id] }, parcel: p, image: (j.pages[0] || {}).dataUrl || '' });
       v.remove(); await jobDel(j.id); job = null; refreshJobs(); SALES = null;
-      toast(r.already ? 'Already filed: nothing changed' : o.kind === 'return' ? '✓ Sent back: ' + (p.carrier || 'courier') + ' receipt saved to your Returns tab' : '✓ Posted: drop-off saved');
+      toast(r.already ? 'Already filed: nothing changed' : o.kind === 'return' ? '✓ On its way back: ' + (p.carrier || 'courier') + ' receipt saved. Not refunded yet.' : '✓ Posted: drop-off saved');
       openSales(o.kind === 'return' ? 'slToRetWrap' : undefined);
     } catch (err) {
       btn.disabled = false; btn.textContent = o.kind === 'return' ? '✓ Mark it sent back' : '✓ Mark it posted';
@@ -2124,7 +2135,8 @@ $('vSales').addEventListener('click', async e => {
   if (t.dataset.lab !== undefined) return showLabel(SALES.toPost[Number(t.dataset.lab)]);
   const RO = (SALES && SALES.returns && SALES.returns.open) || [];
   if (t.dataset.rqr !== undefined) return showReturnCode(RO[Number(t.dataset.rqr)]);
-  if (t.dataset.rscan !== undefined) { RETURN_FOR = RO[Number(t.dataset.rscan)].id; pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); return; }
+  if (t.dataset.rscan !== undefined) { RETURN_FOR = RO[Number(t.dataset.rscan)].id; PARCEL_FOR = null; pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); return; }
+  if (t.dataset.rparcel !== undefined) { PARCEL_FOR = RO[Number(t.dataset.rparcel)].id; RETURN_FOR = null; pages = []; job = null; lastSource = 'cam'; $('inpCam').click(); return; }
   if (t.dataset.copy !== undefined) { try { await navigator.clipboard.writeText(t.dataset.copy); toast('Copied: ' + t.dataset.copy.slice(0, 40)); } catch (err) { toast('Couldn\'t copy: press and hold it instead', true); } return; }
   if (t.dataset.rprinted !== undefined) { const r = RO[+t.dataset.rprinted]; t.disabled = true; try { await returnUpdate(r, { printed: true }); toast('Label printed ✓'); } catch (err) { t.disabled = false; toast(err.message, true); } return; }
   if (t.dataset.rresched !== undefined) return returnReschedule(RO[+t.dataset.rresched]);
@@ -2946,8 +2958,8 @@ $('btnReset').onclick = () => {
 // Home: one "Add receipt" button that opens two choices in place
 function setAddOpen(open) { $('addBox').classList.toggle('open', open); $('btnAdd').setAttribute('aria-expanded', open); }
 $('btnAdd').onclick = () => setAddOpen(!$('addBox').classList.contains('open'));
-$('btnCam').onclick = () => { setAddOpen(false); pages = []; job = null; RETURN_FOR = null; lastSource = 'cam'; $('inpCam').click(); };
-$('btnLib').onclick = () => { setAddOpen(false); pages = []; job = null; RETURN_FOR = null; lastSource = 'lib'; $('inpLib').click(); };
+$('btnCam').onclick = () => { setAddOpen(false); pages = []; job = null; RETURN_FOR = null; PARCEL_FOR = null; lastSource = 'cam'; $('inpCam').click(); };
+$('btnLib').onclick = () => { setAddOpen(false); pages = []; job = null; RETURN_FOR = null; PARCEL_FOR = null; lastSource = 'lib'; $('inpLib').click(); };
 $('homeDate').textContent = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 $('inpCam').onchange = e => { addPhotos(e.target.files); e.target.value = ''; };
 $('inpLib').onchange = e => { addPhotos(e.target.files); e.target.value = ''; };
