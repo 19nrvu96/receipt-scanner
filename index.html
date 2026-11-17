@@ -1456,9 +1456,21 @@ html.dark .paybtn.cash{background:#14804a}html.dark .paybtn.bank{background:#0a6
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=71"></script>
-<script src="app.js?v=71"></script>
-<script src="tour-engine.js?v=71"></script>
-<script src="whatsnew.js?v=71"></script>
+<script>
+/* Safety net: if the app's code ever fails while starting, the splash still goes and a way out shows */
+window.__bootErr = '';
+window.addEventListener('error', function (e) { if (!window.__bootErr) window.__bootErr = (e && e.message) || 'error'; });
+setTimeout(function () {
+  var s = document.getElementById('splash'); if (!s) return;
+  s.innerHTML = '<div style="padding:24px;text-align:center;max-width:340px"><div style="font-size:20px;font-weight:700;margin-bottom:8px">The app didn\'t start properly</div>' +
+    '<div style="font-size:14px;opacity:.85;margin-bottom:16px">Nothing in your Sheet is affected. ' + (window.__bootErr ? 'Error: ' + String(window.__bootErr).replace(/[<>&]/g, '') : '') + '</div>' +
+    '<button id="bootRetry" style="font:inherit;font-size:16px;padding:12px 20px;border-radius:12px;border:0;background:#fff;color:#0a84ff;font-weight:700">Clear the stuck step and reopen</button></div>';
+  document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
+}, 6000);
+</script>
+<script src="help.js?v=72"></script>
+<script src="app.js?v=72"></script>
+<script src="tour-engine.js?v=72"></script>
+<script src="whatsnew.js?v=72"></script>
 </body>
 </html>

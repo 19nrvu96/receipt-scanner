@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind'];
-const APP_VERSION = 'v71';
+const APP_VERSION = 'v72';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -3546,10 +3546,16 @@ document.addEventListener('visibilitychange', () => {
 sellLinkConnect(location.hash);   // a ListMe link on a phone where this copy of the app isn't set up yet (Safari keeps its own storage)
 if (localStorage.getItem(LS_URL)) {
   show('vHome'); if (CFG.waiting) renderTodo(CFG.waiting); renderAppSwitch(); refreshConfig();
-  if (/^#sell\b/.test(location.hash)) { const h = location.hash; history.replaceState(null, '', location.pathname); openSellLink(h); }   // ListMe: Sold → In person
-  else resumeCardWait();
-  if (location.hash === '#returns') { history.replaceState(null, '', location.pathname); openSales('slToRetWrap'); }   // from FlipList / FlipCheck
-  if (location.hash === '#purchases') { history.replaceState(null, '', location.pathname); openPurchases(); }   // from FlipCheck's Bought it box
+  // After the rest of this file has run (openSell needs things defined further down: called here directly it threw,
+  // and the app stuck on the splash while a card payment was waiting, 17 Nov). A failure never blocks the app.
+  setTimeout(() => {
+    try {
+      if (/^#sell\b/.test(location.hash)) { const h = location.hash; history.replaceState(null, '', location.pathname); openSellLink(h); }   // ListMe: Sold → In person
+      else if (location.hash === '#returns') { history.replaceState(null, '', location.pathname); openSales('slToRetWrap'); }   // from FlipList / FlipCheck
+      else if (location.hash === '#purchases') { history.replaceState(null, '', location.pathname); openPurchases(); }   // from FlipCheck's Bought it box
+      else resumeCardWait();
+    } catch (e) { console.warn('Start: ' + e.message); try { localStorage.removeItem(LS_CARD_WAIT); } catch (x) {} show('vHome'); }
+  }, 0);
 }
 else { show('vSetup'); }
 setTimeout(() => { try { if (localStorage.getItem(LS_URL) && !localStorage.getItem('rs_intro')) showIntro(); } catch (e) {} }, 0);
