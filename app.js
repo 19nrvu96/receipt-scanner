@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v76';
+const APP_VERSION = 'v77';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -779,7 +779,7 @@ function renderItems() {
 // The line under each item's total: its share of delivery fees and/or of an order discount
 function feeLabel(r) {
   const d = r._disc || 0, f = r2((r['additional cost'] || 0) + d);
-  return [f ? 'incl. ' + money(f) + ' fees' : '', d ? money(d) + ' discount off' : ''].filter(Boolean).join(' · ');
+  return [f ? 'incl. ' + money(f) + ' fees' : '', d ? 'includes ' + money(d) + ' discount' : ''].filter(Boolean).join(' · ');
 }
 function recalc(keepVat) {
   const fee = state.meta.feeTotal || 0;
@@ -821,19 +821,32 @@ function recalc(keepVat) {
     (CFG.vat ? ' · VAT ' + money(state.rows.reduce((t, r) => t + (Number(r.VAT) || 0), 0)) : '');
   const expected = state.meta.receiptTotal;
   const el = $('recon');
-  const discNote = disc ? ' · ' + money(disc) + ' discount taken off <button class="link" data-undisc="1">Undo</button>' : '';
+  const one = state.rows.length === 1;
+  const undo = ' <button class="link" data-undisc="1">Undo</button>';
   if (expected == null) {
     el.className = 'recon ok';
-    el.innerHTML = esc('Total ' + money(sum) + shareNote) + discNote;
+    el.innerHTML = esc('Total ' + money(sum) + shareNote) + (disc ? '<br>' + esc(money(disc) + ' discount taken off.') + undo : '');
   } else if (Math.abs(sum - expected) < 0.02) {
     el.className = 'recon ok';
-    el.innerHTML = esc('✅ Total ' + money(sum) + ' — matches receipt' + shareNote) + discNote;
+    el.innerHTML = disc
+      ? '✅ <b>' + esc(money(disc) + ' discount taken off.') + '</b> ' + esc('Total ' + money(sum) + ', the same as you paid.' + shareNote) + undo
+      : esc('✅ Total ' + money(sum) + ' — matches receipt' + shareNote);
   } else {
     el.className = 'recon warn';
-    const gap = r2(sum - expected);   // lines add up to more than was paid: usually a discount, promo or voucher on the order
-    el.innerHTML = esc('⚠️ Lines total ' + money(sum) + ' but receipt says ' + money(expected) + ' — check figures' + shareNote) +
-      (gap > 0 && !state.refund && gap < sum * 0.7 ? `<button class="btn sec recbtn" data-disc="${gap}">It's a discount: take ${money(gap)} off</button>
-        <span class="sm" style="display:block;margin-top:4px">For a promo, voucher or multi-buy saving the email only shows in the total. It's split across the items so each one's cost is what you really paid.</span>` : '') + discNote;
+    const gap = r2(sum - expected);
+    const head = '⚠️ <b>' + esc('The items add up to ' + money(sum) + ', but you paid ' + money(expected) + '.') + '</b>';
+    if (gap > 0 && !state.refund && gap < sum * 0.7) {
+      // Lines add up to more than was paid: almost always a discount, voucher or promo on the order (Amazon only shows it in the total)
+      el.innerHTML = head + '<div class="recwhy">' + esc("That's " + money(gap) + ' less. Did you get money off, like a discount, voucher or promo code?') + '</div>' +
+        `<button class="btn recbtn" data-disc="${gap}">${esc('Yes, I got ' + money(gap) + ' off')}</button>` +
+        '<div class="recwhy">' + esc(one ? 'We take it off the item, so your records show the ' + money(expected) + ' you really paid.'
+          : 'We share it across the items by price, so your records show the ' + money(expected) + ' you really paid.') +
+        ' If not, check the prices and quantities above.</div>' + esc(shareNote);
+    } else if (gap < 0 && !state.refund) {
+      el.innerHTML = head + '<div class="recwhy">' + esc("That's " + money(-gap) + ' more. If it was delivery or a booking fee, put it in "Delivery / booking fees" below. If not, check the prices and quantities above.') + '</div>' + esc(shareNote);
+    } else {
+      el.innerHTML = head + '<div class="recwhy">Check the prices and quantities above.</div>' + esc(shareNote);
+    }
   }
   updateSave();
 }
@@ -842,7 +855,7 @@ $('recon').addEventListener('click', e => {
   const b = e.target.closest('[data-disc],[data-undisc]'); if (!b) return;
   state.meta.discount = b.dataset.disc ? r2((state.meta.discount || 0) + Number(b.dataset.disc)) : 0;
   recalc(); renderItems();
-  if (b.dataset.disc) toast('Discount taken off: the total now matches what you paid');
+  if (b.dataset.disc) toast('Done: it now matches what you paid');
 });
 function updateSave() {
   const missing = state.rows.some(r => !r.purpose);
@@ -1074,7 +1087,7 @@ async function saveToSheet(force) {
     'total cost':         r2(tp + ad),
     'store':              store,
     'notes':              [notes, lineNote, c ? 'Refund of ' + c.item + ' bought ' + c.date : '',
-                           r._disc ? money(r._disc) + ' of a ' + money(state.meta.discount) + ' order discount (promo or voucher) taken off' : ''].filter(Boolean).join(' · '),
+                           r._disc ? 'Discount: ' + money(state.meta.discount) + ' off the order' + (state.rows.length > 1 ? ' (' + money(r._disc) + ' of it on this item)' : '') : ''].filter(Boolean).join(' · '),
     'purpose':            r.purpose,
     'method':             state.method,
     'email or in person': state.channel,
