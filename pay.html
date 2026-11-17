@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Pay by bank transfer</title>
+<!-- The page a buyer opens from the seller's QR code. Everything it shows comes from the part of the link after
+     the #, which browsers never send to any server: nothing is stored or tracked here, and there are no
+     outside scripts. #n=name&s=sort code&a=account number&v=amount&r=reference&t=item -->
+<style>
+:root{--bg:#f3f4f7;--card:#fff;--ink:#15171c;--muted:#6b7280;--line:#e7e8ec;--accent:#0a58ca}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#1d2027;--ink:#e6e8ec;--muted:#9aa0ab;--line:#3a3d45;--accent:#71b2f4}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:24px 16px calc(24px + env(safe-area-inset-bottom))}
+main{max-width:460px;margin:0 auto}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 16px}
+.amount{font-size:44px;font-weight:800;margin:4px 0 2px}
+.card{background:var(--card);border-radius:16px;padding:4px 16px;margin:14px 0}
+.row{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row span{display:block;color:var(--muted);font-size:14px}
+.row b{display:block;font-size:20px;letter-spacing:.5px;overflow-wrap:anywhere}
+.row div{flex:1;min-width:0}
+button{flex:none;min-height:44px;min-width:72px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--accent);font:inherit;font-weight:600;cursor:pointer}
+.how{color:var(--muted);font-size:15px}
+.err{background:var(--card);border-radius:16px;padding:16px}
+</style>
+</head>
+<body>
+<main id="m">
+  <div class="err">This payment link is missing its details. Ask the seller to show the QR code again.</div>
+</main>
+<script>
+(function () {
+  var q = {};
+  location.hash.replace(/^#/, '').split('&').forEach(function (p) { var i = p.indexOf('='); if (i > 0) { try { q[p.slice(0, i)] = decodeURIComponent(p.slice(i + 1).replace(/\+/g, ' ')); } catch (e) {} } });
+  var esc = function (s) { return String(s || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var sort = String(q.s || '').replace(/\D/g, ''), acct = String(q.a || '').replace(/\D/g, ''), amt = Number(q.v);
+  if (sort.length !== 6 || acct.length !== 8) return;
+  var money = isFinite(amt) && amt > 0 ? amt.toFixed(2) : '';
+  var rows = [['Name', q.n, q.n], ['Sort code', sort.replace(/(\d\d)(\d\d)(\d\d)/, '$1-$2-$3'), sort], ['Account number', acct, acct]];
+  if (q.r) rows.push(['Reference', q.r, q.r]);
+  if (money) rows.push(['Amount', '£' + money, money]);
+  document.getElementById('m').innerHTML =
+    '<h1>Pay ' + esc(q.n || 'the seller') + ' by bank transfer</h1>' +
+    '<p class="sub">' + (q.t ? 'For: ' + esc(q.t) : 'Bank transfer') + '</p>' +
+    (money ? '<div class="amount">£' + esc(money) + '</div>' : '') +
+    '<div class="card">' + rows.filter(function (r) { return r[1]; }).map(function (r, i) {
+      return '<div class="row"><div><span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b></div><button data-c="' + i + '">Copy</button></div>';
+    }).join('') + '</div>' +
+    '<p class="how">Open your banking app, choose a new payment to someone, and copy each detail in. Use the reference so the seller can see it\'s you.</p>';
+  var shown = rows.filter(function (r) { return r[1]; });
+  document.getElementById('m').onclick = function (e) {
+    var b = e.target.closest('[data-c]'); if (!b) return;
+    var v = shown[+b.dataset.c][2];
+    var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); };
+    if (navigator.clipboard) navigator.clipboard.writeText(v).then(done, function () { prompt('Copy this', v); });
+    else prompt('Copy this', v);
+  };
+})();
+</script>
+</body>
+</html>

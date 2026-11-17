@@ -16,8 +16,8 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind'];
-const APP_VERSION = 'v72';
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
+const APP_VERSION = 'v73';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1625,6 +1625,8 @@ function renderTodo(w) {
   if (w.toReturn) rows.push(['↩️', w.toReturn + ' thing' + s(w.toReturn) + ' to take back', 'slToRetWrap']);
   if (w.onWay) rows.push(['🚚', w.onWay + ' pending refund' + s(w.onWay) + ': on the way back, the refund email will follow', 'pend']);
   if (w.returnsSoon) rows.push(['⏳', w.returnsSoon + ' receipt' + s(w.returnsSoon) + ': last days to return', 'slRetWrap']);
+  if (w.awaitingOld) rows.push(['⚠️', w.awaitingOld + ' sale' + s(w.awaitingOld) + ' awaiting payment for over a day: check your bank', 'slAwaitWrap']);
+  else if (w.awaiting) rows.push(['💷', w.awaiting + ' sale' + s(w.awaiting) + ' awaiting payment', 'slAwaitWrap']);
   if (w.needs) rows.push(['⚠️', w.needs + ' sale' + s(w.needs) + ' need' + (w.needs === 1 ? 's' : '') + ' a check', 'slNeedsWrap']);
   if (w.tripsToLog) rows.push(['🚗', w.tripsToLog + ' trip' + s(w.tripsToLog) + ' to log in your mileage', 'trips']);
   $('todo').classList.toggle('hide', !rows.length);
@@ -1655,7 +1657,9 @@ function countsFrom(d) {
            refundsDone: ((d.returns && d.returns.done) || []).filter(r => (r.status === 'Completed' || r.status === 'Refunded') && (x => x instanceof Date && (Date.now() - x) < 8 * 864e5)(toDate(r.refundedOn))).slice(0, 3)
              .map(r => ({ id: r.id, item: r.item, amount: r.refundAmount, to: r.refundTo, by: r.refundBy, on: r.refundedOn })),
            toCollect: tc.length, collectSoon: tc.filter(c => c.daysLeft !== null && c.daysLeft <= 1).length,
-           tripsToLog: TRIPS ? TRIPS.length : ((CFG.waiting || {}).tripsToLog || 0) };
+           tripsToLog: TRIPS ? TRIPS.length : ((CFG.waiting || {}).tripsToLog || 0),
+           awaiting: d.awaiting ? awaitingAll(d).length : ((CFG.waiting || {}).awaiting || 0),
+           awaitingOld: d.awaiting ? awaitingAll(d).filter(x => x.hours >= 24).length : ((CFG.waiting || {}).awaitingOld || 0) };
 }
 // "Post today" / "Late" / "Post by Thu"
 function postTag(l) {
@@ -1773,11 +1777,12 @@ function renderSales() {
   renderCollect();
   $('slNeedsWrap').classList.toggle('hide', !d.needs.length);
   $('slNeeds').innerHTML = d.needs.map((o, i) => saleCard(o, i, 'need')).join('');
-  const waiting = saleOut.map(o => o.req.sale), editing = new Set(saleOut.map(o => o.row).filter(Boolean));
+  const waiting = saleOut.filter(o => o.req.sale).map(o => o.req.sale), editing = new Set(saleOut.map(o => o.row).filter(Boolean));
   const pend = waiting.map((o, i) => saleCard(Object.assign({}, o, { _saving: true }), i, 'pend')).join('');
   const rec = d.recent.filter(o => !editing.has(o.row));
   $('slRecent').innerHTML = (rec.length || pend) ? pend + rec.map(o => saleCard(o, d.recent.indexOf(o), 'rec')).join('')
     : '<p class="sub">No sales yet. Forward a sale email, or tap ＋ Log a sale.</p>';
+  renderAwaiting(d);
   renderReturns(d);
   renderReporting(d);
   renderStock(d);
@@ -2191,6 +2196,7 @@ function linkPurchase(x) {
   $('saLinked').textContent = 'Linked: ' + x.item + ' (' + x.store + ', ' + x.date + ') · cost ' + money(sale.itemCost) + (x.left !== undefined ? ' · ' + x.left + ' left before this sale' : '');
   $('saLinked').classList.remove('hide');
   $('saSuggest').classList.add('hide');
+  if (x.listed && !$('saListed').value) { $('saListed').value = r2(x.listed * (Number($('saQty').value) || 1)); try { listedHint(); } catch (e) {} }   // ListMe's price
   saleCalc();
 }
 
@@ -2858,7 +2864,7 @@ function flushSales(force) {
     for (const o of saleOut.slice()) {
       if (!force && o.holdUntil > Date.now()) continue;
       try {
-        const r = await api('saleSave', o.req) || {};
+        const r = await api(o.action || 'saleSave', o.req) || {};   // salePay: Paid / They didn't pay, after its sale
         unqueueSale(o.id); changed = true;
         if (o.onSaved) o.onSaved(r);
       } catch (err) {
@@ -3033,6 +3039,7 @@ async function refreshConfig() {
     CFG.platforms = d.platforms || [];
     CFG.cardFee = d.cardFee || CFG.cardFee || { perTap: 0, pct: 0 };
     CFG.cardApp = d.cardApp !== undefined ? d.cardApp : (CFG.cardApp || '');
+    if (d.bank) CFG.bank = d.bank;   // kept on the phone: the pay screen works with no signal
     CFG.crm = !!d.crm; try { crmSync(); renderHomeMatch(); } catch (e) {}
     CFG.apps = d.apps || CFG.apps || {}; renderAppSwitch();
     CFG.newReturns = 'apps' in d;   // the Sheet's script has the Returns update (whatsnew.js)
@@ -3344,7 +3351,6 @@ function openSell(item, from, keep) {
   fetchThumbs([item.photo]);
   $('sePrice').value = keep && keep.price !== undefined ? keep.price : item.listed ? r2(item.listed) : '';
   $('sePrice').disabled = false;
-  $('btnSeBank').classList.add('hide');   // Phase 2: pay by bank QR
   $('seCardSub').textContent = cardApp() ? 'Take it in ' + cardApp() : 'Take it in your card app';
   $('sePay').classList.remove('hide'); $('seCardBox').classList.add('hide');
   // "About the buyer": the same section as the full sale form, moved here while this screen is open
@@ -3381,6 +3387,7 @@ function sellCalc() {
     : price > asking ? `<b class="up">${gbp(price - asking)} over asking</b>` : 'Asking price';
   $('seProfit').innerHTML = price === null ? '' : it.paid === null ? 'Profit: link a purchase'
     : `Profit <b>${gbp(price - fee - it.paid * SELL.qty)}</b> after ${SELL.card ? 'costs and card fee' : 'costs'}`;
+  $('btnSeBank').querySelector('small').textContent = hasBank() || (CFG.bank || {}).link ? 'Shows a QR code and your bank details' : 'Add your bank details in Settings first';
   if (!SELL.card) {
     const f = CFG.cardFee || {}, cf = cardFeeFor(price, f);
     $('seCardSub').textContent = (cardApp() ? 'Take it in ' + cardApp() : 'Take it in your card app') + (cf ? ' · fee about ' + gbp(cf) : '');
@@ -3529,6 +3536,160 @@ function openSellLink(hash) {
   if (it) openSell(it, 'link'); else openSellFind();
 }
 
+/* ---------- Pay by bank (v71): Bank transfer on the Sell screen ----------
+   The sale is logged at once as Awaiting payment (it doesn't count in your totals yet), and the pay screen shows
+   a QR code for the buyer plus your details to type in. Paid when you see it in YOUR bank app.
+   The QR opens pay.html with the details after the # (never sent to any server), or your own payment link. */
+const LS_AWAIT = 'rs_awaiting';
+const PAY_PAGE = 'https://19nrvu96.github.io/receipt-scanner/pay.html';
+const bankOf = () => CFG.bank || {};
+const hasBank = () => { const b = bankOf(); return !!(b.sort && b.acct); };
+const sortFmt = s => String(s || '').replace(/(\d\d)(\d\d)(\d\d)/, '$1-$2-$3');
+// Short reference that any UK bank takes (18 characters, letters, numbers and hyphens): SWLITE-1117
+function payRef(title, d) {
+  const w = String(title || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+  let code = (w[0] || 'ITEM').slice(0, 6);
+  if (code.length < 4 && w[1]) code = (code + w[1]).slice(0, 6);
+  d = d || new Date();
+  return (code + '-' + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0')).slice(0, 18);
+}
+function payUrl(p) {
+  const b = bankOf();
+  if (b.sort && b.acct) {
+    const q = ['n=' + encodeURIComponent(b.name || ''), 's=' + b.sort, 'a=' + b.acct, 'v=' + r2(p.price).toFixed(2), 'r=' + encodeURIComponent(p.ref), 't=' + encodeURIComponent(String(p.item).slice(0, 60))];
+    return PAY_PAGE + '#' + q.join('&');
+  }
+  if (b.link) {   // a monzo.me link takes the amount and a note; other links are used as they are
+    const m = b.link.match(/^https:\/\/monzo\.me\/([\w.-]+)\/?$/i);
+    return m ? 'https://monzo.me/' + m[1] + '/' + r2(p.price).toFixed(2) + '?d=' + encodeURIComponent(p.ref) : b.link;
+  }
+  return '';
+}
+function qrSvg(text) {
+  if (typeof qrcode !== 'function' || !text) return '';
+  const q = qrcode(0, 'M'); q.addData(text); q.make();
+  return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+}
+const awaitList = () => lsList(LS_AWAIT);
+const awaitSave = l => lsSet(LS_AWAIT, l.slice(-30));
+
+let PAY = null;   // { id (sale id), item, price, ref, qty, at, row, lkey, from }
+$('btnSeBank').onclick = () => {
+  if (!sellReady()) return;
+  const { s, buyerInfo } = sellSale('Bank transfer'), it = SELL.item, qty = SELL.qty, from = SELL.from;
+  const ref = payRef(it.title);
+  Object.assign(s, { 'payment status': 'Awaiting payment', 'payment ref': ref, 'counts in totals': 'No' });
+  const req = { sale: s, clientId: newId() };
+  if (buyerInfo) req.buyerInfo = buyerInfo;
+  queueSale(req, s.item, 0);
+  flushSales();
+  it.left = Math.max(0, it.left - qty); stockLeft(it, it.left);
+  const p = { id: req.clientId, item: s.item, price: s['sale price'], ref, qty, at: Date.now(), row: it.row, lkey: it.lkey, from };
+  awaitSave(awaitList().concat([p]));
+  crmHome(); SELL = null;
+  openPay(p);
+};
+function openPay(p) {
+  PAY = p;
+  $('pyTitle').textContent = 'Pay ' + gbp(p.price) + ' by bank';
+  $('pyItem').textContent = p.item + (p.qty > 1 ? ' ×' + p.qty : '');
+  const url = payUrl(p), b = bankOf();
+  $('pyQr').innerHTML = qrSvg(url);
+  $('pyQr').classList.toggle('hide', !url);
+  $('pyNoQr').classList.toggle('hide', !!url);
+  const rows = [['Reference', p.ref, p.ref], ['Amount', money(p.price), r2(p.price).toFixed(2)]];
+  if (b.sort && b.acct) rows.unshift(['Name', b.name || '', b.name || ''], ['Sort code', sortFmt(b.sort), b.sort], ['Account number', b.acct, b.acct]);
+  $('pyDet').innerHTML = rows.filter(r => r[1]).map(r => `<div class="payrow"><span>${esc(r[0])}<b>${esc(r[1])}</b></span><button data-copy="${esc(r[2])}">Copy</button></div>`).join('');
+  const monzo = CFG.cardApp === 'Monzo' || /monzo/i.test(b.link || '');
+  $('pyHow').innerHTML = '<b>How they can pay</b><ol>' +
+    '<li><b>Bank transfer: no fees.</b> ' + (url ? 'They scan the code above, or type' : 'They type') + ' the details below into their banking app, with the reference.</li>' +
+    (monzo ? '<li><b>Your Monzo QR code or link.</b> In Monzo: Get Paid → Get paid by QR code → put in ' + money(p.price) + ' → Create QR code (or share a payment link). If you\'ve set up card payments there, a card costs 1.5% + 20p: tick "They paid by card" below.</li>' : '') + '</ol>';
+  $('pyCard').checked = false; $('pyFeeWrap').classList.add('hide');
+  // Card through your Monzo QR or link: Monzo shows 1.5% + 20p for UK cards (its Get paid by QR code screen, 17 Nov 2026)
+  $('pyFee').value = (cardFeeFor(p.price, CFG.cardFee) || (monzo ? r2(p.price * 0.015 + 0.2) : '')) || '';
+  show('vPay');
+}
+$('pyDet').onclick = async e => {
+  const b = e.target.closest('[data-copy]'); if (!b) return;
+  try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1500); }
+  catch (err) { prompt('Copy this', b.dataset.copy); }
+};
+$('pyCard').onchange = () => $('pyFeeWrap').classList.toggle('hide', !$('pyCard').checked);
+function payLeave(from) {
+  PAY = null;
+  if (from === 'vStock') { show('vStock'); renderStockPage(); }
+  else if (from === 'vSales') openSales('slAwaitWrap');
+  else show('vHome');
+}
+// Paid: if the sale hasn't gone yet, it goes as Paid; otherwise a Paid update follows it (in order, offline too)
+function payDone(p, card, fee) {
+  const q = saleOut.find(o => o.id === p.id);
+  if (q) {
+    Object.assign(q.req.sale, { 'payment status': 'Paid', 'counts in totals': 'Yes', 'payout date': '' });
+    if (card) Object.assign(q.req.sale, { 'payment method': 'Card reader', 'card app': CFG.cardApp || '', 'platform fees': fee || '' });
+    saleOutSave();
+  } else {
+    saleOut.push({ id: 'p-' + p.id, action: 'salePay', label: p.item, row: null, holdUntil: 0, tries: 0,
+                   req: { saleId: p.id, status: 'Paid', card: !!card, cardApp: CFG.cardApp || '', fee: Number(fee) || 0 } });
+    saleOutSave();
+  }
+  awaitSave(awaitList().filter(x => x.id !== p.id));
+  flushSales();
+}
+function payCancel(p) {
+  const q = saleOut.find(o => o.id === p.id);
+  if (q) unqueueSale(q.id);
+  else { saleOut.push({ id: 'c-' + p.id, action: 'salePay', label: p.item, row: null, holdUntil: 0, tries: 0, req: { saleId: p.id, status: 'Cancelled' } }); saleOutSave(); }
+  const d = stockCache(), x = d && (p.row ? (d.items || []).find(i => i.row === p.row) : (d.listed || []).find(i => i.lkey === p.lkey));
+  if (x) { x.left = (x.left || 0) + (p.qty || 1); lsSet('rs_stock', d); }
+  awaitSave(awaitList().filter(y => y.id !== p.id));
+  flushSales();
+}
+$('btnPayPaid').onclick = () => {
+  const p = PAY; if (!p) return;
+  payDone(p, $('pyCard').checked, Number($('pyFee').value) || 0);
+  toast('Paid: ' + gbp(p.price) + ' for ' + p.item.slice(0, 30));
+  payLeave(p.from);
+};
+$('btnPayLater').onclick = $('btnPayBack').onclick = () => { const p = PAY; if (!p) return; toast('Left as awaiting payment. It\'s under Sales'); payLeave(p.from); };
+$('btnPayNo').onclick = () => {
+  const p = PAY; if (!p) return;
+  if (!confirm('Cancel this sale? ' + p.item.slice(0, 40) + ' goes back in stock.')) return;
+  payCancel(p);
+  toast('Cancelled. It\'s back in stock');
+  payLeave(p.from);
+};
+
+// Sales page and home: what's waiting for the money (from your Sheet, plus any not sent yet from this phone)
+function awaitingAll(d) {
+  const server = ((d && d.awaiting) || []).map(o => ({ id: String(o._sale_id), item: o.item, price: Number(o['sale price']) || 0, ref: o['payment ref'] || '',
+    qty: Number(o.quantity) || 1, hours: o.hours || 0, row: (String(o['linked purchase'] || '').match(/Purchases row (\d+)/) || [])[1] ? Number(String(o['linked purchase']).match(/Purchases row (\d+)/)[1]) : null }));
+  const ids = new Set(server.map(x => x.id));
+  const local = awaitList().filter(x => !ids.has(x.id) && saleOut.some(o => o.id === x.id)).map(x => Object.assign({}, x, { hours: Math.floor((Date.now() - x.at) / 36e5) }));
+  const gone = new Set(saleOut.filter(o => o.action === 'salePay').map(o => o.req.saleId));   // ticked off here, still sending
+  return local.concat(server).filter(x => !gone.has(x.id));
+}
+function renderAwaiting(d) {
+  const L = awaitingAll(d);
+  $('slAwaitWrap').classList.toggle('hide', !L.length);
+  $('slAwait').innerHTML = L.map((x, i) => `<div class="card scard awcard"><div class="sb"><div class="st">${esc(x.item)} <span style="float:right">${money(x.price)}</span></div>
+    <div class="sm">${x.ref ? 'Reference ' + esc(x.ref) + ' · ' : ''}${x.hours < 1 ? 'just now' : x.hours < 24 ? x.hours + 'h ago' : Math.floor(x.hours / 24) + ' day' + (x.hours >= 48 ? 's' : '') + ' ago'}</div>
+    ${x.hours >= 24 ? '<div class="tags"><span class="tag late">Over a day: check your bank</span></div>' : ''}
+    <div class="duo" style="margin-top:8px"><button class="btn" data-awpaid="${i}">It's in my bank</button><button class="btn sec" data-awshow="${i}">Show pay screen</button></div>
+    <button class="lnk sellopts" data-awno="${i}" type="button">They didn't pay</button></div></div>`).join('');
+  $('slAwait').dataset.list = JSON.stringify(L);
+}
+$('slAwait').onclick = e => {
+  const b = e.target.closest('[data-awpaid],[data-awshow],[data-awno]'); if (!b) return;
+  const L = JSON.parse($('slAwait').dataset.list || '[]'), x = L[+(b.dataset.awpaid || b.dataset.awshow || b.dataset.awno)];
+  if (!x) return;
+  const p = Object.assign({ from: 'vSales' }, x);
+  if (b.dataset.awshow !== undefined) return openPay(p);
+  if (b.dataset.awno !== undefined) { if (!confirm('Cancel this sale? ' + x.item.slice(0, 40) + ' goes back in stock.')) return; payCancel(p); toast('Cancelled. It\'s back in stock'); }
+  else { payDone(p, false, 0); toast('Paid: ' + gbp(x.price)); }
+  renderSales();
+};
+
 $('stCardApp').onchange = () => {   // picking an app fills in its usual fee (you can change it)
   const f = CARD_APPS[$('stCardApp').value];
   if (f) { $('stTap').value = f.perTap || ''; $('stPct').value = f.pct; }
@@ -3586,6 +3747,7 @@ async function openSettings() {
     segSet('stType', d.type || ''); $('stVat').checked = !!d.vat; $('stYe').value = String(d.yearEnd || 3); $('stInc').value = d.income || '';
     $('stTap').value = d.cardFee && d.cardFee.perTap ? d.cardFee.perTap : ''; $('stPct').value = d.cardFee && d.cardFee.pct ? d.cardFee.pct : '';
     $('stCardApp').value = d.cardApp || 'Other';
+    { const b = d.bank || {}; $('stBankName').value = b.name || ''; $('stSort').value = b.sort ? b.sort.replace(/(\d\d)(\d\d)(\d\d)/, '$1-$2-$3') : ''; $('stAcct').value = b.acct || ''; $('stPayLink').value = b.link || ''; }
     const a = d.account || {};
     SETTINGS.sheetUrl = a.sheetUrl || '';
     $('stEmail').textContent = a.email || '—'; $('stGoogle').textContent = a.email || '—';
@@ -3712,14 +3874,18 @@ $('btnStSave').onclick = async () => {
   const settings = { type, vat: $('stVat').checked, yearEnd: Number($('stYe').value) || 3, income: $('stInc').value,
                      cardFee: { perTap: Number($('stTap').value) || 0, pct: Number($('stPct').value) || 0 },
                      cardApp: $('stCardApp').value,
+                     bank: { name: $('stBankName').value.trim(), sort: $('stSort').value, acct: $('stAcct').value, link: $('stPayLink').value.trim() },
                      emailSource: $('stSrc').value, orderEmail: $('stSrc').value === 'gmail' ? '' : $('stOrderEmail').value.trim(),
                      monthlyEmail: $('stMonthly').checked };
   if (d.type && (type !== d.type || settings.vat !== !!d.vat) &&
       !confirm('Change your business details from today? Your old records stay as they are, and we keep a copy of your old tax summary.')) return;
+  { const sc = $('stSort').value.replace(/\D/g, ''), ac = $('stAcct').value.replace(/\D/g, '');
+    if ((sc || ac) && (sc.length !== 6 || ac.length !== 8)) { toast('Sort code is 6 numbers and account number is 8', true); $('stSort').scrollIntoView({ block: 'center' }); return; }
+    if ($('stPayLink').value.trim() && !/^https:\/\//.test($('stPayLink').value.trim())) { toast('The payment link should start https://', true); return; } }
   const b = $('btnStSave'); b.disabled = true; b.textContent = 'Saving…';
   try {
     SETTINGS = await api('settingsSet', { settings });
-    CFG.business = SETTINGS.type; CFG.vat = SETTINGS.vat; CFG.cardFee = SETTINGS.cardFee; CFG.cardApp = SETTINGS.cardApp || ''; saveCache();
+    CFG.business = SETTINGS.type; CFG.vat = SETTINGS.vat; CFG.cardFee = SETTINGS.cardFee; CFG.cardApp = SETTINGS.cardApp || ''; CFG.bank = SETTINGS.bank || CFG.bank; saveCache();
     toast(SETTINGS.note || 'Settings saved');
     openSettings();
   } catch (err) { toast(err.message, true); }
@@ -3857,11 +4023,57 @@ const categoryOf = item => { const t = String(item || '').normalize('NFD').repla
 function autoInts() {
   if (!CFG.crm || !sale || !sale.intsAuto) return;
   const c = categoryOf($('saItem').value);
-  $('saInts').value = c;
-  $('saIntsHint').textContent = c ? 'Filled in from what they bought. Change it, or add more with commas.' : 'Separate with commas. When you buy something that matches, the app tells you.';
+  $('saInts').value = c; intsRender();
+  $('saIntsHint').textContent = c ? 'Filled in from what they bought. Add more, or tap × to remove it.' : 'Pick or type as many as you like. When you buy something that matches, the app tells you.';
 }
 $('saItem').addEventListener('input', autoInts);
-$('saInts').addEventListener('input', () => { if (sale) sale.intsAuto = !$('saInts').value.trim(); });
+// Interested in: chips you can add several of at once, from a searchable list (your buyers' interests and the
+// usual categories), or anything you type. Saved as "golf, trainers" in saInts, as before.
+const intsGet = () => String($('saInts').value || '').split(/[,;\n]/).map(t => t.trim()).filter(Boolean);
+function intsSet(list) {
+  const seen = new Set(), out = [];
+  list.map(t => String(t).trim()).filter(Boolean).forEach(t => { const k = t.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(t); } });
+  $('saInts').value = out.join(', ');
+  if (sale) sale.intsAuto = !out.length;
+  intsRender();
+}
+function intsRender() {
+  $('intsChips').innerHTML = intsGet().map((t, i) => `<span class="tagchip">${esc(t)}<button type="button" data-ix="${i}" aria-label="Remove ${esc(t)}">×</button></span>`).join('');
+}
+function intsOptions() {
+  const opts = Array.from($('tagList').options).map(o => o.value).concat(CATEGORIES.map(c => c[0]));
+  const have = new Set(intsGet().map(t => t.toLowerCase()));
+  return [...new Set(opts.map(o => String(o).trim()).filter(Boolean))].filter(o => !have.has(o.toLowerCase())).sort((a, b) => a.localeCompare(b));
+}
+function intsDrop(open) {
+  const q = $('intsQ').value.trim(), ql = q.toLowerCase(), box = $('intsDrop');
+  const parts = q.split(',').map(t => t.trim()).filter(Boolean);
+  const hits = open ? intsOptions().filter(o => !ql || o.toLowerCase().includes(parts[parts.length - 1] ? parts[parts.length - 1].toLowerCase() : ql)).slice(0, 12) : [];
+  const exact = intsOptions().some(o => o.toLowerCase() === ql) || intsGet().some(t => t.toLowerCase() === ql);
+  const add = open && q && !exact ? `<button type="button" class="newbuyer" data-add="1">＋ Add "${esc(q)}"${parts.length > 1 ? ' (' + parts.length + ')' : ''}</button>` : '';
+  box.innerHTML = add + hits.map(o => `<button type="button" data-opt="${esc(o)}">${esc(o)}</button>`).join('');
+  box.classList.toggle('hide', !(add || hits.length));
+  $('intsQ').setAttribute('aria-expanded', String(!box.classList.contains('hide')));
+}
+function intsAddTyped() {
+  const parts = $('intsQ').value.split(',').map(t => t.trim()).filter(Boolean);
+  if (parts.length) intsSet(intsGet().concat(parts));
+  $('intsQ').value = ''; intsDrop(true);
+}
+$('intsQ').addEventListener('focus', () => intsDrop(true));
+$('intsQ').addEventListener('input', () => { if (/,\s*$/.test($('intsQ').value)) intsAddTyped(); else intsDrop(true); });
+$('intsQ').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); intsAddTyped(); }
+  else if (e.key === 'Backspace' && !$('intsQ').value && intsGet().length) intsSet(intsGet().slice(0, -1));
+});
+$('intsQ').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('intsQ')) { if ($('intsQ').value.trim()) intsAddTyped(); intsDrop(false); } }, 250));
+$('intsDrop').addEventListener('mousedown', e => e.preventDefault());   // keep the keyboard up while picking several
+$('intsDrop').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.add) intsAddTyped(); else { intsSet(intsGet().concat([b.dataset.opt])); $('intsQ').value = ''; intsDrop(true); }
+  $('intsQ').focus();
+};
+$('intsChips').onclick = e => { const b = e.target.closest('[data-ix]'); if (!b) return; const l = intsGet(); l.splice(+b.dataset.ix, 1); intsSet(l); };
 
 // Mobile numbers: country code picker + number. Saved as "+44 7700 900123"; UK numbers shown as 07…
 function phoneSet(ccId, inId, val) {
@@ -4115,7 +4327,12 @@ function crmToggle() {
   $('saTurnWrap').classList.toggle('hide', !(plat === 'In person' || hand === 'Collected' || hand === 'Delivered'));
 }
 function buyerHint(prefill) {
-  const b = findBuyer($('saBuyer').value);
+  const b = findBuyer($('saBuyer').value), typed = $('saBuyer').value.trim();
+  if (!b && typed.length >= 2 && CFG.crm) {   // someone new: they're added to Buyers when the sale is saved
+    $('saBuyerHint').classList.remove('hide');
+    $('saBuyerHint').innerHTML = '🆕 <b>' + esc(typed) + '</b> is a new buyer. They\'re added to your Buyers when you save this sale. Add their number or email under Contact details if they gave them.';
+    return;
+  }
   $('saBuyerHint').classList.toggle('hide', !b);
   if (!b) return;
   const warn = b.experience === 'Bad' || b['sell again'] === 'No' || Number(b['no-shows']) > 0;
@@ -4146,9 +4363,13 @@ function buyerSuggest() {
   const box = $('saBuyerSug'), q = $('saBuyer').value.trim();
   const hits = CFG.crm && q && !findBuyer(q) ? buyerSearch(q, (BUYERS && BUYERS.buyers) || []).slice(0, 6) : [];
   box.classList.toggle('hide', !hits.length);
-  box.innerHTML = hits.map(h => `<button type="button" data-pk="${esc(h.b.key)}"><b>${esc(bName(h.b))}</b>${h.b.name && h.b.username ? ' <span class="sub">@' + esc(h.b.username) + '</span>' : ''}<span class="sm">${h.via ? 'Matched ' + esc(h.via) + ' · ' : ''}${esc(buyerLine(h.b)) || 'No sales yet'}</span></button>`).join('');
+  const isNew = CFG.crm && q.length >= 2 && !findBuyer(q);
+  if (isNew) box.classList.remove('hide');
+  box.innerHTML = (isNew ? `<button type="button" class="newbuyer" data-newb="1">＋ Add "${esc(q)}" as a new buyer</button>` : '') + hits.map(h => `<button type="button" data-pk=""${esc(h.b.key)}"><b>${esc(bName(h.b))}</b>${h.b.name && h.b.username ? ' <span class="sub">@' + esc(h.b.username) + '</span>' : ''}<span class="sm">${h.via ? 'Matched ' + esc(h.via) + ' · ' : ''}${esc(buyerLine(h.b)) || 'No sales yet'}</span></button>`).join('');
 }
-$('saBuyerSug').onclick = e => { const b = e.target.closest('[data-pk]'); if (!b) return; const x = findBuyer(b.dataset.pk); $('saBuyer').value = bName(x); $('saBuyerSug').classList.add('hide'); buyerHint(true); };
+$('saBuyerSug').onclick = e => {
+  if (e.target.closest('[data-newb]')) { $('saBuyerSug').classList.add('hide'); buyerHint(false); $('saContact').open = true; return; }
+  const b = e.target.closest('[data-pk]'); if (!b) return; const x = findBuyer(b.dataset.pk); $('saBuyer').value = bName(x); $('saBuyerSug').classList.add('hide'); buyerHint(true); };
 $('saBuyerHint').onclick = e => { const b = e.target.closest('[data-bk]'); if (b) { e.preventDefault(); openBuyer(b.dataset.bk, 'vSale'); } };
 function listedHint() {
   const L = Number($('saListed').value), P = Number($('saPrice').value);
@@ -4170,7 +4391,7 @@ function crmFill(o) {
   $('saListed').value = num(o['listed at']) ?? '';
   segSet('saExp', o['buyer experience'] || ''); segSet('saAgain', o['sell again'] || ''); segSet('saStyle', o['buying style'] || ''); segSet('saTurn', o['turned up'] || '');
   sale.styleSet = !!o['buying style'];
-  $('saInts').value = o['buyer interests'] || ''; $('saBNote').value = o['buyer note'] || '';
+  $('saInts').value = o['buyer interests'] || ''; intsRender(); $('intsQ').value = ''; $('intsDrop').classList.add('hide'); $('saBNote').value = o['buyer note'] || '';
   sale.intsAuto = !o['buyer interests'];
   ['saBEmail', 'saBOther'].forEach(id => { $(id).value = ''; }); phoneSet('saBCc', 'saBMobile', ''); $('saBPref').value = ''; $('saBOpt').checked = false;
   $('saContact').open = false; $('saBuyerSug').classList.add('hide');

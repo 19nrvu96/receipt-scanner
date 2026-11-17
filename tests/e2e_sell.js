@@ -59,7 +59,7 @@ function serve() {
       if (sessionStorage.getItem('seeded')) return;
       sessionStorage.setItem('seeded', '1');
       localStorage.setItem('rs_url', rx); localStorage.setItem('rs_intro', '1');
-      localStorage.setItem('tour:receipts:1117a', '{"opened":true}');
+      localStorage.setItem('tour:receipts:1117b', '{"opened":true}');
     }, [RX]);
     await ctx.route('https://script.google.com/**', async route => {
       const req = JSON.parse(route.request().postData() || '{}');
@@ -221,7 +221,7 @@ function serve() {
   await t('ListMe link opens the same screen (and connects a fresh copy of the app)', async () => {
     g = seed();
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
-    await ctx.addInitScript(() => localStorage.setItem('tour:receipts:1117a', '{"opened":true}'));
+    await ctx.addInitScript(() => localStorage.setItem('tour:receipts:1117b', '{"opened":true}'));
     await ctx.route('https://script.google.com/**', async route => { const req = JSON.parse(route.request().postData() || '{}'); await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(g.call(req.action, req)) }); });
     const page = await ctx.newPage(); page.on('pageerror', e => console.log('   page error:', e.message));
     const q = new URLSearchParams({ u: 'u2,u3,u4', k: 'g2', t: 'Example streaming stick', p: '50', r: '3', n: '3', c: '34.99', rx: RX });
@@ -258,6 +258,123 @@ function serve() {
     await ctx.close();
   });
 
+  const BANK = { type: 'sole', cardApp: 'Monzo', cardFee: { perTap: 0, pct: 0 }, bank: { name: 'D Example', sort: '123456', acct: '12345678', link: '' } };
+  await t('Bank transfer: QR and details, logged as awaiting, then Paid', async () => {
+    g = seed(); g.props.BUSINESS_PROFILE = JSON.stringify(BANK);
+    const { ctx, page } = await open();
+    await page.evaluate(() => refreshConfig()); await toStock(page);
+    await page.click('.sellthis[data-sell="2"]');
+    await page.click('#btnSeBank');
+    await page.waitForSelector('#vPay:not(.hide)');
+    ok((await page.textContent('#pyTitle')) === 'Pay £85 by bank', 'heading');
+    ok(await page.$('#pyQr svg'), 'QR drawn');
+    const det = await page.textContent('#pyDet');
+    ok(/D Example/.test(det) && /12-34-56/.test(det) && /12345678/.test(det) && /EXAMPL-\d{4}/.test(det) && /£85\.00/.test(det), det);
+    ok(/Bank transfer: no fees/.test(await page.textContent('#pyHow')) && /Get paid by QR code/.test(await page.textContent('#pyHow')), 'how to pay');
+    await shot(page, 'pay-phone-light');
+    await page.waitForTimeout(1500);
+    let r = sales()[0];
+    ok(r && r['payment status'] === 'Awaiting payment' && r['counts in totals'] === 'No' && r['payment method'] === 'Bank transfer' && /^EXAMPL-/.test(r['payment ref']), JSON.stringify(r || {}).slice(0, 300));
+    await page.click('#btnPayPaid');
+    await page.waitForTimeout(1500);
+    r = sales()[0];
+    ok(sales().length === 1 && r['payment status'] === 'Paid' && r['counts in totals'] === 'Yes' && r['payment method'] === 'Bank transfer', JSON.stringify(r).slice(0, 300));
+    await ctx.close();
+  });
+
+  await t('Bank with no signal: Paid before it was sent makes one Paid row; card through the QR keeps its fee', async () => {
+    g = seed(); g.props.BUSINESS_PROFILE = JSON.stringify(BANK);
+    const { ctx, page } = await open();
+    await page.evaluate(() => refreshConfig()); await toStock(page);
+    await ctx.setOffline(true);
+    await page.click('.sellthis[data-sell="2"]'); await page.click('#btnSeBank');
+    await page.waitForSelector('#vPay:not(.hide)');
+    ok(await page.$('#pyQr svg'), 'QR works offline');
+    await page.check('#pyCard'); await page.fill('#pyFee', '1.5');
+    await page.click('#btnPayPaid');
+    await ctx.setOffline(false); await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.waitForTimeout(1500);
+    const r = sales();
+    ok(r.length === 1 && r[0]['payment status'] === 'Paid' && r[0]['payment method'] === 'Card reader' && r[0]['platform fees'] === 1.5 && r[0]['card app'] === 'Monzo', JSON.stringify(r[0] || {}).slice(0, 300));
+    await ctx.close();
+  });
+
+  await t('Left awaiting: on Sales and home; They didn\'t pay cancels and puts it back', async () => {
+    g = seed(); g.props.BUSINESS_PROFILE = JSON.stringify(BANK);
+    const { ctx, page } = await open();
+    await page.evaluate(() => refreshConfig()); await toStock(page);
+    await page.click('.sellthis[data-sell="2"]'); await page.click('#btnSeBank');
+    await page.click('#btnPayLater');
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => openSales());
+    await page.waitForSelector('#slAwaitWrap:not(.hide)');
+    ok(/Example games console/.test(await page.textContent('#slAwait')), 'listed on Sales');
+    await page.evaluate(() => show('vHome'));
+    ok(/1 sale awaiting payment/.test(await page.textContent('#todo')), 'home row: ' + await page.textContent('#todo'));
+    await page.evaluate(() => openSales()); await page.waitForSelector('[data-awno]');
+    await page.click('[data-awno]');
+    await page.waitForTimeout(1500);
+    ok(sales()[0].status === 'Cancelled' && sales()[0]['payment status'] === 'Cancelled', 'cancelled');
+    ok(g.call('stock', {}).data.items.some(x => x.row === 2), 'back in stock');
+    await ctx.close();
+  });
+
+  await t('The buyer\'s pay page shows the details from the link, with Copy buttons', async () => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } }); const page = await ctx.newPage();
+    await page.goto(base + 'pay.html#n=D%20Example&s=123456&a=12345678&v=85.00&r=SWLITE-1117&t=Switch%20Lite');
+    const txt = await page.textContent('main');
+    ok(/Pay D Example by bank transfer/.test(txt) && /£85\.00/.test(txt) && /12-34-56/.test(txt) && /SWLITE-1117/.test(txt), txt);
+    ok((await page.$$('button[data-c]')).length === 5, 'copy buttons');
+    await shot(page, 'paypage-phone-light');
+    await page.goto(base + 'pay.html#n=%3Cimg%20src=x%20onerror=alert(1)%3E&s=123456&a=12345678');
+    ok(!(await page.$('main img')), 'names are shown as text');
+    await ctx.close();
+  });
+
+  await t('About the buyer: full-size boxes, a new buyer, several interests at once, listed price from ListMe', async () => {
+    g = seed(); g.props.BUSINESS_PROFILE = JSON.stringify({ type: 'sole', crm: true });
+    const { ctx, page } = await open();
+    await page.evaluate(() => refreshConfig()); await toStock(page);
+    await page.click('.sellthis[data-sell="3"]');
+    await page.click('#seBuyer summary');
+    const w = await page.$eval('#saBuyer', el => el.getBoundingClientRect().width);
+    const lw = await page.$eval('#saListed', el => el.getBoundingClientRect().width);
+    ok(w > 300 && lw > 130, 'boxes full size: ' + w + ' / ' + lw);
+    ok((await page.inputValue('#saListed')) === '50', 'listed at from ListMe: ' + await page.inputValue('#saListed'));
+    await page.fill('#saBuyer', 'Example Newbuyer');
+    await page.waitForSelector('[data-newb]');
+    await page.click('[data-newb]');
+    ok(/new buyer/.test(await page.textContent('#saBuyerHint')), 'new buyer note');
+    await page.click('#intsQ');
+    await page.waitForSelector('#intsDrop [data-opt="golf"]');
+    await page.click('#intsDrop [data-opt="golf"]');
+    await page.fill('#intsQ', 'train'); await page.waitForSelector('#intsDrop [data-opt="trainers"]');
+    await page.click('#intsDrop [data-opt="trainers"]');
+    await page.fill('#intsQ', 'lego, retro consoles');
+    await page.keyboard.press('Enter');
+    ok((await page.$$('.tagchip')).length === 4, 'four chips');
+    await page.click('.tagchip [data-ix="1"]');
+    await shot(page, 'buyer-phone-light');
+    await page.click('#btnSeCash');
+    await page.waitForFunction(() => !document.querySelector('.undobar'), null, { timeout: 8000 });
+    await page.waitForTimeout(800);
+    const r = sales()[0];
+    ok(r && r.buyer === 'Example Newbuyer' && r['buyer interests'] === 'golf, lego, retro consoles', JSON.stringify(r || {}).slice(0, 400));
+    ok(JSON.stringify(g.__g('readBuyers_')()).includes('Example Newbuyer'), 'added to Buyers');
+    await ctx.close();
+  });
+
+  await t('Reopening with a card payment waiting and Buyers on starts normally (the v72 splash bug)', async () => {
+    g = seed(); g.props.BUSINESS_PROFILE = JSON.stringify({ type: 'sole', crm: true, cardApp: 'Monzo' });
+    const { ctx, page } = await open();
+    await page.evaluate(() => refreshConfig()); await toStock(page);
+    await page.click('.sellthis[data-sell="2"]'); await page.click('#btnSeCard');
+    await page.reload();
+    await page.waitForSelector('#seCardBox:not(.hide)', { timeout: 8000 });
+    ok(!(await page.$('#splash')) || !(await page.isVisible('#bootRetry').catch(() => false)), 'no stuck splash');
+    await ctx.close();
+  });
+
   await t('Your numbers shows money awaiting payment', async () => {
     g = seed();
     g.call('saleSave', { clientId: 'a-wait-0000001', sale: { 'sale date': '17/11/2026', platform: 'In person', item: 'Example', 'sale price': 85, 'payment status': 'Awaiting payment' } });
@@ -286,6 +403,9 @@ function serve() {
       await page.click('.sellthis[data-sell="3"]'); await page.waitForTimeout(300); await page.fill('#sePrice', '45'); await page.click('#sePlus');
       await shot(page, 'sell-' + tag); await noSideScroll(page);
       await page.click('#btnSeCard'); await shot(page, 'sell-card-' + tag); await page.click('#btnSeCardCancel');
+      await page.evaluate(b => { CFG.bank = b; }, { name: 'D Example', sort: '123456', acct: '12345678', link: '' });
+      await page.click('#btnSeBank'); await page.waitForSelector('#vPay:not(.hide)'); await shot(page, 'pay-' + tag); await noSideScroll(page);
+      await page.click('#btnPayNo'); await page.evaluate(() => openStock()); await page.waitForSelector('.sellthis'); await page.click('.sellthis[data-sell="3"]');
       await page.click('#btnSellBack'); await page.evaluate(() => show('vHome'));
       await page.click('#btnSellSome'); await page.fill('#sfSearch', 'example'); await page.waitForTimeout(300); await shot(page, 'sellfind-' + tag); await noSideScroll(page);
       await page.evaluate(() => openSettings()); await page.waitForFunction(() => document.getElementById('stCardApp').value === 'SumUp');
