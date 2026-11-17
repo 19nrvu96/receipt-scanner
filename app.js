@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v75';
+const APP_VERSION = 'v76';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -697,7 +697,7 @@ function renderItems() {
         <input type="number" step="0.01" inputmode="decimal" value="${r['buy price']}" data-k="buy price" data-i="${i}">
         <span class="tot">${money(r['total cost'])}</span>
       </div>
-      ${feeTotal ? `<div class="fee">incl. ${money(r['additional cost'])} fees</div>` : ''}
+      ${feeTotal || state.meta.discount ? `<div class="fee">${feeLabel(r)}</div>` : ''}
       ${CFG.vat ? `<div class="vat">VAT £<input type="number" step="0.01" inputmode="decimal" value="${r.VAT || 0}" data-k="VAT" data-i="${i}"></div>` : ''}
       ${state.refund ? matchSelect(r, i) : ''}
       <select data-k="purpose" data-i="${i}" class="${r.purpose ? '' : 'unset'}">
@@ -776,16 +776,28 @@ function renderItems() {
 
 }
 
+// The line under each item's total: its share of delivery fees and/or of an order discount
+function feeLabel(r) {
+  const d = r._disc || 0, f = r2((r['additional cost'] || 0) + d);
+  return [f ? 'incl. ' + money(f) + ' fees' : '', d ? money(d) + ' discount off' : ''].filter(Boolean).join(' · ');
+}
 function recalc(keepVat) {
   const fee = state.meta.feeTotal || 0;
   const n = state.rows.length || 1;
   const per = r2(fee / n);
   const rem = r2(fee - per * n);
 
-  state.rows.forEach((r, i) => {
+  state.rows.forEach(r => {
     r['total price'] = r2(Number(r.quantity) * Number(r['buy price']));
     if (state.refund) r['total price'] = -Math.abs(r['total price']);   // refunds read as −1 × −£24: keep money going back negative
-    r['additional cost'] = r2(per + (i === 0 ? rem : 0));
+  });
+  // A discount on the whole order (e.g. an Amazon promo that the email only shows in the total): split by each line's value
+  const disc = state.refund ? 0 : (state.meta.discount || 0), lines = state.rows.reduce((t, r) => t + r['total price'], 0);
+  let left = disc;
+  state.rows.forEach((r, i) => {
+    const d = i === state.rows.length - 1 ? r2(left) : lines > 0 ? r2(disc * r['total price'] / lines) : r2(disc / n);
+    left = r2(left - d); r._disc = d;
+    r['additional cost'] = r2(per + (i === 0 ? rem : 0) - d);
     r['total cost'] = r2(r['total price'] + r['additional cost']);
     if (CFG.vat && !keepVat && r._vatRate != null) r.VAT = r2(r['total price'] * r._vatRate);
   });
@@ -795,7 +807,7 @@ function recalc(keepVat) {
     const t = c.querySelector('.tot');
     if (t) t.textContent = money(state.rows[i]['total cost']);
     const f = c.querySelector('.fee');
-    if (f) f.textContent = 'incl. ' + money(state.rows[i]['additional cost']) + ' fees';
+    if (f) f.textContent = feeLabel(state.rows[i]);
     const sp = c.querySelector('.split');
     if (sp) sp.textContent = shareLabel(state.rows[i]);
     const v = c.querySelector('.vat input');
@@ -809,20 +821,29 @@ function recalc(keepVat) {
     (CFG.vat ? ' · VAT ' + money(state.rows.reduce((t, r) => t + (Number(r.VAT) || 0), 0)) : '');
   const expected = state.meta.receiptTotal;
   const el = $('recon');
+  const discNote = disc ? ' · ' + money(disc) + ' discount taken off <button class="link" data-undisc="1">Undo</button>' : '';
   if (expected == null) {
     el.className = 'recon ok';
-    el.textContent = 'Total ' + money(sum) + shareNote;
+    el.innerHTML = esc('Total ' + money(sum) + shareNote) + discNote;
   } else if (Math.abs(sum - expected) < 0.02) {
     el.className = 'recon ok';
-    el.textContent = '✅ Total ' + money(sum) + ' — matches receipt' + shareNote;
+    el.innerHTML = esc('✅ Total ' + money(sum) + ' — matches receipt' + shareNote) + discNote;
   } else {
     el.className = 'recon warn';
-    el.textContent = '⚠️ Lines total ' + money(sum) +
-                     ' but receipt says ' + money(expected) + ' — check figures' + shareNote;
+    const gap = r2(sum - expected);   // lines add up to more than was paid: usually a discount, promo or voucher on the order
+    el.innerHTML = esc('⚠️ Lines total ' + money(sum) + ' but receipt says ' + money(expected) + ' — check figures' + shareNote) +
+      (gap > 0 && !state.refund && gap < sum * 0.7 ? `<button class="btn sec recbtn" data-disc="${gap}">It's a discount: take ${money(gap)} off</button>
+        <span class="sm" style="display:block;margin-top:4px">For a promo, voucher or multi-buy saving the email only shows in the total. It's split across the items so each one's cost is what you really paid.</span>` : '') + discNote;
   }
   updateSave();
 }
 
+$('recon').addEventListener('click', e => {
+  const b = e.target.closest('[data-disc],[data-undisc]'); if (!b) return;
+  state.meta.discount = b.dataset.disc ? r2((state.meta.discount || 0) + Number(b.dataset.disc)) : 0;
+  recalc(); renderItems();
+  if (b.dataset.disc) toast('Discount taken off: the total now matches what you paid');
+});
 function updateSave() {
   const missing = state.rows.some(r => !r.purpose);
   $('btnSave').disabled = missing;
@@ -1052,7 +1073,8 @@ async function saveToSheet(force) {
     'additional cost':    ad,
     'total cost':         r2(tp + ad),
     'store':              store,
-    'notes':              [notes, lineNote, c ? 'Refund of ' + c.item + ' bought ' + c.date : ''].filter(Boolean).join(' · '),
+    'notes':              [notes, lineNote, c ? 'Refund of ' + c.item + ' bought ' + c.date : '',
+                           r._disc ? money(r._disc) + ' of a ' + money(state.meta.discount) + ' order discount (promo or voucher) taken off' : ''].filter(Boolean).join(' · '),
     'purpose':            r.purpose,
     'method':             state.method,
     'email or in person': state.channel,
@@ -5019,10 +5041,13 @@ function waitCardHtml(x) {
 function doneCardHtml(r) {
   const proof = String(r.proof || '').split('\n')[0], today = new Date(); today.setHours(0, 0, 0, 0);
   const by = isRefundedRet(r) && r.refundBy && toDate(r.refundBy) >= today ? '<span class="tag">Should arrive by ' + esc(dayName(r.refundBy)) + '</span>' : '';
+  // Refunded less than you paid (a restocking fee, postage kept back…): the gap stays in your costs, so it's a small loss
+  const short = isRefundedRet(r) && Number(r.refundAmount) > 0 && Number(r.amount) - Number(r.refundAmount) >= 0.01
+    ? '<span class="tag late">' + money(Number(r.amount) - Number(r.refundAmount)) + ' less than you paid: kept as a cost</span>' : '';
   return `<div class="card scard" data-rid="${esc(r.id)}"><div class="sb">
     <div class="puhead"><div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>${r.refundAmount ? '<div class="amt">' + money(r.refundAmount) + '</div>' : ''}</div>
     <div class="sm">${[esc(r.store), r.order ? '#' + esc(r.order) : '', r.sentOn ? 'sent back ' + esc(dayName(r.sentOn)) : ''].filter(Boolean).join(' · ')}</div>
-    <div class="tags">${isRefundedRet(r) ? '<span class="tag ok">✅ Refunded ' + esc(dayName(r.refundedOn)) + '</span>' : '<span class="tag ok">✅ Sorted, no amount logged</span>'}${r.refundTo ? '<span class="tag">💷 ' + esc(r.refundTo) + '</span>' : ''}${by}</div>
+    <div class="tags">${isRefundedRet(r) ? '<span class="tag ok">✅ Refunded ' + esc(dayName(r.refundedOn)) + '</span>' : '<span class="tag ok">✅ Sorted, no amount logged</span>'}${r.refundTo ? '<span class="tag">💷 ' + esc(r.refundTo) + '</span>' : ''}${by}${short}</div>
     ${/^https?:/.test(proof) || r.row ? `<div class="ouacts">${/^https?:/.test(proof) ? `<a href="${esc(proof)}" target="_blank" rel="noopener">${/mail\.|outlook/.test(proof) ? 'Refund email' : 'Refund proof'} ↗</a>` : ''}${r.row ? '<button data-ract="go">See the purchase ›</button>' : ''}</div>` : ''}
     ${proof && !/^https?:/.test(proof) ? '<div class="sm" style="margin-top:4px">' + esc(proof.slice(0, 90)) + '</div>' : ''}
   </div></div>`;
