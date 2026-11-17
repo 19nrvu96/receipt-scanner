@@ -9,6 +9,7 @@ let state = null;          // current receipt being reviewed
 let pages = [];            // photos of the receipt being captured: [{ dataUrl, blurry, dark }]
 let job = null;            // the photo job being read or reviewed (see the offline queue below)
 let lastSource = 'cam';
+let PARCEL_BACK = '';      // 'pu': the collection receipt was taken from the Purchases tabs, so go back there
 let RETURN_FOR = null;     // a refund photo taken from a return's card: attached to that return when saved
 let PARCEL_FOR = null;     // a collection / drop-off receipt taken from a return's card: on its way back, never refunded
 let lastResult = null;
@@ -16,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases'];
-const APP_VERSION = 'v68';
+const APP_VERSION = 'v69';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1634,7 +1635,7 @@ function seenRefunds() { try { return JSON.parse(localStorage.getItem(LS_SEEN_RE
 // Tapping a to-do opens Sales at that section
 $('todo').onclick = e => { const b = e.target.closest('[data-todo]'); if (!b) return;
   if (b.dataset.seen) { const s = seenRefunds(); s[b.dataset.seen] = Date.now(); try { localStorage.setItem(LS_SEEN_REF, JSON.stringify(s)); } catch (err) {} }
-  if (b.dataset.todo === 'trips') openTrip(); else if (b.dataset.todo === 'pend') openPurchases(true); else openSales(b.dataset.todo); };
+  if (b.dataset.todo === 'trips') openTrip(); else if (b.dataset.todo === 'pend') openPurchases(b.dataset.seen ? 'done' : 'pend'); else openSales(b.dataset.todo); };
 function goTo(id) {
   const el = $(id);
   if (!el || el.classList.contains('hide')) return;
@@ -1846,12 +1847,12 @@ function handoverSheet(r) {
     const b = e.target.closest('[data-ho],[data-hocopy]'); if (!b) return;
     if (b.dataset.hocopy) { try { await navigator.clipboard.writeText(b.dataset.hocopy); toast('Copied'); } catch (err) { toast('Press and hold to copy', true); } return; }
     const how = b.dataset.ho;
-    if (how === 'cam' || how === 'lib') { v.remove(); PARCEL_FOR = r.id; RETURN_FOR = null; pages = []; job = null; lastSource = how; $(how === 'cam' ? 'inpCam' : 'inpLib').click(); return; }
+    if (how === 'cam' || how === 'lib') { v.remove(); PARCEL_FOR = r.id; RETURN_FOR = null; PARCEL_BACK = $('vPurchases').classList.contains('hide') ? '' : 'pu'; pages = []; job = null; lastSource = how; $(how === 'cam' ? 'inpCam' : 'inpLib').click(); return; }
     b.disabled = true;
     try {
       const x = r.status === 'To return' ? await api('returnSent', { id: r.id }) : r;
       v.remove(); SALES = null;
-      await openSales('slToRetWrap');
+      if (!$('vPurchases').classList.contains('hide')) await loadPend(); else await openSales('slToRetWrap');   // from the Purchases tabs: stay there
       onItsWaySheet(Object.assign({}, r, x || {}, { status: 'Sent back' }), how === 'email' ? 'Forward the ' + (r.courier || 'courier') + ' email when you can: it\'s added to this return as proof.' : 'No receipt saved. That\'s fine: the shop\'s refund email is the proof that matters.');
     } catch (err) { b.disabled = false; toast(err.message, true); }
   });
@@ -1860,7 +1861,7 @@ function onItsWaySheet(r, line) {
   const v = sheet(`<h3>🚚 On its way back</h3><p class="sub">${esc(r.item)}${line ? ': ' + esc(line) : ''} Not refunded yet.</p>${refundNextHtml(r)}
     <p class="hint">It's moved to <b>Purchases → Pending refunds</b> until the refund comes.</p>
     <button class="btn" data-gp="1">See Pending refunds</button><button class="btn ghost" data-close="1">OK</button>`);
-  v.querySelector('[data-gp]').onclick = () => { v.remove(); openPurchases(true); };
+  v.querySelector('[data-gp]').onclick = () => { v.remove(); openPurchases('pend'); };
 }
 // "Refund came another way": the money's back but no refund email or receipt will come (seen on the statement, given at the counter…)
 function sortedSheet(r) {
@@ -1872,7 +1873,7 @@ function sortedSheet(r) {
     <button class="btn" data-so="1">✓ Mark it Completed</button><button class="btn ghost" data-close="1">Not yet: keep waiting</button>`);
   v.querySelector('[data-so]').onclick = async e => {
     e.target.disabled = true;
-    try { await api('returnSorted', { id: r.id, amount: Number(v.querySelector('#soAmt').value) || 0, how: v.querySelector('#soHow').value.trim() }); v.remove(); SALES = null; PEND = null; toast('✅ Completed'); if (!$('vPurchases').classList.contains('hide')) openPurchases(true); else openSales('slToRetWrap'); }
+    try { await api('returnSorted', { id: r.id, amount: Number(v.querySelector('#soAmt').value) || 0, how: v.querySelector('#soHow').value.trim() }); v.remove(); SALES = null; PEND = null; toast('✅ Completed: moved to Completed refunds'); if (!$('vPurchases').classList.contains('hide')) openPurchases('done'); else openSales('slToRetWrap'); }
     catch (err) { e.target.disabled = false; toast(err.message, true); }
   };
 }
@@ -1928,7 +1929,9 @@ function showParcelReceipt(j) {
     try {
       const r = await api('parcelReceipt', { target: o.kind === 'return' ? { kind: 'return', id: o.id } : { kind: 'label', ids: [o.id] }, parcel: p, image: (j.pages[0] || {}).dataUrl || '' });
       v.remove(); await jobDel(j.id); job = null; refreshJobs(); SALES = null;
-      await openSales(o.kind === 'return' ? 'slToRetWrap' : undefined);
+      if (o.kind === 'return' && PARCEL_BACK === 'pu') { show('vPurchases'); await loadPend(); }   // taken from the Purchases tabs: back there
+      else await openSales(o.kind === 'return' ? 'slToRetWrap' : undefined);
+      PARCEL_BACK = '';
       if (o.kind === 'return' && !r.already) {
         const ret = Object.assign({}, RET_OPEN().find(x => x.id === o.id) || {}, r.ret || {});
         onItsWaySheet(Object.assign({ item: o.label }, ret), (p.carrier || 'courier') + ' receipt saved' + (p.tracking ? ' (tracking ' + p.tracking + ')' : '') + '.');
@@ -1972,7 +1975,7 @@ function pickupHtml(r, i) {
     <details class="more cpbox"><summary>📋 Order details to copy</summary>${copyRows(r)}</details>
   </div>`;
 }
-const RET_OPEN = () => (SALES && SALES.returns && SALES.returns.open) || [];
+const RET_OPEN = () => { const a = (SALES && SALES.returns && SALES.returns.open) || [], b = (typeof PEND !== 'undefined' && PEND && PEND.open) || []; return a.concat(b.filter(x => !a.some(y => y.id === x.id))); };
 async function returnUpdate(r, ch) {
   const x = await api('returnUpdate', Object.assign({ id: r.id }, ch));
   Object.assign(r, x); renderToReturn(SALES); try { localStorage.setItem(LS_SALES, JSON.stringify(SALES)); } catch (e) {}
@@ -2239,7 +2242,7 @@ $('vSales').addEventListener('click', async e => {
     return;
   }
   if (t.dataset.rparcel !== undefined) return handoverSheet(RO[Number(t.dataset.rparcel)]);
-  if (t.dataset.gopend !== undefined) return openPurchases(true);
+  if (t.dataset.gopend !== undefined) return openPurchases('pend');
   if (t.dataset.rsorted !== undefined) return sortedSheet(RO[Number(t.dataset.rsorted)]);
   if (t.dataset.rsent !== undefined && (RO[Number(t.dataset.rsent)].online || RO[Number(t.dataset.rsent)].method)) return handoverSheet(RO[Number(t.dataset.rsent)]);
   if (t.dataset.copy !== undefined) { try { await navigator.clipboard.writeText(t.dataset.copy); toast('Copied: ' + t.dataset.copy.slice(0, 40)); } catch (err) { toast('Couldn\'t copy: press and hold it instead', true); } return; }
@@ -3063,8 +3066,8 @@ $('btnReset').onclick = () => {
 // Home: one "Add receipt" button that opens two choices in place
 function setAddOpen(open) { $('addBox').classList.toggle('open', open); $('btnAdd').setAttribute('aria-expanded', open); }
 $('btnAdd').onclick = () => setAddOpen(!$('addBox').classList.contains('open'));
-$('btnCam').onclick = () => { setAddOpen(false); pages = []; job = null; RETURN_FOR = null; PARCEL_FOR = null; lastSource = 'cam'; $('inpCam').click(); };
-$('btnLib').onclick = () => { setAddOpen(false); pages = []; job = null; RETURN_FOR = null; PARCEL_FOR = null; lastSource = 'lib'; $('inpLib').click(); };
+$('btnCam').onclick = () => { setAddOpen(false); pages = []; job = null; RETURN_FOR = null; PARCEL_FOR = null; PARCEL_BACK = ''; lastSource = 'cam'; $('inpCam').click(); };
+$('btnLib').onclick = () => { setAddOpen(false); pages = []; job = null; RETURN_FOR = null; PARCEL_FOR = null; PARCEL_BACK = ''; lastSource = 'lib'; $('inpLib').click(); };
 $('homeDate').textContent = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 $('inpCam').onchange = e => { addPhotos(e.target.files); e.target.value = ''; };
 $('inpLib').onchange = e => { addPhotos(e.target.files); e.target.value = ''; };
@@ -4266,62 +4269,172 @@ $('tTodo').onclick = async e => {
 };
 
 /* ---------- Purchases: everything logged, newest first, and where it came from ---------- */
-var PURCH = null, PU_FROM = '';
+// Tabs under "All purchases": All · To return · Pending refunds · Completed refunds (purchases sent back to the shop;
+// refunds you gave buyers stay in Sales). Each return moves along by itself: handed over → Pending refunds,
+// refund email or receipt → Completed refunds.
+var PURCH = null, PU_FROM = '', PU_TAB = '';
 const PU_ICON = { 'Receipt photo': '📷', 'Email': '✉️', 'Typed in': '✍️', 'FlipCheck': '📊', 'ListMe': '🏷️' };
-var PEND = null;
+const PU_TABS = [['', 'All'], ['toret', 'To return'], ['pend', 'Pending refunds'], ['done', 'Completed refunds']];
+const PU_HINT = { '': 'Newest first. Each card is one receipt, email or purchase, with where it was logged from.',
+  toret: 'Returns you\'ve started, or said you\'ll return, and not handed back yet. Once it\'s picked up or dropped off it moves to Pending refunds.',
+  pend: 'On their way back. When the refund email comes, each one moves to Completed refunds by itself.',
+  done: 'Refunds for things you bought and sent back. Refunds you gave buyers stay in Sales.' };
+const PU_EMPTY = { toret: 'Nothing to return. Tap "I\'ll return it" on a reminder, or start a return from Sales, and it shows here.',
+  pend: 'Nothing on its way back right now.', done: 'No completed refunds yet.' };
+var PEND = null, PEND_TOP = [];
+const isRefundedRet = r => r.status === 'Completed' || r.status === 'Refunded';
+const isDoneRet = r => isRefundedRet(r) || r.status === 'Sorted';
+// The refund updates at the top are notifications: ✕ or a swipe marks one read (it stays in its tab).
+// The next step (the refund arriving) shows again. Completed ones share "seen" with home's ✅ rows.
+const LS_PEND_READ = 'rs_pend_read';
+function pendRead() { try { return JSON.parse(localStorage.getItem(LS_PEND_READ) || '{}'); } catch (e) { return {}; } }
+function markPendRead(keys) {
+  const r = pendRead(), s = seenRefunds();
+  keys.forEach(k => { if (k.indexOf('done:') === 0) s[k.slice(5)] = Date.now(); else r[k] = Date.now(); });
+  const trim = o => { const ks = Object.keys(o); if (ks.length > 400) ks.sort((a, b) => o[a] - o[b]).slice(0, ks.length - 400).forEach(k => delete o[k]); return o; };
+  try { localStorage.setItem(LS_PEND_READ, JSON.stringify(trim(r))); localStorage.setItem(LS_SEEN_REF, JSON.stringify(trim(s))); } catch (e) {}
+}
 async function loadPend() {
-  try { PEND = await api('returns'); try { localStorage.setItem('rs_pend', JSON.stringify(PEND)); } catch (e) {} } catch (e) {}
-  renderPend();
+  try { PEND = await api('returns', { all: true }); try { localStorage.setItem('rs_pend', JSON.stringify(PEND)); } catch (e) {} } catch (e) {}
+  renderPend(); if (PURCH || PU_TAB) renderPurchases();
 }
+function retLists() {
+  const R = PEND || { open: [], done: [] }, when = r => toDate(r.refundedOn || r.sentOn || r.askedOn) || 0;
+  return { toret: (R.open || []).filter(r => r.status === 'To return'), waiting: R.waiting || [], pend: (R.open || []).filter(r => r.status === 'Sent back'),
+    done: (R.done || []).filter(isDoneRet).sort((a, b) => when(b) - when(a)) };
+}
+function retById(id) {
+  const all = [].concat((PEND && PEND.open) || [], (PEND && PEND.done) || [], RET_OPEN());
+  return all.find(r => r.id === id);
+}
+function pendCardHtml(r, top) {
+  return `<div class="card scard pend${top ? ' swipe' : ''}" data-rid="${esc(r.id)}"${top ? ' data-rkey="sent:' + esc(r.id) + '"' : ''}><div class="sb">
+    ${top ? '<button class="pendx" data-ract="read" aria-label="Mark as read">✕</button>' : ''}
+    <div class="st">${esc(r.item)}</div>
+    <div class="sm">${[esc(r.store), r.order ? '#' + esc(r.order) : '', r.refundEstimate ? 'about ' + money(r.refundEstimate) + ' back' : ''].filter(Boolean).join(' · ')}</div>
+    <div class="tags"><span class="tag">🚚 On its way back since ${esc(dayName(r.sentOn))}</span>${r.refundTo ? '<span class="tag">💷 to ' + esc(r.refundTo) + '</span>' : ''}</div>
+    ${r.tracking || r.returnProof ? `<div class="sm" style="margin-top:4px">📦 ${esc([r.courier, r.tracking].filter(Boolean).join(' '))}${r.returnProof ? ` · <a href="${esc(r.returnProof)}" target="_blank" rel="noopener">${/mail\./.test(r.returnProof) ? 'courier email' : 'courier receipt'}</a>` : ''}</div>` : ''}
+    <details class="more"><summary>What happens next</summary>${refundNextHtml(r)}</details>
+    <div class="duo" style="margin-top:8px"><button class="btn sec" data-ract="sorted">Refund came another way</button><button class="btn sec" data-ract="scan">📷 Refund receipt</button></div>
+    ${!r.returnProof ? `<button class="link" data-ract="parcel" style="margin-top:6px">📷 Add the ${r.method === 'Pick-up' ? 'collection' : 'drop-off'} receipt</button>` : ''}
+    ${!top && r.row ? '<button class="link" data-ract="go" style="margin-top:6px;display:block">See the purchase ›</button>' : ''}
+  </div></div>`;
+}
+const refundLine = r => 'Completed: ' + money(r.refundAmount) + ' refunded ' + esc(dayName(r.refundedOn)) + (r.refundTo ? ' to ' + esc(r.refundTo) : '') + (r.refundBy ? ' · should arrive by ' + esc(dayName(r.refundBy)) : '');
 function renderPend() {
-  const R = PEND || { open: [], done: [] };
-  const list = (R.open || []).filter(r => r.status === 'Sent back');
-  const done = (R.done || []).filter(r => (r.status === 'Completed' || r.status === 'Refunded') && (x => x instanceof Date && Date.now() - x < 15 * 864e5)(toDate(r.refundedOn)));
-  $('puPend').innerHTML = !list.length && !done.length ? '' : `<h3 class="sech" id="puPendH">Pending refunds${list.length ? ' <span class="count">' + list.length + '</span>' : ''}</h3>
-    ${list.map((r, i) => `<div class="card scard pend"><div class="sb">
-      <div class="st">${esc(r.item)}</div>
-      <div class="sm">${[esc(r.store), r.order ? '#' + esc(r.order) : '', r.refundEstimate ? 'about ' + money(r.refundEstimate) + ' back' : ''].filter(Boolean).join(' · ')}</div>
-      <div class="tags"><span class="tag">🚚 On its way back since ${esc(dayName(r.sentOn))}</span>${r.refundTo ? '<span class="tag">💷 to ' + esc(r.refundTo) + '</span>' : ''}</div>
-      ${r.tracking || r.returnProof ? `<div class="sm" style="margin-top:4px">📦 ${esc([r.courier, r.tracking].filter(Boolean).join(' '))}${r.returnProof ? ` · <a href="${esc(r.returnProof)}" target="_blank" rel="noopener">${/mail\./.test(r.returnProof) ? 'courier email' : 'courier receipt'}</a>` : ''}</div>` : ''}
-      <details class="more"><summary>What happens next</summary>${refundNextHtml(r)}</details>
-      <div class="duo" style="margin-top:8px"><button class="btn sec" data-psorted="${i}">Refund came another way</button><button class="btn sec" data-pscan="${i}">📷 Refund receipt</button></div>
-      ${!r.returnProof ? `<button class="link" data-pparcel="${i}" style="margin-top:6px">📷 Add the ${r.method === 'Pick-up' ? 'collection' : 'drop-off'} receipt</button>` : ''}
-    </div></div>`).join('')}
-    ${done.length ? `<div class="card" style="padding:8px 14px">${done.map(r => `<div class="rdone">✅ ${esc(r.item)} · Completed: ${money(r.refundAmount)} refunded ${esc(dayName(r.refundedOn))}${r.refundTo ? ' to ' + esc(r.refundTo) : ''}${r.refundBy ? ' · should arrive by ' + esc(dayName(r.refundBy)) : ''}</div>`).join('')}</div>` : ''}
-    <h3 class="sech">All purchases</h3>`;
-  PEND_SHOWN = list;
+  const L = retLists(), rd = pendRead(), seen = seenRefunds();
+  const list = L.pend.filter(r => !rd['sent:' + r.id]);
+  const done = L.done.filter(r => isRefundedRet(r) && !seen[r.id] && (x => x instanceof Date && Date.now() - x < 15 * 864e5)(toDate(r.refundedOn)));
+  const n = list.length + done.length;
+  $('puPend').innerHTML = !n ? '' : `<div class="puph"><h3 class="sech" id="puPendH">🔔 Refund updates <span class="count">${n}</span></h3><button class="link" data-ract="readall">Mark all read</button></div>
+    <p class="hint" style="margin-top:0">✕ or swipe one away once you've read it. It stays in its tab below.</p>
+    ${done.map(r => `<div class="card pend pdone swipe" data-rid="${esc(r.id)}" data-rkey="done:${esc(r.id)}"><button class="pendx" data-ract="read" aria-label="Mark as read">✕</button><div class="rdone">✅ <b>${esc(r.item)}</b> · ${refundLine(r)}</div></div>`).join('')}
+    ${list.map(r => pendCardHtml(r, true)).join('')}`;
+  PEND_TOP = done.map(r => 'done:' + r.id).concat(list.map(r => 'sent:' + r.id));
 }
-var PEND_SHOWN = [];
-$('puPend').onclick = e => {
-  const t = e.target.closest('[data-psorted],[data-pscan],[data-pparcel]'); if (!t) return;
-  const r = PEND_SHOWN[Number(t.dataset.psorted ?? t.dataset.pscan ?? t.dataset.pparcel)]; if (!r) return;
-  if (t.dataset.psorted !== undefined) return sortedSheet(r);
-  if (t.dataset.pparcel !== undefined) return handoverSheet(r);
-  pickPhotoSource('Refund receipt', 'The shop\'s refund receipt for ' + r.item + '. For an online order the refund email does this for you.', () => { RETURN_FOR = r.id; PARCEL_FOR = null; });
-};
-async function openPurchases(toPend) {
-  show('vPurchases');
-  if (!PEND) { try { PEND = JSON.parse(localStorage.getItem('rs_pend')); } catch (e) {} }
-  renderPend();
-  loadPend().then(() => { if (toPend === true && $('puPendH')) $('puPendH').scrollIntoView({ block: 'start' }); });
-  if (!PURCH) { try { PURCH = JSON.parse(localStorage.getItem('rs_purchases')); } catch (e) {} }
-  if (PURCH) renderPurchases(); else $('puList').innerHTML = '<p class="sub">Loading…</p>';
-  try { PURCH = await api('purchases', { limit: 200 }); try { localStorage.setItem('rs_purchases', JSON.stringify(PURCH)); } catch (e) {} renderPurchases(); }
-  catch (err) { if (!PURCH) $('puList').innerHTML = '<p class="sub">' + esc(/Unknown action/.test(err.message) ? 'This page needs your Sheet\'s script update (due tomorrow morning). Your purchases are all safe in the Sheet.' : err.message) + '</p>'; }
+function dismissPend(el) {
+  const k = el && el.dataset.rkey; if (!k) return;
+  markPendRead([k]); renderPend();
+  toast('Marked as read. It\'s still in ' + (k.indexOf('done:') === 0 ? 'Completed refunds' : 'Pending refunds') + ' below');
+}
+// Swipe a card left or right to dismiss it (touch); the ✕ does the same with a mouse
+function swipeAway(root, sel, done) {
+  let el = null, x0 = 0, y0 = 0, dx = 0, on = false;
+  const reset = () => { if (el && on) { el.style.transition = 'transform .18s, opacity .18s'; el.style.transform = ''; el.style.opacity = ''; } el = null; on = false; };
+  root.addEventListener('touchstart', e => {
+    el = e.touches.length === 1 ? e.target.closest(sel) : null;
+    if (!el || e.target.closest('input,textarea,select,details')) { el = null; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; on = false;
+  }, { passive: true });
+  root.addEventListener('touchmove', e => {
+    if (!el) return;
+    const t = e.touches[0]; dx = t.clientX - x0; const dy = t.clientY - y0;
+    if (!on) { if (Math.abs(dx) > 14 && Math.abs(dx) > 1.5 * Math.abs(dy)) on = true; else { if (Math.abs(dy) > 14) el = null; return; } }
+    el.style.transition = 'none'; el.style.transform = 'translateX(' + dx + 'px)'; el.style.opacity = String(Math.max(0.25, 1 - Math.abs(dx) / 320));
+  }, { passive: true });
+  root.addEventListener('touchend', () => {
+    if (!el) return;
+    if (!on || Math.abs(dx) < Math.min(110, el.offsetWidth * 0.3)) return reset();
+    const t = el; el = null; on = false;
+    t.style.transition = 'transform .18s, opacity .18s'; t.style.transform = 'translateX(' + (dx > 0 ? '' : '-') + '110%)'; t.style.opacity = '0';
+    setTimeout(() => done(t), 180);
+  });
+  root.addEventListener('touchcancel', reset);
+}
+swipeAway($('puPend'), '.swipe', dismissPend);
+function toRetCardHtml(r) {
+  const goes = r.online || r.method;
+  const last = r.daysLeft === null || r.daysLeft === undefined ? '' : r.daysLeft < 0 ? '<span class="tag late">Past the last day: ask the shop</span>'
+    : `<span class="tag ${r.daysLeft <= 2 ? 'late' : r.daysLeft <= 7 ? 'soon' : ''}">${r.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(r.returnBy))}</span>`;
+  const step = r.method === 'Pick-up' ? '🚚 ' + esc(r.courier || 'Courier') + ' pick-up' + (r.pickupDate ? ' ' + esc(dayName(r.pickupDate)) : '') : r.method ? '📦 ' + esc(r.method) + (r.courier ? ' · ' + esc(r.courier) : '') : '';
+  return `<div class="card scard" data-rid="${esc(r.id)}"><div class="sb">
+    <div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>
+    <div class="sm">${[esc(r.store), r.bought ? 'bought ' + esc(r.bought) : '', r.amount ? money(r.amount) : '', r.order ? '#' + esc(r.order) : ''].filter(Boolean).join(' · ')}</div>
+    <div class="tags">${last}${step ? '<span class="tag">' + step + '</span>' : ''}${r.files || r.link ? '<span class="tag">' + (r.printedOn ? 'Label printed' : 'QR code saved') + '</span>' : ''}${r.from && r.from !== 'Receipts' ? '<span class="tag">from ' + esc(r.from) + '</span>' : ''}</div>
+    <div class="duo" style="margin-top:8px">${goes ? `<button class="btn" data-ract="ho">${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Handed it over'}</button>` : '<button class="btn" data-ract="scan">📷 Refund receipt</button>'}<button class="btn sec" data-ract="steps">Return steps ›</button></div>
+    ${r.row ? '<button class="link" data-ract="go" style="margin-top:6px;display:block">See the purchase ›</button>' : ''}
+  </div></div>`;
+}
+function waitCardHtml(x) {
+  const left = x.daysLeft === undefined || x.daysLeft === null ? '' : x.daysLeft < 0 ? '<span class="tag late">Past the usual last day: ask the shop</span>'
+    : `<span class="tag ${x.daysLeft <= 2 ? 'late' : 'soon'}">${x.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(x.lastDay))}</span>`;
+  return `<div class="card scard" data-wrow="${esc(String(x.row))}"><div class="sb">
+    <div class="st">${esc(x.item)}${x.qty > 1 ? ' <span class="sm">×' + x.qty + '</span>' : ''}</div>
+    <div class="sm">${[esc(x.store), x.bought ? 'bought ' + esc(x.bought) : '', x.amount ? money(x.amount) : ''].filter(Boolean).join(' · ')}</div>
+    <div class="tags"><span class="tag">↩️ You said you'd return it</span>${left}</div>
+    <div class="duo" style="margin-top:8px"><button class="btn" data-ract="wstart">Start the return</button><button class="btn sec" data-ract="wsteps">Refund receipt or sorted ›</button></div>
+  </div></div>`;
+}
+function doneCardHtml(r) {
+  const proof = String(r.proof || '').split('\n')[0], today = new Date(); today.setHours(0, 0, 0, 0);
+  const by = isRefundedRet(r) && r.refundBy && toDate(r.refundBy) >= today ? '<span class="tag">Should arrive by ' + esc(dayName(r.refundBy)) + '</span>' : '';
+  return `<div class="card scard" data-rid="${esc(r.id)}"><div class="sb">
+    <div class="puhead"><div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>${r.refundAmount ? '<div class="amt">' + money(r.refundAmount) + '</div>' : ''}</div>
+    <div class="sm">${[esc(r.store), r.order ? '#' + esc(r.order) : '', r.sentOn ? 'sent back ' + esc(dayName(r.sentOn)) : ''].filter(Boolean).join(' · ')}</div>
+    <div class="tags">${isRefundedRet(r) ? '<span class="tag ok">✅ Refunded ' + esc(dayName(r.refundedOn)) + '</span>' : '<span class="tag ok">✅ Sorted, no amount logged</span>'}${r.refundTo ? '<span class="tag">💷 ' + esc(r.refundTo) + '</span>' : ''}${by}</div>
+    ${/^https?:/.test(proof) || r.row ? `<div class="ouacts">${/^https?:/.test(proof) ? `<a href="${esc(proof)}" target="_blank" rel="noopener">${/mail\.|outlook/.test(proof) ? 'Refund email' : 'Refund proof'} ↗</a>` : ''}${r.row ? '<button data-ract="go">See the purchase ›</button>' : ''}</div>` : ''}
+    ${proof && !/^https?:/.test(proof) ? '<div class="sm" style="margin-top:4px">' + esc(proof.slice(0, 90)) + '</div>' : ''}
+  </div></div>`;
+}
+function renderRetTab(L, q) {
+  const hit = r => !q || [r.item, r.store, r.order, r.tracking, r.reference].join(' ').toLowerCase().includes(q);
+  let html = '', n = 0;
+  if (PU_TAB === 'toret') { const a = L.toret.filter(hit), w = L.waiting.filter(hit); n = a.length + w.length; html = a.map(toRetCardHtml).join('') + w.map(waitCardHtml).join(''); }
+  else if (PU_TAB === 'pend') { const a = L.pend.filter(hit); n = a.length; html = a.map(r => pendCardHtml(r, false)).join(''); }
+  else {
+    const a = L.done.filter(hit), tot = Math.round(a.reduce((s, r) => s + (Number(r.refundAmount) || 0), 0) * 100) / 100; n = a.length;
+    html = (n ? `<p class="sub putot">${money(tot)} back from ${n} return${n === 1 ? '' : 's'}</p>` : '') + a.map(doneCardHtml).join('');
+  }
+  $('puList').innerHTML = n ? html : '<p class="sub" style="padding:10px 0">' + (!PEND ? 'Loading…' : q ? 'Nothing matches.' : PU_EMPTY[PU_TAB]) + '</p>';
+  $('puList').dataset.n = String(n);
 }
 function renderPurchases() {
-  const d = PURCH || { items: [], counts: {} }, q = $('puSearch').value.trim().toLowerCase();
+  const d = PURCH || { items: [], counts: {} }, q = $('puSearch').value.trim().toLowerCase(), L = retLists();
+  const cnt = { '': PURCH ? (PURCH.total || d.items.length) : '·', toret: L.toret.length + L.waiting.length, pend: L.pend.length, done: L.done.length };
+  $('puTabs').innerHTML = PU_TABS.map(([k, label]) => `<button role="tab" data-putab="${k}" class="${PU_TAB === k ? 'on' : ''}" aria-selected="${PU_TAB === k}"><b>${cnt[k]}</b><span>${label}</span></button>`).join('');
+  $('puHint').textContent = PU_HINT[PU_TAB];
+  $('puFrom').classList.toggle('hide', !!PU_TAB);
+  if (PU_TAB) return renderRetTab(L, q);
+  if (!PURCH) { $('puList').innerHTML = '<p class="sub">Loading…</p>'; return; }
   const froms = Object.keys(d.counts || {}).sort((a, b) => d.counts[b] - d.counts[a]);
   $('puFrom').innerHTML = froms.length > 1 ? [['', 'All']].concat(froms.map(f => [f, (PU_ICON[f] || '') + ' ' + f + ' ' + d.counts[f]])).map(f => `<button data-pf="${esc(f[0])}" class="${PU_FROM === f[0] ? 'on' : ''}">${esc(f[1])}</button>`).join('') : '';
   const list = d.items.filter(g => (!PU_FROM || g.from === PU_FROM) &&
     (!q || (g.store + ' ' + g.notes + ' ' + g.order + ' ' + g.lines.map(l => l.item).join(' ')).toLowerCase().includes(q)));
+  // where each line's return has got to (by its Purchases row)
+  const RB = {};
+  L.done.forEach(r => { if (r.row && isRefundedRet(r)) RB[r.row] = 'done'; });
+  L.waiting.forEach(x => { RB[x.row] = 'toret'; });
+  L.toret.forEach(r => { if (r.row) RB[r.row] = 'toret'; });
+  L.pend.forEach(r => { if (r.row) RB[r.row] = 'pend'; });
+  const retTag = l => RB[l.row] === 'toret' ? ' <button class="tag soon rtag" data-putab="toret">↩️ to return</button>' : RB[l.row] === 'pend' ? ' <button class="tag rtag" data-putab="pend">🚚 refund pending</button>'
+    : RB[l.row] === 'done' && !l.refunded ? ' <button class="tag ok rtag" data-putab="done">refunded</button>' : '';
   const docLabel = g => /#\/a\//.test(g.doc) ? 'FlipCheck analysis' : /mail\.|outlook|live\.com/.test(g.doc) ? 'Email' : 'Receipt';
   const listing = g => (String(g.notes).match(/Listing: (https?:\/\/\S+)/) || [])[1];
   $('puList').innerHTML = list.length ? list.slice(0, 120).map((g, i) => `<div class="card pucard">
     <div class="puhead"><div><div class="st">${esc(g.store || 'Purchase')}</div><div class="sm">${esc(g.date)}${g.logged ? ' · logged ' + esc(g.logged.slice(0, 10) === g.date ? g.logged.slice(11) : g.logged) : ''}</div></div>
       <div class="amt">${money(g.total)}</div></div>
     <div class="tags"><span class="tag pufrom">${PU_ICON[g.from] || ''} ${esc(g.from)}</span>${g.refund ? '<span class="tag ok">refund</span>' : ''}${g.payment ? '<span class="tag">' + esc(g.payment) + '</span>' : ''}${g.order ? '<span class="tag">#' + esc(g.order) + '</span>' : ''}</div>
-    <ul class="pulines">${g.lines.slice(0, 8).map(l => `<li><span>${l.qty > 1 ? l.qty + ' × ' : ''}${esc(l.item)}${l.refunded ? ' <span class="tag ok">refunded</span>' : ''}</span><b>${money(l.total)}</b></li>`).join('')}${g.lines.length > 8 ? `<li class="sub">+ ${g.lines.length - 8} more</li>` : ''}</ul>
+    <ul class="pulines">${g.lines.slice(0, 8).map(l => `<li><span>${l.qty > 1 ? l.qty + ' × ' : ''}${esc(l.item)}${l.refunded ? ' <span class="tag ok">refunded</span>' : ''}${retTag(l)}</span><b>${money(l.total)}</b></li>`).join('')}${g.lines.length > 8 ? `<li class="sub">+ ${g.lines.length - 8} more</li>` : ''}</ul>
     <div class="ouacts">${g.doc ? `<a href="${esc(g.doc.split('\n')[0])}" target="_blank" rel="noopener">${docLabel(g)} ↗</a>` : ''}${listing(g) ? `<a href="${esc(listing(g))}" target="_blank" rel="noopener">Listing ↗</a>` : ''}
       ${g.trip ? (g.tripLogged ? '<span class="done">🚗 Trip logged</span>' : `<button data-putrip="${i}">🚗 Log the trip${g.trip.miles ? ' (' + g.trip.miles + ' mi each way)' : ''}</button>`) : ''}</div>
   </div>`).join('') : '<p class="sub" style="padding:10px 0">' + (q || PU_FROM ? 'Nothing matches.' : 'Nothing logged yet.') + '</p>';
@@ -4329,9 +4442,53 @@ function renderPurchases() {
   PU_SHOWN = list;
 }
 var PU_SHOWN = [];
+function puTab(k) {
+  PU_TAB = k || ''; renderPurchases();
+  const h = $('puAllH'); if (h && h.getBoundingClientRect().top < 0) h.scrollIntoView({ block: 'start' });
+}
+// Buttons on return cards, in the refund updates and in the tabs
+function retAction(e) {
+  const t = e.target.closest('[data-ract],[data-putab]'); if (!t) return false;
+  if (t.dataset.putab !== undefined) { puTab(t.dataset.putab); return true; }
+  const act = t.dataset.ract, card = t.closest('[data-rid],[data-wrow]');
+  if (act === 'readall') { markPendRead(PEND_TOP); renderPend(); toast('All marked as read. They\'re still in the tabs below'); return true; }
+  if (act === 'read') { dismissPend(card); return true; }
+  if (card && card.dataset.wrow) {
+    const x = ((PEND && PEND.waiting) || []).find(w => String(w.row) === card.dataset.wrow); if (!x) return true;
+    if (act === 'wsteps') { openSales('slWaitWrap'); return true; }
+    t.disabled = true;
+    api('returnStart', { items: [{ row: x.row, item: x.item }], from: 'Receipts' })
+      .then(() => { SALES = null; toast('Return started: Return steps has the label, pick-up and QR code'); return loadPend(); })
+      .catch(err => { t.disabled = false; toast(err.message, true); });
+    return true;
+  }
+  const r = retById(card && card.dataset.rid); if (!r) return true;
+  if (act === 'sorted') sortedSheet(r);
+  else if (act === 'parcel' || act === 'ho') handoverSheet(r);
+  else if (act === 'scan') pickPhotoSource('Refund receipt', 'The shop\'s refund receipt for ' + r.item + '. For an online order the refund email does this for you.', () => { RETURN_FOR = r.id; PARCEL_FOR = null; });
+  else if (act === 'steps') openSales('slToRetWrap');
+  else if (act === 'go') { PU_TAB = ''; $('puSearch').value = r.order || r.item; renderPurchases(); $('puAllH').scrollIntoView({ block: 'start' }); }
+  return true;
+}
+$('puPend').onclick = retAction;
+async function openPurchases(tab) {
+  show('vPurchases');
+  PU_TAB = tab === true ? 'pend' : ['toret', 'pend', 'done'].indexOf(tab) > -1 ? tab : '';
+  if (PU_TAB) $('puSearch').value = '';
+  if (!PEND) { try { PEND = JSON.parse(localStorage.getItem('rs_pend')); } catch (e) {} }
+  if (!PURCH) { try { PURCH = JSON.parse(localStorage.getItem('rs_purchases')); } catch (e) {} }
+  renderPend(); renderPurchases();
+  const toTabs = () => { if (PU_TAB && $('puAllH')) $('puAllH').scrollIntoView({ block: 'start' }); };
+  toTabs();
+  loadPend().then(toTabs);
+  try { PURCH = await api('purchases', { limit: 200 }); try { localStorage.setItem('rs_purchases', JSON.stringify(PURCH)); } catch (e) {} renderPurchases(); }
+  catch (err) { if (!PURCH && !PU_TAB) $('puList').innerHTML = '<p class="sub">' + esc(/Unknown action/.test(err.message) ? 'This page needs your Sheet\'s script update (due tomorrow morning). Your purchases are all safe in the Sheet.' : err.message) + '</p>'; }
+}
 $('puSearch').oninput = renderPurchases;
+$('puTabs').onclick = e => { const b = e.target.closest('[data-putab]'); if (b) puTab(b.dataset.putab); };
 $('puFrom').onclick = e => { const b = e.target.closest('[data-pf]'); if (!b) return; PU_FROM = b.dataset.pf; renderPurchases(); };
 $('puList').onclick = e => {
+  if (retAction(e)) return;
   const b = e.target.closest('[data-putrip]'); if (!b) return;
   const g = PU_SHOWN[Number(b.dataset.putrip)]; if (!g) return;
   openTrip({ journey: { date: g.date, stops: [g.trip.to].filter(Boolean), purchaseIds: [g.id], miles: g.trip.miles,

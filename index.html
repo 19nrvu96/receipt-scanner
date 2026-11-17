@@ -441,6 +441,15 @@ textarea{width:100%;padding:12px;border:1px solid #d0d0d5;border-radius:12px;fon
 .rfind{margin-top:6px}.rfind input{width:100%;padding:10px 12px;border:1px solid #d0d0d5;border-radius:10px;font:inherit;font-size:15px}
 .rfres button{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e0e0e5;border-radius:10px;padding:8px 10px;margin-top:4px;font:inherit;font-size:14px;cursor:pointer}
 input.ro{background:#f4f5f7;color:#555}
+.puph{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.puph .link{font-size:14px;white-space:nowrap}.puph .count{background:#0a84ff;color:#fff;border-radius:999px;padding:1px 8px;font-size:13px;margin-left:4px}
+#puPend{overflow-x:clip}.pend{position:relative}.swipe{touch-action:pan-y}.pend .st{padding-right:30px}
+.pendx{position:absolute;top:4px;right:4px;width:36px;height:36px;border:0;border-radius:50%;background:transparent;color:#8e8e93;font-size:17px;cursor:pointer}.pendx:active{background:#ececf0}
+.pdone{padding:10px 44px 10px 14px}.pdone .rdone{margin:0}
+.putabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 0 10px}
+.putabs button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:56px;padding:7px 4px;border:1px solid #d0d0d5;border-radius:12px;background:#fff;color:#1c1c1e;font:inherit;cursor:pointer}
+.putabs b{font-size:18px;line-height:1.1}.putabs span{font-size:11.5px;line-height:1.2;text-align:center;color:#555}
+.putabs button.on{background:#0a84ff;border-color:#0a84ff;color:#fff}.putabs button.on span{color:#fff}
+.rtag{border:0;font:inherit;font-size:11px;cursor:pointer}.putot{margin:0 0 8px}
 .pucard{padding:12px 14px}.puhead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.puhead .amt{font-weight:700;font-size:17px}
 .pulines{list-style:none;margin:8px 0 0;padding:0}.pulines li{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid #eee;font-size:15px}.pulines li b{font-weight:600;white-space:nowrap}
 .tag.pufrom{background:#eef3fb;color:#1d4f91}
@@ -659,6 +668,13 @@ html.dark .wrow{border-bottom:1px solid #464646}
 html.dark .rfind input{border:1px solid #59595e}
 html.dark .rfres button{background:#242424;border:1px solid #4b4b52}
 html.dark input.ro{background:#2d2f32;color:#b2b2b2}
+html.dark .puph .count{color:#ffffff}
+html.dark .pendx{color:#7a7a80}
+html.dark .pendx:active{background:#37373b}
+html.dark .putabs button{border:1px solid #59595e;background:#242424;color:#e4e4e6}
+html.dark .putabs span{color:#b2b2b2}
+html.dark .putabs button.on{border-color:#1a8cff;color:#ffffff}
+html.dark .putabs button.on span{color:#ffffff}
 html.dark .pulines li{border-top:1px solid #464646}
 html.dark .tag.pufrom{background:#1b2c47;color:#7fabe6}
 html.dark .ttodo{background:#242424;border:1px solid #494950}
@@ -915,6 +931,8 @@ html.dark .barcode{background:#fff}
   <section id="vPurchases" class="hide">
     <div class="hdr"><button class="back" id="btnPuBack">‹</button><h2 style="margin:0;flex:1">Purchases</h2></div>
     <div id="puPend"></div>
+    <h3 class="sech" id="puAllH">All purchases</h3>
+    <div class="putabs" id="puTabs" role="tablist" aria-label="Purchases and returns"></div>
     <input id="puSearch" type="search" class="search" placeholder="Search items, shops, order numbers" autocomplete="off">
     <div class="chips" id="puFrom" role="group" aria-label="Logged from"></div>
     <p class="hint" id="puHint">Newest first. Each card is one receipt, email or purchase, with where it was logged from.</p>
@@ -1331,9 +1349,9 @@ html.dark .barcode{background:#fff}
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=68"></script>
-<script src="app.js?v=68"></script>
-<script src="tour-engine.js?v=68"></script>
+<script src="help.js?v=69"></script>
+<script src="app.js?v=69"></script>
+<script src="tour-engine.js?v=69"></script>
 <script src="whatsnew.js?v=64"></script>
 </body>
 </html>
