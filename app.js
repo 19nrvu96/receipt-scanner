@@ -16,8 +16,8 @@ let lastResult = null;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases'];
-const APP_VERSION = 'v69';
+const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind'];
+const APP_VERSION = 'v70';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2145,13 +2145,28 @@ function renderStockPage() {
     'A small price drop often gets things moving, and turns that money back into stock that sells.' : '';
   const tip = x => x.decision === 'return' ? '' : x.days >= 90 ? '<span class="tip">Over 3 months: try a price drop or a bundle to free up the cash</span>'
     : x.days >= 60 ? '<span class="tip">Over 2 months: a small price drop could get it moving</span>' : '';
-  $('skList').innerHTML = list.length ? list.slice(0, 200).map(x => `<button class="skrow" data-sk="${x.row}"><span>${esc(x.item)}<span class="sm">${esc(x.store)} · ${x.left} of ${x.qty} left · ${money(x.each)} each${x.decision === 'return' || x.returning ? ' · returning' : ''}${fcUrl() && !x.returning ? `<span class="mtag fctag" data-skfc="${x.row}">🔍 Worth it?</span>` : ''}${STOCK_MATCH[x.item] ? `<span class="mtag" data-skm="${esc(x.item)}">👥 ${STOCK_MATCH[x.item].buyers.length} interested</span>` : ''}</span>${tip(x)}</span>
-      <span class="tag ${x.days >= 90 ? 'late' : x.days >= 45 ? 'soon' : ''}" style="align-self:center">${x.days}d</span></button>`).join('')
-    : '<p class="sub" style="padding:10px 0">' + (q ? 'Nothing matches.' : 'No stock to sell. Things you buy with a resale purpose show here.') + '</p>';
+  const row = x => `<div class="skrow2">
+      <button class="skmain" data-sk="${x.row}">${thumbHtml(x.photo)}<span class="sktext"><b>${esc(x.item)}</b>
+        <span class="sm">${esc(paidListed(x))}${x.left > 1 ? ' · ' + x.left + ' left' : ''}${x.decision === 'return' || x.returning ? ' · returning' : ''}</span>
+        <span class="skage${x.days >= SELL_OLD ? ' old' : ''}">${x.days} day${x.days === 1 ? '' : 's'} old${x.store ? ' · ' + esc(x.store) : ''}</span>
+        ${fcUrl() && !x.returning ? `<span class="mtag fctag" data-skfc="${x.row}">🔍 Worth it?</span>` : ''}${STOCK_MATCH[x.item] ? `<span class="mtag" data-skm="${esc(x.item)}">👥 ${STOCK_MATCH[x.item].buyers.length} interested</span>` : ''}${tip(x)}</span></button>
+      ${x.decision === 'return' || x.returning ? '' : `<button class="sellthis" data-sell="${x.row}">Sell this</button>`}</div>`;
+  list = list.filter(x => x.left > 0);
+  const loose = (d.listed || []).filter(x => x.left > 0 && (!q || x.item.toLowerCase().includes(q)));
+  $('skList').innerHTML = (list.length ? list.slice(0, 200).map(row).join('')
+    : '<p class="sub" style="padding:10px 0">' + (q ? 'Nothing matches.' : 'No stock to sell. Things you buy with a resale purpose show here.') + '</p>') +
+    (loose.length ? '<p class="sksub">In ListMe, with no purchase linked</p>' + loose.map(x => `<div class="skrow2">
+      <button class="skmain" data-sellk="${esc(x.lkey)}">${thumbHtml(x.photo)}<span class="sktext"><b>${esc(x.item)}</b><span class="sm">${esc(paidListed(x))}${x.left > 1 ? ' · ' + x.left + ' left' : ''}</span></span></button>
+      <button class="sellthis" data-sellk="${esc(x.lkey)}">Sell this</button></div>`).join('') : '');
+  fetchThumbs(list.slice(0, 40).concat(loose).map(x => x.photo));
 }
 $('skSearch').oninput = renderStockPage;
 $('skSort').onclick = e => { const b = e.target.closest('button'); if (b) { segSet('skSort', b.dataset.v); renderStockPage(); } };
 $('skList').onclick = e => {
+  const sl = e.target.closest('[data-sell]');
+  if (sl) { const x = STOCK.items.find(i => String(i.row) === sl.dataset.sell); if (x) openSell(sellItem(x), 'vStock'); return; }
+  const sk = e.target.closest('[data-sellk]');
+  if (sk) { const x = (STOCK.listed || []).find(i => i.lkey === sk.dataset.sellk); if (x) openSell(sellItem(x), 'vStock'); return; }
   const fc = e.target.closest('[data-skfc]');
   if (fc) { e.stopPropagation(); window.open(fcUrl() + '/#/purchases/r' + fc.dataset.skfc, '_blank', 'noopener'); return; }
   const m = e.target.closest('[data-skm]');
@@ -2604,7 +2619,7 @@ function cardCalc() {
   const on = !$('saCardWrap').classList.contains('hide');
   if (!on) return;
   const tap = Number($('saTap').value) || 0, pct = Number($('saPct').value) || 0, price = Number($('saPrice').value) || 0;
-  const fee = Math.round((tap / 100 + price * pct / 100) * 100) / 100;
+  const fee = cardFeeFor(price, { perTap: tap, pct });
   if (tap || pct) { $('saFees').value = price ? fee.toFixed(2) : ''; if (sale) sale.autoFee = $('saFees').value; }
   $('saCardCalc').textContent = (tap || pct)
     ? 'Card fee ' + money(fee) + (tap ? ' (' + tap + 'p' + (pct ? ' + ' + pct + '%' : '') + ')' : ' (' + pct + '%)') + '. It goes in fees. HMRC still counts the full ' + money(price) + ' as your sales.'
@@ -2659,11 +2674,12 @@ $('saOwn').onchange = postHint;
 $('saHand').onclick = e => { const b = e.target.closest('button'); if (!b) return; segSet('saHand', b.dataset.v); if (sale) sale.hand = b.dataset.v; saleWhereToggle(); saleCalc(); };
 $('saLogTrip').onchange = handToggle;
 
-function openSale(o) {
+function openSale(o, silent) {
   o = o || {};
+  if (!silent) crmHome();   // "About the buyer" may be on the Sell screen: back to its place in the form
   const isNew = !o.row;
   sale = { row: o.row || null, saleId: o._sale_id || null, needs: o.needs || '', linked: o['linked purchase'] || '',
-           hand: o.handover || '', trip: o['delivery trip'] || '' };
+           hand: o.handover || '', trip: o['delivery trip'] || '', units: o['listme units'] || '' };
   $('saHand').innerHTML = ''; $('saLogTrip').checked = true; $('saDropTo').value = '';
   $('saTitle').textContent = isNew ? 'Log a sale' : 'Sale';
   const plat = o.platform || (CFG.platforms && CFG.platforms.indexOf('In person') > -1 ? 'In person' : (CFG.platforms && CFG.platforms[0]) || 'In person');
@@ -2711,6 +2727,7 @@ function openSale(o) {
   if (/^match/.test(o.needs || '')) loadMatches(o);
   saleWhereToggle();
   saleCalc();
+  if (silent) return;   // Sell in person: the form is filled in behind the scenes for "About the buyer"
   show('vSale');
   // Opened from "Needs your input": go straight to the first thing to fix (the banner at the top says why)
   const first = nl.find(n => n.to && n.to !== 'saMatch');
@@ -2879,6 +2896,7 @@ async function saveSaleForm() {
     tracking: $('saOwn').checked ? v('saTrack') : '',
     'insured for': v('saIns'),
     handover: $('saHandWrap').classList.contains('hide') ? '' : segGet('saHand'),
+    'listme units': sale.units || '',
     // Saving it yourself clears the flag, except eBay postage while it's still blank
     needs: /^match/.test(sale.needs || '') ? sale.needs
       : /^eBay/.test($('saPlatform').value) && !segGet('saPostBy') && v('saPostOut') === '' && segGet('saStatus') !== 'Cancelled' ? 'add postage cost' : ''
@@ -3013,6 +3031,7 @@ async function refreshConfig() {
     CFG.business = d.business || '';
     CFG.platforms = d.platforms || [];
     CFG.cardFee = d.cardFee || CFG.cardFee || { perTap: 0, pct: 0 };
+    CFG.cardApp = d.cardApp !== undefined ? d.cardApp : (CFG.cardApp || '');
     CFG.crm = !!d.crm; try { crmSync(); renderHomeMatch(); } catch (e) {}
     CFG.apps = d.apps || CFG.apps || {}; renderAppSwitch();
     CFG.newReturns = 'apps' in d;   // the Sheet's script has the Returns update (whatsnew.js)
@@ -3186,6 +3205,300 @@ $('btnBulk').onclick   = bulkPurpose;
 $('btnShareSel').onclick = shareSelected;
 $('btnSave').onclick   = () => saveToSheet(false);
 
+/* ---------- Sell in person (v70): find it → check the price → tap how they paid ----------
+   From a Stock row ("Sell this"), Home → Sell something, or ListMe (Sold → In person opens #sell?…).
+   The sale goes through the same outbox as every other sale: 5-second Undo, sent again by itself
+   with no signal, and its own id so a retry never makes two rows. Works with no signal: the stock
+   list and the small photos are kept on the phone. */
+const LS_THUMBS = 'rs_thumbs', LS_CARD_WAIT = 'rs_card_wait', SELL_OLD = 45;
+// Usual in-person card fees, checked 17 Nov 2026 on stripe.com, monzo.com, sumup.com and squareup.com:
+// Stripe 1.4% + 10p, plus 10p a tap for Tap to Pay (Monzo's Tap to Pay is Stripe's, with no Monzo fee); SumUp 1.69%; Square and Zettle 1.75%.
+const CARD_APPS = { Monzo: { perTap: 20, pct: 1.4 }, Stripe: { perTap: 20, pct: 1.4 }, SumUp: { perTap: 0, pct: 1.69 }, Square: { perTap: 0, pct: 1.75 }, Zettle: { perTap: 0, pct: 1.75 } };
+const TAG_ICO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>';
+// £85 or £85.50 (and −£3 for a loss)
+const gbp = n => (r2(n) < 0 ? '−£' : '£') + (Math.round(Math.abs(r2(n)) * 100) % 100 ? Math.abs(r2(n)).toFixed(2) : String(Math.round(Math.abs(r2(n)))));
+function cardFeeFor(price, f) {
+  f = f || {};
+  const p = Number(price) || 0;
+  return p > 0 ? r2((Number(f.perTap) || 0) / 100 + p * (Number(f.pct) || 0) / 100) : 0;
+}
+const paidListed = x => [x.each !== null && x.each !== undefined ? 'Paid ' + gbp(x.each) : 'No purchase linked', x.listed ? 'listed ' + gbp(x.listed) : ''].filter(Boolean).join(' · ');
+const cardApp = () => (CFG.cardApp && CFG.cardApp !== 'Other' ? CFG.cardApp : '');
+
+// One item to sell, from a Stock row, a ListMe item with no purchase, or a ListMe link
+function sellItem(x) {
+  return { row: x.row || null, title: String(x.item || x.title || 'Item'), paid: x.each === null || x.each === undefined ? null : Number(x.each),
+           listed: Number(x.listed) > 0 ? Number(x.listed) : null, left: Math.max(0, Number(x.left) || 0),
+           units: String(x.units || '').split(',').filter(Boolean), photo: x.photo || '', days: x.days === undefined ? null : x.days,
+           store: x.store || '', lkey: x.lkey || '' };
+}
+function stockCache() { if (!STOCK) { try { STOCK = JSON.parse(localStorage.getItem('rs_stock')); } catch (e) {} } return STOCK; }
+function allForSale() { const d = stockCache() || {}; return (d.items || []).filter(x => x.left > 0 && x.decision !== 'return' && !x.returning).concat((d.listed || []).filter(x => x.left > 0)); }
+
+/* Small photos: the first ListMe photo of each item, copied to your Drive. Shrunk to ~5 KB and kept here. */
+let THUMBS = null, thumbBusy = false;
+const thumbStore = () => { if (!THUMBS) { try { THUMBS = JSON.parse(localStorage.getItem(LS_THUMBS)) || {}; } catch (e) { THUMBS = {}; } } return THUMBS; };
+const thumbMiss = new Set();   // asked for and not there this time: don't ask again until the app reopens
+function thumbHtml(id, big) {
+  const t = id && thumbStore()[id];
+  return `<span class="${big ? 'sellph' : 'skthumb'}"${id ? ` data-thumb="${esc(id)}"` : ''}>${t ? `<img src="${t}" alt="">` : TAG_ICO}</span>`;
+}
+function shrink(dataUrl, px) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas'), s = Math.min(img.width, img.height);
+      c.width = c.height = px;
+      c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, px, px);
+      res(c.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = () => res('');
+    img.src = dataUrl;
+  });
+}
+async function fetchThumbs(ids) {
+  const T = thumbStore();
+  ids = [...new Set((ids || []).filter(id => id && !T[id] && !thumbMiss.has(id)))].slice(0, 12);
+  if (!ids.length || thumbBusy || navigator.onLine === false) return;
+  thumbBusy = true;
+  try {
+    const r = await api('thumbs', { ids }) || {};
+    for (const id of ids) {
+      const t = r[id] ? await shrink(r[id], 160) : '';
+      if (!t) { thumbMiss.add(id); continue; }
+      T[id] = t;
+      document.querySelectorAll('[data-thumb="' + id + '"]').forEach(el => { el.innerHTML = `<img src="${t}" alt="">`; });
+    }
+    const keys = Object.keys(T);
+    if (keys.length > 300) keys.slice(0, keys.length - 300).forEach(k => delete T[k]);
+    lsSet(LS_THUMBS, T);
+  } catch (e) { ids.forEach(id => thumbMiss.add(id)); }
+  finally { thumbBusy = false; }
+}
+
+/* Home → Sell something: search what's for sale (from the phone, so it works with no signal) */
+function openSellFind() {
+  $('sfSearch').value = '';
+  show('vSellFind');
+  renderSellFind();
+  loadStock().then(renderSellFind).catch(() => {});
+}
+function renderSellFind() {
+  const q = $('sfSearch').value.trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean);
+  const all = allForSale(), list = all.filter(x => words.every(w => (x.item + ' ' + (x.store || '')).toLowerCase().includes(w))).slice(0, 60);
+  $('sfList').innerHTML = list.length ? list.map((x, i) => `<div class="skrow2"><button class="skmain" data-sf="${all.indexOf(x)}">${thumbHtml(x.photo)}<span class="sktext"><b>${esc(x.item)}</b>
+      <span class="sm">${esc(paidListed(x))}${x.left > 1 ? ' · ' + x.left + ' left' : ''}</span></span></button><button class="sellthis" data-sf="${all.indexOf(x)}">Sell</button></div>`).join('')
+    : '<p class="sub" style="padding:10px 0">' + (!stockCache() ? 'Loading your stock…' : q ? 'Nothing matches. Try another word.' : 'Nothing in stock. Things you buy to resell show here.') + '</p>';
+  fetchThumbs(list.map(x => x.photo));
+}
+$('sfSearch').oninput = renderSellFind;
+$('sfList').onclick = e => { const b = e.target.closest('[data-sf]'); if (b) { const x = allForSale()[+b.dataset.sf]; if (x) openSell(sellItem(x), 'vSellFind'); } };
+$('btnSfBack').onclick = () => show('vHome');
+$('btnSellSome').onclick = openSellFind;
+
+/* The sell screen */
+let SELL = null;   // { item, qty, from, edited, card }
+const CRM_HOME = { parent: $('saCrm').parentNode, next: $('saCrm').nextSibling };
+function crmHome() { const c = $('saCrm'); if (c.parentNode !== CRM_HOME.parent) CRM_HOME.parent.insertBefore(c, CRM_HOME.next); }
+
+function openSell(item, from, keep) {
+  SELL = Object.assign({ item, qty: 1, from: from || 'vHome', edited: false, card: null }, keep || {});
+  $('seTitle').textContent = item.title;
+  sellMeta();
+  $('sePhotoBox').outerHTML = thumbHtml(item.photo, true).replace('<span class="sellph"', '<span class="sellph" id="sePhotoBox"');
+  fetchThumbs([item.photo]);
+  $('sePrice').value = keep && keep.price !== undefined ? keep.price : item.listed ? r2(item.listed) : '';
+  $('sePrice').disabled = false;
+  $('btnSeBank').classList.add('hide');   // Phase 2: pay by bank QR
+  $('seCardSub').textContent = cardApp() ? 'Take it in ' + cardApp() : 'Take it in your card app';
+  $('sePay').classList.remove('hide'); $('seCardBox').classList.add('hide');
+  // "About the buyer": the same section as the full sale form, moved here while this screen is open
+  if (CFG.crm) {
+    openSale({ platform: 'In person', item: item.title, quantity: SELL.qty, 'sale price': $('sePrice').value, 'listed at': item.listed || '' }, true);
+    $('seCrmSlot').appendChild($('saCrm')); $('saCrm').classList.remove('hide');
+    $('seBuyer').classList.remove('hide'); $('seBuyer').open = false;
+  } else $('seBuyer').classList.add('hide');
+  sellCalc();
+  show('vSell');
+  // Has the last one just sold online? Ask the Sheet (in the background; the screen works without it)
+  if (item.row && navigator.onLine !== false) api('sellCheck', { row: item.row }).then(r => {
+    if (!SELL || SELL.item !== item || !r || r.left === null || r.left === undefined) return;
+    item.left = r.left; stockLeft(item, r.left); sellMeta(); sellCalc();
+  }).catch(() => {});
+}
+function sellMeta() {
+  const it = SELL.item;
+  $('seSub').textContent = [it.paid !== null ? 'Paid ' + gbp(it.paid) : 'No purchase linked', it.listed ? 'listed ' + gbp(it.listed) : '',
+    it.left > 1 ? it.left + ' left' : '', it.days !== null && it.days >= SELL_OLD ? it.days + ' days old' : ''].filter(Boolean).join(' · ');
+  $('seQtyWrap').classList.toggle('hide', it.left < 2);
+  $('seQty').textContent = SELL.qty; $('seMinus').disabled = SELL.qty <= 1; $('sePlus').disabled = SELL.qty >= it.left;
+  $('seLeft').textContent = it.left > 1 ? 'of ' + it.left : '';
+  document.querySelector('label[for="sePrice"]').textContent = SELL.qty > 1 ? 'Price for ' + SELL.qty : 'Price';
+  $('seWarn').classList.toggle('hide', it.left > 0);
+  $('seWarn').textContent = it.left > 0 ? '' : 'Your records say this one has already sold. You can still log the sale; it\'ll be marked to check.';
+}
+function sellPrice() { const v = $('sePrice').value.trim(); return v === '' || isNaN(Number(v)) ? null : r2(Number(v)); }
+function sellCalc() {
+  if (!SELL) return;
+  const it = SELL.item, price = sellPrice(), asking = it.listed ? r2(it.listed * SELL.qty) : null;
+  const fee = SELL.card ? cardFeeFor(price, CFG.cardFee) : 0;
+  $('seOff').innerHTML = price === null || !asking ? '' : price < asking ? `<b>${Math.round((asking - price) / asking * 100)}% off asking</b>`
+    : price > asking ? `<b class="up">${gbp(price - asking)} over asking</b>` : 'Asking price';
+  $('seProfit').innerHTML = price === null ? '' : it.paid === null ? 'Profit: link a purchase'
+    : `Profit <b>${gbp(price - fee - it.paid * SELL.qty)}</b> after ${SELL.card ? 'costs and card fee' : 'costs'}`;
+  if (!SELL.card) {
+    const f = CFG.cardFee || {}, cf = cardFeeFor(price, f);
+    $('seCardSub').textContent = (cardApp() ? 'Take it in ' + cardApp() : 'Take it in your card app') + (cf ? ' · fee about ' + gbp(cf) : '');
+  }
+  if (CFG.crm && $('saCrm').parentNode === $('seCrmSlot')) { $('saPrice').value = price === null ? '' : price; $('saQty').value = SELL.qty; try { listedHint(); } catch (e) {} }
+}
+$('sePrice').oninput = () => { if (SELL) SELL.edited = true; sellCalc(); };
+function sellQty(d) {
+  const it = SELL.item, q = Math.max(1, Math.min(it.left || 1, SELL.qty + d));
+  if (q === SELL.qty) return;
+  // The price follows the number sold until you type your own
+  if (!SELL.edited && it.listed) $('sePrice').value = r2(it.listed * q);
+  else if (!SELL.edited && sellPrice() !== null) $('sePrice').value = r2(sellPrice() / SELL.qty * q);
+  SELL.qty = q; sellMeta(); sellCalc();
+}
+$('seMinus').onclick = () => sellQty(-1);
+$('sePlus').onclick = () => sellQty(1);
+
+// Taps "Cash" or "Card": the checks every sale gets (price given, £0 on purpose, not already sold)
+function sellReady() {
+  const price = sellPrice();
+  if (price === null) { toast('Put in the price', true); $('sePrice').focus(); return false; }
+  if (price < 0) { toast('The price can\'t be below £0', true); return false; }
+  if (price === 0 && !confirm('Give it away for £0? It\'s saved as a £0 sale.')) return false;
+  if (SELL.item.left < 1 && !confirm('This was the last one. Sell anyway?')) return false;
+  if (SELL.item.left > 0 && SELL.qty > SELL.item.left && !confirm('You only have ' + SELL.item.left + ' left. Sell anyway?')) return false;
+  return true;
+}
+function sellSale(method) {
+  const it = SELL.item, qty = SELL.qty, price = sellPrice();
+  const fee = method === 'Card reader' ? cardFeeFor(price, CFG.cardFee) : 0;
+  const s = {
+    'sale date': today(), platform: 'In person', where: '', item: it.title, quantity: qty, 'sale price': price,
+    'platform fees': fee ? fee : '', 'payment method': method, 'card app': method === 'Card reader' ? (CFG.cardApp || '') : '',
+    'payment status': 'Paid', status: 'Completed', 'counts in totals': 'Yes', handover: 'Collected', 'order number': 'n/a',
+    'linked purchase': it.row ? 'Purchases row ' + it.row + ': ' + it.title : '', 'item cost': it.paid !== null ? r2(it.paid * qty) : '',
+    'listed at': it.listed ? r2(it.listed * qty) : '', 'listme units': it.units.slice(0, qty).join(','), needs: ''
+  };
+  let buyerInfo = null;
+  if (CFG.crm && $('saCrm').parentNode === $('seCrmSlot')) {
+    s.buyer = $('saBuyer').value.trim();
+    const listed = s['listed at'];
+    buyerInfo = crmPayload(s);
+    if (listed !== '') s['listed at'] = listed;   // this screen's asking price (for the number sold) wins
+  }
+  return { s, buyerInfo };
+}
+// Stock count on the phone follows the sale at once (and goes back on Undo)
+function stockLeft(it, left) {
+  const d = stockCache(); if (!d) return;
+  const x = it.row ? (d.items || []).find(i => i.row === it.row) : (d.listed || []).find(i => i.lkey === it.lkey);
+  if (x) { x.left = Math.max(0, left); lsSet('rs_stock', d); }
+}
+function sellCommit(method, clientId) {
+  const { s, buyerInfo } = sellSale(method), it = SELL.item, qty = SELL.qty, from = SELL.from, price = sellPrice();
+  const req = { sale: s, clientId: clientId || newId() };
+  if (buyerInfo) req.buyerInfo = buyerInfo;
+  const q = queueSale(req, s.item, UNDO_SECS * 1000);
+  const before = it.left;
+  it.left = Math.max(0, it.left - qty); stockLeft(it, it.left);
+  try { localStorage.removeItem(LS_CARD_WAIT); } catch (e) {}
+  const keep = { qty, price, edited: SELL.edited };
+  sellLeave(from);
+  undoBar('Sold for ' + gbp(price) + ' · ' + (method === 'Cash' ? 'cash' : 'card'), UNDO_SECS,
+    () => { unqueueSale(q.id); it.left = before; stockLeft(it, before); openSell(it, from, keep); toast('Not saved. Change anything, then tap how they paid'); },
+    () => flushSales());
+}
+function sellLeave(from) {
+  crmHome();
+  SELL = null;
+  if (from === 'vStock') { show('vStock'); renderStockPage(); }
+  else if (from === 'vSale') show('vSales');
+  else show('vHome');   // Home, Sell something, or a ListMe link
+}
+$('btnSellBack').onclick = () => {
+  if (SELL && SELL.card && !confirm('Leave without logging the card sale?')) return;
+  try { localStorage.removeItem(LS_CARD_WAIT); } catch (e) {}
+  const from = SELL && SELL.from;
+  if (from === 'vSellFind') { crmHome(); SELL = null; show('vSellFind'); renderSellFind(); } else sellLeave(from);
+};
+$('btnSeCash').onclick = () => { if (sellReady()) sellCommit('Cash'); };
+
+/* Card: we can't start a payment in another app from here (no card app offers a reliable link for that),
+   so it says where to take it, then you tap Done. The sale waits on the phone until then. */
+function cardStep() {
+  const price = sellPrice(), f = CFG.cardFee || {}, fee = cardFeeFor(price, f);
+  $('seCardStep').textContent = 'Take ' + gbp(price) + ' in ' + (cardApp() || 'your card app') + ', then tap Done';
+  $('seCardFee').textContent = fee ? 'Card fee ' + gbp(fee) + ' (' + [f.pct ? f.pct + '%' : '', f.perTap ? f.perTap + 'p' : ''].filter(Boolean).join(' + ') + '). Change it in Settings → Selling.'
+    : 'No card fee set. Add yours in Settings → Selling so profit is right.';
+}
+$('btnSeCard').onclick = () => {
+  if (!sellReady()) return;
+  SELL.card = { clientId: newId(), at: Date.now() };
+  lsSet(LS_CARD_WAIT, { item: SELL.item, qty: SELL.qty, price: sellPrice(), from: SELL.from, card: SELL.card });
+  $('sePrice').disabled = true; $('sePay').classList.add('hide'); $('seCardBox').classList.remove('hide');
+  cardStep(); sellCalc();
+};
+$('btnSeCardDone').onclick = () => { if (SELL && SELL.card) sellCommit('Card reader', SELL.card.clientId); };
+$('btnSeCardCancel').onclick = () => {
+  try { localStorage.removeItem(LS_CARD_WAIT); } catch (e) {}
+  SELL.card = null; $('sePrice').disabled = false; $('seCardBox').classList.add('hide'); $('sePay').classList.remove('hide'); sellCalc();
+  toast('Not logged. Try again, or take cash');
+};
+// The app was closed while you took the card payment: carry on where you were
+function resumeCardWait() {
+  let w = null; try { w = JSON.parse(localStorage.getItem(LS_CARD_WAIT) || 'null'); } catch (e) {}
+  if (!w || !w.card || Date.now() - w.card.at > 3 * 3600e3) { try { localStorage.removeItem(LS_CARD_WAIT); } catch (e) {} return false; }
+  openSell(w.item, w.from, { qty: w.qty, price: w.price, edited: true });
+  SELL.card = w.card;
+  $('sePrice').disabled = true; $('sePay').classList.add('hide'); $('seCardBox').classList.remove('hide');
+  cardStep(); sellCalc();
+  return true;
+}
+
+$('btnSeMore').onclick = () => {   // the full sale form, filled in (postage, drop-off, another date)
+  const it = SELL.item, price = sellPrice();
+  crmHome();
+  openSale({ platform: 'In person', item: it.title, quantity: SELL.qty, 'sale price': price === null ? '' : price, 'payment method': 'Cash',
+    'linked purchase': it.row ? 'Purchases row ' + it.row + ': ' + it.title : '', 'item cost': it.paid !== null ? r2(it.paid * SELL.qty) : '',
+    'listed at': it.listed ? r2(it.listed * SELL.qty) : '', 'listme units': it.units.slice(0, SELL.qty).join(',') });
+  if (it.paid !== null) sale.linkEach = it.paid;
+  SELL = null;
+};
+
+/* ListMe's link: #sell?u=<unit ids>&k=<key>&t=<title>&p=<listed>&r=<purchase row>&n=<left>&c=<cost each>&ph=<photo>&rx=<this Sheet's script address>
+   Everything is after the #, so it never reaches any server. */
+function sellLinkConnect(hash) {
+  if (!/^#sell\b/.test(hash) || localStorage.getItem(LS_URL)) return;
+  const rx = new URLSearchParams(hash.replace(/^#sell\??/, '')).get('rx') || '';
+  if (/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(rx)) { try { localStorage.setItem(LS_URL, rx); localStorage.setItem('rs_intro', '1'); } catch (e) {} }
+}
+function sellFromLink(hash) {
+  const q = new URLSearchParams(hash.replace(/^#sell\??/, ''));
+  if (!q.get('t')) return null;
+  const row = Number(q.get('r')) || null, c = q.get('c');
+  const it = sellItem({ row, item: q.get('t'), each: c === null || c === '' || isNaN(Number(c)) ? null : Number(c), listed: q.get('p'),
+    left: Number(q.get('n')) || 1, units: q.get('u') || '', photo: q.get('ph') || '', lkey: q.get('k') || '' });
+  const x = row && stockCache() && (STOCK.items || []).find(i => i.row === row);   // what your Sheet knows wins for cost and count
+  if (x) Object.assign(it, { paid: x.each, left: x.left, store: x.store, days: x.days, photo: it.photo || x.photo || '' });
+  const y = !x && it.lkey && stockCache() && (STOCK.listed || []).find(i => i.lkey === it.lkey);   // a ListMe item with no purchase: its photo
+  if (y && !it.photo) it.photo = y.photo || '';
+  return it;
+}
+function openSellLink(hash) {
+  const it = sellFromLink(hash);
+  if (it) openSell(it, 'link'); else openSellFind();
+}
+
+$('stCardApp').onchange = () => {   // picking an app fills in its usual fee (you can change it)
+  const f = CARD_APPS[$('stCardApp').value];
+  if (f) { $('stTap').value = f.perTap || ''; $('stPct').value = f.pct; }
+};
+
 /* ---------- boot ---------- */
 loadCache();
 try { USAGE = JSON.parse(localStorage.getItem(LS_USAGE)) || null; } catch (e) {}
@@ -3195,8 +3508,11 @@ setInterval(() => { if (!$('vHome').classList.contains('hide')) renderUsage(); }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && localStorage.getItem(LS_URL)) refreshConfig();
 });
+sellLinkConnect(location.hash);   // a ListMe link on a phone where this copy of the app isn't set up yet (Safari keeps its own storage)
 if (localStorage.getItem(LS_URL)) {
   show('vHome'); if (CFG.waiting) renderTodo(CFG.waiting); renderAppSwitch(); refreshConfig();
+  if (/^#sell\b/.test(location.hash)) { const h = location.hash; history.replaceState(null, '', location.pathname); openSellLink(h); }   // ListMe: Sold → In person
+  else resumeCardWait();
   if (location.hash === '#returns') { history.replaceState(null, '', location.pathname); openSales('slToRetWrap'); }   // from FlipList / FlipCheck
   if (location.hash === '#purchases') { history.replaceState(null, '', location.pathname); openPurchases(); }   // from FlipCheck's Bought it box
 }
@@ -3228,6 +3544,7 @@ async function openSettings() {
     const d = SETTINGS;
     segSet('stType', d.type || ''); $('stVat').checked = !!d.vat; $('stYe').value = String(d.yearEnd || 3); $('stInc').value = d.income || '';
     $('stTap').value = d.cardFee && d.cardFee.perTap ? d.cardFee.perTap : ''; $('stPct').value = d.cardFee && d.cardFee.pct ? d.cardFee.pct : '';
+    $('stCardApp').value = d.cardApp || 'Other';
     const a = d.account || {};
     SETTINGS.sheetUrl = a.sheetUrl || '';
     $('stEmail').textContent = a.email || '—'; $('stGoogle').textContent = a.email || '—';
@@ -3353,6 +3670,7 @@ $('btnStSave').onclick = async () => {
   if (!type) { toast('Pick your business type', true); return; }
   const settings = { type, vat: $('stVat').checked, yearEnd: Number($('stYe').value) || 3, income: $('stInc').value,
                      cardFee: { perTap: Number($('stTap').value) || 0, pct: Number($('stPct').value) || 0 },
+                     cardApp: $('stCardApp').value,
                      emailSource: $('stSrc').value, orderEmail: $('stSrc').value === 'gmail' ? '' : $('stOrderEmail').value.trim(),
                      monthlyEmail: $('stMonthly').checked };
   if (d.type && (type !== d.type || settings.vat !== !!d.vat) &&
@@ -3360,7 +3678,7 @@ $('btnStSave').onclick = async () => {
   const b = $('btnStSave'); b.disabled = true; b.textContent = 'Saving…';
   try {
     SETTINGS = await api('settingsSet', { settings });
-    CFG.business = SETTINGS.type; CFG.vat = SETTINGS.vat; CFG.cardFee = SETTINGS.cardFee; saveCache();
+    CFG.business = SETTINGS.type; CFG.vat = SETTINGS.vat; CFG.cardFee = SETTINGS.cardFee; CFG.cardApp = SETTINGS.cardApp || ''; saveCache();
     toast(SETTINGS.note || 'Settings saved');
     openSettings();
   } catch (err) { toast(err.message, true); }
@@ -3398,7 +3716,8 @@ function renderNumbers(d) {
     <div class="ncard"><h3>Profit so far</h3><div class="nbig">${money(d.profit)}</div>
       <div class="nrow"><span>Sales</span><b>${money(d.sales)}</b></div>
       <div class="nrow"><span>Selling costs (fees, postage)</span><b>−${money(d.sellingCosts)}</b></div>
-      <div class="nrow"><span>Business spending${d.mileage ? ' (incl. mileage)' : ''}</span><b>−${money(d.spent)}</b></div></div>
+      <div class="nrow"><span>Business spending${d.mileage ? ' (incl. mileage)' : ''}</span><b>−${money(d.spent)}</b></div>
+      ${d.awaiting && d.awaiting.n ? `<div class="nrow"><span>Awaiting payment (${d.awaiting.n} sale${d.awaiting.n === 1 ? '' : 's'}). Counted once it's paid</span><b>${money(d.awaiting.value)}</b></div>` : ''}</div>
     <div class="ncard"><h3>Tax pot: set this aside</h3><div class="nbig">${money(d.taxPot)}</div>
       <p class="sub" style="margin:4px 0 0">${esc(d.taxLabel)} on your profit.</p>
       <div class="warnnote">A rough guide only. It's only as right as what you've recorded${d.unset ? ' (' + d.unset + ' line' + (d.unset === 1 ? ' has' : 's have') + ' no purpose yet)' : ''}, and it ignores your personal allowance and other income, so it usually errs high. Check with an accountant before you pay HMRC.</div></div>

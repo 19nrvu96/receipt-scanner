@@ -1,4 +1,4 @@
-/* Guided tour of the 15 and 16 November changes in Receipts (16 Nov: To collect, return pick-ups, Purchases and drop-off trips added). Each feature opens the real screen, points at the
+/* Guided tour of the 15–17 November changes in Receipts (17 Nov: Sell in person. 16 Nov: To collect, return pick-ups, Purchases and drop-off trips added). Each feature opens the real screen, points at the
    real thing, says what to do, then shows what it does in the Google Sheet and in FlipCheck and ListMe.
    Opens once on this phone; reopen from Settings → What's new. Engine: tour-engine.js.
    Previews use example data only (this app is public, so no real data goes in it). */
@@ -13,7 +13,7 @@
     '<span class="tag soon">Last day Fri 27 Nov</span><span class="tag">🏬 Shop: often 28–30 days</span><span class="tag">QR code saved</span>' +
     '<div><span class="b">Show return QR code</span></div><div><span class="b s">✓ Returned it</span><span class="b s">📷 Refund receipt</span></div></div>', 'Sales → To return');
 
-  const D16 = 'New today · 16 Nov', D15 = 'Yesterday · 15 Nov';
+  const D17 = 'New today · 17 Nov', D16 = '16 Nov', D15 = '15 Nov';
   // Tonight's: Purchases page, drop-off trips. Made-up example data.
   const PU_CARD = M.receipts('<div class="c"><div class="st">Facebook Marketplace <span style="float:right">£50.00</span></div><div class="sm">16/11/2026 · logged 20:09</div>' +
     '<span class="tag" style="background:#eef3fb;color:#1d4f91">📊 FlipCheck</span><span class="tag">Cash</span>' +
@@ -41,6 +41,40 @@
     '<div class="sm">📍 Collected from TOWNSVILLE</div><div class="sm" style="margin-top:6px">1. <b>Print the label</b> <span class="b s">🖨 Print label</span><span class="b s">✓ Printed</span><br>2. <b>Pack it</b> · How to pack it (3)<br>3. <b>Hand it to the driver</b>, then tap ✓ Picked up</div>' +
     '<div class="sm" style="margin-top:6px;color:#0a58ca">📅 Reschedule · 🔁 Change return method · ⏰ Remind me</div><div class="sm">📋 Order details to copy ▸</div>' +
     '<div><span class="b">✓ Picked up</span><span class="b s">📷 Refund receipt</span></div><div class="sm" style="color:#0a58ca">✕ Cancel this return</div></div>', 'Sales → To return');
+  // 17 Nov: Sell in person. Made-up example data only.
+  const SELL_ROW = M.receipts('<div class="c" style="display:flex;gap:10px;align-items:center"><div style="width:44px;height:44px;border-radius:10px;background:#eef0f4"></div><div style="flex:1"><div class="st">Example games console</div><div class="sm">Paid £60 · listed £85 · 2 left</div><div class="sm" style="color:#b25e00;font-weight:700">52 days old</div></div><span class="b" style="background:#14804a">Sell this</span></div>', 'Stock');
+  const SELL_SCREEN = M.receipts('<div class="c"><div class="st">Example games console</div><div class="sm">Paid £60 · listed £85 · 2 left</div>' +
+    '<div style="font-size:28px;font-weight:700;border:2px solid #d0d0d5;border-radius:12px;padding:4px 10px;margin:8px 0">£75</div><div class="sm"><b>12% off asking</b> · Profit <b>£15</b> after costs</div>' +
+    '<div style="margin-top:8px"><span class="b" style="background:#14804a;display:block;margin-bottom:6px">Cash · logs it now</span><span class="b" style="background:#3d3f8f;display:block">Card · take it in SumUp · fee about £1.27</span></div></div>', 'Sell in person');
+  const SELL_CARD = M.receipts('<div class="c"><div class="st">Take £75 in SumUp, then tap Done</div><div class="sm">Card fee £1.27 (1.69%). Change it in Settings → Selling.</div><div><span class="b">Done, they paid</span><span class="b s">The card didn\'t go through</span></div></div>', 'Card');
+  const SELLCH = [
+    { id: 'rs-sellthis', day: D17, icon: '💷', title: 'Sell in person in three taps', summary: 'Find it, check the price, tap how they paid',
+      steps: [
+        { title: 'Sell this', go: go(() => openStock()), target: '.sellthis',
+          missing: 'Nothing in stock right now. With stock, each row looks like this:', mock: SELL_ROW,
+          text: 'Every Stock row has a <b>Sell this</b> button. Rows show what you paid, what it\'s listed at in ListMe, how many are left and how old it is (orange once it\'s past 45 days). The photo comes from ListMe.',
+          todo: ['Open <b>Sales → Stock</b>.', 'Tap <b>Sell this</b> on the item in your hand.'] },
+        { title: 'Check the price', mock: SELL_SCREEN,
+          text: 'The price is filled in with the listed price. Tap it to change it. Under it you see <b>% off asking</b> and your <b>profit after costs</b>, live. With more than one left, a − / ＋ sets how many.',
+          todo: ['Change the price if you agreed less.', 'Tap <b>Cash</b>: it\'s logged, with 5 seconds to Undo, and you\'re back where you were.'] },
+        { title: 'Card', mock: SELL_CARD,
+          text: 'Card apps don\'t let other apps start a payment for them, so Receipts tells you where to take it and waits. Tap <b>Done, they paid</b> once your card app says it went through. The fee comes off your profit.',
+          todo: ['Tap <b>Card</b>, take the payment in your card app, then come back and tap <b>Done, they paid</b>.'] },
+        { title: 'From the home screen', go: go(() => show('vHome')), target: '#btnSellSome',
+          text: '<b>Sell something</b> opens a search of your stock. It works with no signal: your stock and the small photos are kept on your phone, and the sale is sent when you\'re back online.',
+          todo: ['Tap <b>Sell something</b> and type a word or two.'] },
+        { title: 'Your card app and fee', go: go(() => openSettings()), target: '#stCardApp',
+          text: 'Settings → Selling → <b>Card payments in person</b>. Pick your app and its usual fee fills in (checked 17 Nov 2026). Check it against your app: fees change.',
+          todo: ['Pick your card app.', 'Tap <b>Save</b> at the bottom.'] },
+      ],
+      effect: [
+        { app: 'Sheet', text: 'One row on the Sales tab: In person, price, listed at, % off asking, Cash or Card (and which app), the card fee, <b>payment status</b> Paid, linked to its purchase, so profit and days to sell work.',
+          mock: M.sheet('Sales', ['item', 'sale price', 'platform fees', 'payment method', 'payment status', 'profit'], [['Example games console', '75', '1.27', 'Card reader', 'Paid', '13.73']], [[0, 4]], ['Purchases', 'Sales', 'Listed']) },
+        { app: 'ListMe', text: 'Next time ListMe opens it marks the item sold, and the 🔔 lists the other sites to end it on. ListMe\'s <b>Sold → In person</b> opens this same screen.' },
+        { app: 'FlipCheck', text: 'If you bought it through FlipCheck, its deal moves to <b>Sold</b> with the real price and profit next to the estimate.' },
+      ] },
+  ];
+
   const NEWCH = [
     { id: 'rs-collect', day: D16, icon: '🛍️', title: 'To collect: click & collect', summary: 'What, how many, where, opening times, the code',
       steps: [
@@ -283,8 +317,8 @@
   ];
 
   chapters.forEach(c => { c.day = c.day || D15; });
-  const all = NEWCH.filter(c => c.day === D16).concat(chapters, NEWCH.filter(c => c.day === D15));
-  const cfg = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:1116d', chapters: all, ready,
+  const all = SELLCH.concat(NEWCH.filter(c => c.day === D16), chapters, NEWCH.filter(c => c.day === D15));
+  const cfg = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:1117a', chapters: all, ready,
     get theme() { const d = document.documentElement.classList.contains('dark');
       return d ? { accent: '#0a84ff', accentInk: '#fff', bg: '#1d2027', fg: '#e8e8ea', line: '#3a3d45', strong: '#fff' } : { accent: '#0a84ff', accentInk: '#fff', bg: '#fff', fg: '#111', line: '#d6d6db', strong: '#111' }; },
     when: () => !!localStorage.getItem('rs_url') };
