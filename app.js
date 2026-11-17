@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind'];
-const APP_VERSION = 'v70';
+const APP_VERSION = 'v71';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1351,7 +1351,7 @@ function renderStops(vals, geos) {
   geos = geos || [];
   const n = vals.length;
   $('tStops').innerHTML = vals.map((v, i) => `<div class="stop">
-    <span class="dot">${i === 0 ? 'A' : i === n - 1 ? String.fromCharCode(65 + i) : String.fromCharCode(65 + i)}</span>
+    ${n > 1 ? `<span class="grip" data-grip="${i}" role="button" aria-label="Drag to move this stop">⠿</span>` : ''}<span class="dot">${i === 0 ? 'A' : i === n - 1 ? String.fromCharCode(65 + i) : String.fromCharCode(65 + i)}</span>
     <input data-stop="${i}" list="placeList" value="${esc(v)}" ${geos[i] ? `data-geo="${esc(geos[i])}"` : ''}
       placeholder="${i === 0 ? 'Start: postcode or address' : i === n - 1 ? 'Where you went' : 'Stop'}" autocomplete="off">
     ${i === 0 ? '<button class="ib" data-here="1" aria-label="Use my location">📍</button>'
@@ -1488,6 +1488,7 @@ async function saveTrip() {
     if (t.saleId && saleOut.some(o => o.id === t.saleId)) { b.textContent = 'Saving the sale first…'; await flushSales(true); }
     const r = await sendTrip(t);
     rememberTrip(t);
+    setTimeout(() => offerAlsoCovers(r), 400);   // a drop-off or collection on Trips to log that this trip looks like it covered
     toast('Trip saved: ' + r.miles + ' miles · ' + money(r.amount) + ' (' + r.rate + ')' + (t.saleRow || t.saleId ? ' · linked to the sale' : ''));
     if (t.labelIds || t.purchaseIds) {
       TRIPS = null;
@@ -3132,6 +3133,40 @@ $('btnAddStop').onclick = () => {
   renderStops(v, geos);
   stopInputs()[v.length - 2].focus();
 };
+// Drag a stop by its ⠿ handle to change the order (start, stops and end all move); the route is worked out again
+(function stopDrag() {
+  const box = $('tStops'); let drag = null;
+  box.addEventListener('pointerdown', e => {
+    const g = e.target.closest('[data-grip]'); if (!g) return;
+    const rows = Array.from(box.querySelectorAll('.stop')), row = g.closest('.stop');
+    if (rows.length < 2) return;
+    e.preventDefault();
+    try { g.setPointerCapture(e.pointerId); } catch (err) {}
+    drag = { id: e.pointerId, row, rows, from: rows.indexOf(row), to: rows.indexOf(row), y0: e.clientY, h: row.offsetHeight + 8 };
+    row.classList.add('dragging');
+  });
+  box.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag, dy = e.clientY - d.y0;
+    d.to = Math.max(0, Math.min(d.rows.length - 1, d.from + Math.round(dy / d.h)));
+    d.row.style.transform = 'translateY(' + dy + 'px)';
+    d.rows.forEach((r, i) => {
+      if (r === d.row) return;
+      const shift = d.from < d.to && i > d.from && i <= d.to ? -d.h : d.from > d.to && i >= d.to && i < d.from ? d.h : 0;
+      r.style.transform = shift ? 'translateY(' + shift + 'px)' : '';
+    });
+  });
+  const end = e => {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    const d = drag; drag = null;
+    d.rows.forEach(r => { r.style.transform = ''; }); d.row.classList.remove('dragging');
+    if (d.to === d.from) return;
+    const v = stopValues(), geos = stopInputs().map(x => x.dataset.geo || '');
+    v.splice(d.to, 0, v.splice(d.from, 1)[0]); geos.splice(d.to, 0, geos.splice(d.from, 1)[0]);
+    renderStops(v, geos); lookupRoute();
+  };
+  box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+})();
 $('btnHome').onclick = () => { $('homeWrap').classList.toggle('hide'); $('tHome').value = homeAddr(); $('tHome').focus(); };
 $('btnHomeSave').onclick = () => {
   const h = $('tHome').value.trim().toUpperCase();
@@ -4558,7 +4593,9 @@ async function renderTripTodo(plain) {
         ${g.map(x => `<div class="ttrow"><div><div class="st">${x.kind === 'buy' ? '🛍️ Collected: ' + esc(x.items.slice(0, 3).join(', ')) + (x.items.length > 3 ? ' +' + (x.items.length - 3) : '') : '📦 Drop-off: ' + esc(x.items.join(', '))}</div>
           <div class="sm">${x.kind === 'buy' ? esc(x.store || '') + (x.place ? ' · ' + esc(x.place) : '') + (x.miles ? ' · about ' + x.miles + ' miles each way' : '') + ' · from FlipCheck'
             : (x.place ? esc(x.type ? x.type + ': ' : '') + esc(x.place) : esc(x.type || x.courier || '') + ' · place not known yet: forward the drop-off receipt, or type it') + (x.time ? ' · ' + esc(x.time) : '')}</div></div>
-          <div class="ttbtns"><button class="btn sm2" data-tj="${esc(x.key)}">Log it</button><button class="btn ghost sm2" data-tjskip="${esc(x.key)}">Not needed</button></div></div>`).join('')}</div>`; }).join('')}</div>`;
+          <div class="ttbtns"><button class="btn sm2" data-tj="${esc(x.key)}">Log it</button><button class="btn ghost sm2" data-tjskip="${esc(x.key)}">Not needed</button></div></div>
+          ${(x.matches || []).slice(0, 2).map(m => `<div class="ttmatch"><div>🔗 Part of the trip you logged for <b>${esc(dayName(m.date) || m.date)}</b>?
+            <div class="sm">${esc(tripLine(m))} · ${m.miles} mi</div></div><button class="btn sm2" data-tjm="${esc(x.key)}" data-row="${m.row}">Add it to that trip</button></div>`).join('')}`).join('')}</div>`; }).join('')}</div>`;
   };
   draw(TRIPS);
   try { draw(await loadTrips()); } catch (e) { if (!/Unknown action/.test(e.message)) console.warn(e); }
@@ -4575,8 +4612,56 @@ function journeyFor(list) {
   return { date: list[0].date, stops, labelIds, purchaseIds, miles: one && one.kind === 'buy' && !stops.length ? one.miles : null,
     reason: why.join(' and ').replace(/^./, c => c.toUpperCase()), sub: list.length > 1 ? 'One trip for all of these. Check the order of the stops, then save.' : '' };
 }
+// A logged trip in one line: "Berkeley Rd → Tesco Superstore, CV9 1BU", reason after
+function tripLine(m) {
+  const short = p => String(p || '').split(',')[0].trim();
+  const stops = [m.from].concat(String(m.via || '').split(' → ').filter(Boolean), [m.to]).map(short).filter(Boolean);
+  const line = stops.join(' → ');
+  return (line.length > 70 ? line.slice(0, 68) + '…' : line) + (m.reason ? ' · ' + m.reason.replace(/ \(return trip\)$/, '') : '');
+}
+const tripCount = () => { if (CFG.waiting && TRIPS) { CFG.waiting.tripsToLog = TRIPS.length; renderTodo(CFG.waiting); } };
+// Add a drop-off or collection to a trip already in Mileage (it was on the way). Asks which day when they differ.
+function mergeJourney(x, m) {
+  const what = x.kind === 'buy' ? 'collection' : 'drop-off';
+  const go = async fixDate => {
+    try {
+      const r = await api('tripMerge', { key: x.key, row: m.row, fixDate });
+      TRIPS = r.list; tripCount(); if (!$('vTrip').classList.contains('hide')) renderTripTodo(true);
+      toast('Added to your ' + dayName(fixDate ? x.date : m.date) + ' trip (Mileage row ' + m.row + ', ' + m.miles + ' miles)' + (fixDate ? '. Trip date changed to ' + dayName(x.date) : ''));
+    } catch (err) { toast(err.message, true); }
+  };
+  if (m.date === x.date) return go(false);
+  const v = sheet(`<h3>Add the ${what} to that trip?</h3>
+    <p class="hint">The ${what} was ${esc(dayName(x.date))}${x.time ? ' at ' + esc(x.time) : ''}, but the trip is logged for ${esc(dayName(m.date))}.
+      HMRC wants the day you drove, so change it if the trip was really ${esc(dayName(x.date))}.</p>
+    <div class="sm" style="margin:0 0 10px">${esc(tripLine(m))} · ${m.miles} mi</div>
+    <button class="btn" data-mf="1">Add it and change the trip to ${esc(dayName(x.date))}</button>
+    <button class="btn sec" data-mf="0">Add it, keep ${esc(dayName(m.date))}</button>
+    <button class="btn ghost" data-close="1">Cancel</button>`);
+  v.querySelector('.sheet').addEventListener('click', e => { const b = e.target.closest('[data-mf]'); if (!b) return; v.remove(); go(b.dataset.mf === '1'); });
+}
+// After saving a trip: parcels or collections on Trips to log that went to the same place around then
+function offerAlsoCovers(r) {
+  const list = (r && r.alsoCovers) || []; if (!list.length) return;
+  const v = sheet(`<h3>Was this part of the same trip?</h3>
+    <p class="hint">${list.length === 1 ? 'This is' : 'These are'} on Trips to log and went to the same place around the same day. Add ${list.length === 1 ? 'it' : 'them'} to this trip so ${list.length === 1 ? 'it\'s' : 'they\'re'} covered and never claimed twice.</p>
+    ${list.map((x, i) => `<label class="acrow"><input type="checkbox" data-ac="${i}" checked><span><b>${x.kind === 'buy' ? '🛍️ Collected: ' : '📦 Drop-off: '}${esc(x.items.join(', '))}</b>
+      <span class="sm" style="display:block">${esc(dayName(x.date) || x.date)}${x.time ? ' ' + esc(x.time) : ''}${x.place ? ' · ' + esc(x.place) : ''}</span></span></label>`).join('')}
+    <button class="btn" data-acy="1">Yes, add to this trip</button>
+    <button class="btn ghost" data-close="1">No, ${list.length === 1 ? 'it was' : 'they were'} separate</button>`);
+  v.querySelector('[data-acy]').onclick = async e => {
+    const keys = Array.from(v.querySelectorAll('[data-ac]')).filter(c => c.checked).map(c => list[Number(c.dataset.ac)].key);
+    if (!keys.length) { v.remove(); return; }
+    e.target.disabled = true; e.target.textContent = 'Adding…';
+    let n = 0;
+    for (const key of keys) { try { const m = await api('tripMerge', { key, row: r.row }); TRIPS = m.list; n++; } catch (err) { toast(err.message, true); } }
+    v.remove(); tripCount(); if (!$('vTrip').classList.contains('hide')) renderTripTodo(true);
+    if (n) toast('Added ' + n + ' to this trip (Mileage row ' + r.row + ')');
+  };
+}
 $('tTodo').onclick = async e => {
   const b = e.target.closest('button'); if (!b || !TRIPS) return;
+  if (b.dataset.tjm) { const x = TRIPS.find(t => t.key === b.dataset.tjm), m = x && (x.matches || []).find(y => String(y.row) === b.dataset.row); if (x && m) mergeJourney(x, m); return; }
   if (b.dataset.tj) { const x = TRIPS.find(t => t.key === b.dataset.tj); if (x) openTrip({ journey: journeyFor([x]) }); return; }
   if (b.dataset.tjall) { const g = TRIPS.filter(t => t.date === b.dataset.tjall); if (g.length) openTrip({ journey: journeyFor(g) }); return; }
   if (b.dataset.tjskip) {

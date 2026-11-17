@@ -222,6 +222,10 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
 
 /* ---------- trip route ---------- */
 .stop{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.stop{transition:transform .15s}.stop.dragging{transition:none;position:relative;z-index:3;opacity:.92}
+.grip{flex-shrink:0;width:22px;text-align:center;color:#8e8e93;font-size:20px;line-height:44px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.ttmatch{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 8px;padding:8px 10px;border-radius:10px;background:#eef5ff;font-size:14px}.ttmatch .btn{flex:0 0 auto}
+.acrow{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid #eee}.acrow input{margin-top:3px;width:20px;height:20px;flex:0 0 auto}
 .stop .dot{width:26px;height:26px;border-radius:50%;background:#eef5ff;color:#0a84ff;font-size:12px;font-weight:700;
            display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .stop input{flex:1;min-width:0}
@@ -602,6 +606,9 @@ html.dark .owed b{color:#e8e8e8}
 html.dark .jstat{color:#a3a3a3}
 html.dark .jstat.err{color:#eb7a7a}
 html.dark .jcard img{background:#4e4e4e}
+html.dark .grip{color:#7a7a80}
+html.dark .ttmatch{background:#1a2c45}
+html.dark .acrow{border-top:1px solid #464646}
 html.dark .stop .dot{background:#1a2c45;color:#71b2f4}
 html.dark .stop .ib{border:1px solid #535353;background:#242424}
 html.dark .routebox{background:#242424;color:#b2b2b2}
@@ -1449,9 +1456,9 @@ html.dark .paybtn.cash{background:#14804a}html.dark .paybtn.bank{background:#0a6
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=70"></script>
-<script src="app.js?v=70"></script>
-<script src="tour-engine.js?v=70"></script>
+<script src="help.js?v=71"></script>
+<script src="app.js?v=71"></script>
+<script src="tour-engine.js?v=71"></script>
 <script src="whatsnew.js?v=71"></script>
 </body>
 </html>
