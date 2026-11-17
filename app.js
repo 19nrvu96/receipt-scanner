@@ -15,7 +15,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases'];
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -502,6 +502,7 @@ $('jList').onclick = async e => {
 
 function openJob(j) {
   job = j; lastSource = 'cam'; lastResult = j.result;
+  if (j.result && j.result.docType === 'courier_receipt') { show('vHome'); showParcelReceipt(j); return; }
   showReview(j.result, 'cam');
   if (state) state.jobId = j.id;
 }
@@ -1783,6 +1784,7 @@ function renderToReturn(d) {
     <div class="sm">${[esc(r.store), r.bought ? 'bought ' + esc(r.bought) : '', r.amount ? money(r.amount) : '', r.order ? '#' + esc(r.order) : '', r.from && r.from !== 'Receipts' ? 'from ' + esc(r.from) : ''].filter(Boolean).join(' · ')}</div>
     <div class="tags">${r.status === 'Sent back' ? '<span class="tag">Returned ' + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}${r.returnBy ? `<span class="tag">${r.extended ? '🎄 Extended return date' : r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>` : ''}${r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
     ${r.notes ? '<div class="sm" style="margin-top:4px">' + esc(r.notes) + '</div>' : ''}
+    ${r.tracking || r.returnProof ? `<div class="sm" style="margin-top:4px">📦 ${esc([r.courier, r.tracking].filter(Boolean).join(' '))}${r.sentTo ? ' → ' + esc(r.sentTo) : ''}${r.returnProof ? ` · <a href="${esc(r.returnProof)}" target="_blank" rel="noopener">courier receipt</a>` : ''}</div>` : ''}
     ${pickupHtml(r, i)}
     ${r.files || r.link ? `<button class="btn" data-rqr="${i}" style="margin-top:10px">Show return QR code</button>` : ''}
     <div class="duo" style="margin-top:8px">${r.status === 'To return' ? `<button class="btn ${r.files || r.link ? 'sec' : ''}" data-rsent="${i}">${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Returned it'}</button>` : `<button class="btn sec" data-rsorted="${i}">Already sorted</button>`}
@@ -1790,6 +1792,51 @@ function renderToReturn(d) {
     ${r.email ? `<a class="link" href="${esc(r.email.split('\n')[0])}" target="_blank" rel="noopener" style="margin-top:8px;display:inline-block">Open the return email</a>` : ''}
     ${r.status === 'To return' ? `<button class="link" data-rcancel="${i}" style="margin-top:8px">${r.links && r.links.cancel ? '✕ Cancel this return' : '↩︎ Not returning it after all'}</button>` : ''}</div></div>`).join('')
     + (done.length ? `<details class="more"><summary>Returned recently (${done.length})</summary>${done.map(r => `<div class="rdone">✅ ${esc(r.item)} · ${r.status === 'Refunded' ? money(r.refundAmount) + ' back ' + esc(dayName(r.refundedOn)) : 'sorted'}${r.proof ? `<a href="${esc(r.proof.split('\n')[0])}" target="_blank" rel="noopener">refund proof</a>` : ''}</div>`).join('')}</details>` : '');
+}
+
+// A courier's receipt (UPS collection, Evri drop-off…): not a purchase. Ties it to the return going back
+// (Sent back, tracking, where it went, the photo as proof) or to a parcel you're posting (Posted, where and when).
+function showParcelReceipt(j) {
+  const p = j.result.parcel || {}, m = j.result.match || { candidates: { returns: [], labels: [] } };
+  const C = m.candidates || { returns: [], labels: [] };
+  const opts = C.returns.map(r => ({ key: 'r:' + r.id, kind: 'return', id: r.id, label: '↩️ Return: ' + r.item, sub: [r.store, r.order ? '#' + r.order : '', r.courier ? r.courier + (r.method ? ' ' + r.method.toLowerCase() : '') : ''].filter(Boolean).join(' · ') }))
+    .concat(C.labels.map(l => ({ key: 'l:' + l.id, kind: 'label', id: l.id, label: '📦 To post: ' + (l.item || 'parcel'), sub: [l.platform, l.courier, l.tracking].filter(Boolean).join(' · ') })));
+  let pickKey = m.kind ? (m.kind === 'return' ? 'r:' : 'l:') + m.ids[0] : (opts.length === 1 ? opts[0].key : '');
+  const why = { reference: 'its return reference ' + esc(p.reference) + ' is on this return', tracking: 'the tracking number matches', order: 'the order number matches',
+    pickup: 'same courier, pick-up booked for that day', courier: 'the only open return with ' + esc(p.carrier) }[m.how] || '';
+  const facts = [['Courier', p.service && p.carrier && p.service.toLowerCase().indexOf(p.carrier.toLowerCase()) === 0 ? p.service : [p.carrier, p.service].filter(Boolean).join(' · ')], ['Tracking', p.tracking], ['Reference', p.reference],
+    ['Date', p.date ? dayName(p.date) + (p.time ? ' ' + p.time : '') : ''], ['Going to', p.sentTo], ['Dropped off at', p.dropOff], ['Contents', p.contents], ['Postage paid', p.postage != null ? money(p.postage) : '']]
+    .filter(x => x[1]).map(([k, v]) => `<div class="cprow"><span class="sm">${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
+  const v = sheet(`<button class="close" data-close="1" aria-label="Close">✕</button>
+    <h3>📦 ${esc(p.carrier || 'Courier')} receipt</h3>
+    <p class="sub">This isn't a purchase: it's proof a parcel was handed over. Tick what it's for and it's filed there.</p>
+    <div class="pkbox">${facts}</div>
+    ${m.kind ? `<p class="hint" style="margin-top:8px">✓ Matched: ${why}.${m.already ? ' Already marked as gone: this adds the receipt to it.' : ''}</p>` : opts.length ? '<p class="hint" style="margin-top:8px">Which is it for?</p>' : ''}
+    ${opts.length ? `<div class="pcopts">${opts.map(o => `<label class="pcopt"><input type="radio" name="pcfor" value="${esc(o.key)}" ${o.key === pickKey ? 'checked' : ''}><span><b>${esc(o.label)}</b><br><span class="sm">${esc(o.sub)}</span></span></label>`).join('')}</div>`
+      : '<p class="hint">Nothing open to match it to: no returns waiting and no parcels to post. You can keep the photo here and try again later.</p>'}
+    <button class="btn" data-pcsave="1" ${pickKey ? '' : 'disabled'}>${(pickKey || '').startsWith('l:') ? '✓ Mark it posted' : '✓ Mark it sent back'}</button>
+    <button class="btn ghost" data-close="1">Later (keep it in Photos to review)</button>
+    <button class="btn ghost danger" data-pcdel="1">Delete this photo</button>`);
+  const btn = v.querySelector('[data-pcsave]');
+  v.querySelector('.sheet').addEventListener('change', e => {
+    if (e.target.name !== 'pcfor') return;
+    pickKey = e.target.value; btn.disabled = false; btn.textContent = pickKey.startsWith('l:') ? '✓ Mark it posted' : '✓ Mark it sent back';
+  });
+  v.querySelector('.sheet').addEventListener('click', async e => {
+    if (e.target.dataset.pcdel) { v.remove(); await jobDel(j.id); job = null; refreshJobs(); toast('Photo deleted'); return; }
+    if (!e.target.dataset.pcsave || !pickKey) return;
+    const o = opts.find(x => x.key === pickKey);
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const r = await api('parcelReceipt', { target: o.kind === 'return' ? { kind: 'return', id: o.id } : { kind: 'label', ids: [o.id] }, parcel: p, image: (j.pages[0] || {}).dataUrl || '' });
+      v.remove(); await jobDel(j.id); job = null; refreshJobs(); SALES = null;
+      toast(r.already ? 'Already filed: nothing changed' : o.kind === 'return' ? '✓ Sent back: ' + (p.carrier || 'courier') + ' receipt saved to your Returns tab' : '✓ Posted: drop-off saved');
+      openSales(o.kind === 'return' ? 'slToRetWrap' : undefined);
+    } catch (err) {
+      btn.disabled = false; btn.textContent = o.kind === 'return' ? '✓ Mark it sent back' : '✓ Mark it posted';
+      toast(/Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for courier receipts' : err.message, true);
+    }
+  });
 }
 
 // Pick-up returns (a courier collects it): the day with a countdown, print the label, how to pack,
