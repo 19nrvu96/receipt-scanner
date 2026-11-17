@@ -267,10 +267,10 @@ function serve() {
     await page.click('#btnSeBank');
     await page.waitForSelector('#vPay:not(.hide)');
     ok((await page.textContent('#pyTitle')) === 'Pay £85 by bank', 'heading');
-    ok(await page.$('#pyQr svg'), 'QR drawn');
+    ok(await page.isHidden('#pyQr'), 'no QR of our own');
     const det = await page.textContent('#pyDet');
     ok(/D Example/.test(det) && /12-34-56/.test(det) && /12345678/.test(det) && /EXAMPL-\d{4}/.test(det) && /£85\.00/.test(det), det);
-    ok(/Bank transfer: no fees/.test(await page.textContent('#pyHow')) && /Get paid by QR code/.test(await page.textContent('#pyHow')), 'how to pay');
+    ok(/Bank transfer: no fees/.test(await page.textContent('#pyHow')) && !/scan the code/.test(await page.textContent('#pyHow')) && /Get paid by QR code/.test(await page.textContent('#pyHow')), 'how to pay');
     await shot(page, 'pay-phone-light');
     await page.waitForTimeout(1500);
     let r = sales()[0];
@@ -289,7 +289,7 @@ function serve() {
     await ctx.setOffline(true);
     await page.click('.sellthis[data-sell="2"]'); await page.click('#btnSeBank');
     await page.waitForSelector('#vPay:not(.hide)');
-    ok(await page.$('#pyQr svg'), 'QR works offline');
+    ok(/12345678/.test(await page.textContent('#pyDet')), 'details offline');
     await page.check('#pyCard'); await page.fill('#pyFee', '1.5');
     await page.click('#btnPayPaid');
     await ctx.setOffline(false); await page.evaluate(() => window.dispatchEvent(new Event('online')));

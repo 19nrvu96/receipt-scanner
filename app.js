@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v74';
+const APP_VERSION = 'v75';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -3593,16 +3593,16 @@ function openPay(p) {
   PAY = p;
   $('pyTitle').textContent = 'Pay ' + gbp(p.price) + ' by bank';
   $('pyItem').textContent = p.item + (p.qty > 1 ? ' ×' + p.qty : '');
-  const url = payUrl(p), b = bankOf();
-  $('pyQr').innerHTML = qrSvg(url);
-  $('pyQr').classList.toggle('hide', !url);
-  $('pyNoQr').classList.toggle('hide', !!url);
+  // No QR code of our own (Dan, 17 Nov): buyers type your details, or you show Monzo's own QR code
+  const b = bankOf();
+  $('pyQr').innerHTML = ''; $('pyQr').classList.add('hide');
+  $('pyNoQr').classList.toggle('hide', !!(b.sort && b.acct));
   const rows = [['Reference', p.ref, p.ref], ['Amount', money(p.price), r2(p.price).toFixed(2)]];
   if (b.sort && b.acct) rows.unshift(['Name', b.name || '', b.name || ''], ['Sort code', sortFmt(b.sort), b.sort], ['Account number', b.acct, b.acct]);
   $('pyDet').innerHTML = rows.filter(r => r[1]).map(r => `<div class="payrow"><span>${esc(r[0])}<b>${esc(r[1])}</b></span><button data-copy="${esc(r[2])}">Copy</button></div>`).join('');
   const monzo = CFG.cardApp === 'Monzo' || /monzo/i.test(b.link || '');
   $('pyHow').innerHTML = '<b>How they can pay</b><ol>' +
-    '<li><b>Bank transfer: no fees.</b> ' + (url ? 'They scan the code above, or type' : 'They type') + ' the details below into their banking app, with the reference.</li>' +
+    '<li><b>Bank transfer: no fees.</b> They type the details below into their banking app, with the reference.</li>' +
     (monzo ? '<li><b>Your Monzo QR code or link.</b> In Monzo: Get Paid → Get paid by QR code → put in ' + money(p.price) + ' → Create QR code (or share a payment link). If you\'ve set up card payments there, a card costs 1.5% + 20p: tick "They paid by card" below.</li>' : '') + '</ol>';
   $('pyCard').checked = false; $('pyFeeWrap').classList.add('hide');
   // Card through your Monzo QR or link: Monzo shows 1.5% + 20p for UK cards (its Get paid by QR code screen, 17 Nov 2026)

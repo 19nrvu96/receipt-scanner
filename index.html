@@ -1081,7 +1081,7 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
     <div class="hdr"><button class="back" id="btnPayBack" aria-label="Back, leave as awaiting payment">‹</button><h2 style="margin:0;flex:1" id="pyTitle">Pay by bank</h2></div>
     <p class="sub" id="pyItem"></p>
     <div class="qrbox" id="pyQr" aria-label="QR code for the buyer to scan"></div>
-    <p class="hint hide" id="pyNoQr">Add your bank details in Settings → Selling → Get paid by bank, and a QR code shows here.</p>
+    <p class="hint hide" id="pyNoQr">Add your bank details in Settings → Selling → Get paid by bank, and they show here for the buyer to type in.</p>
     <div class="card paydet" id="pyDet"></div>
     <div class="card payhow" id="pyHow"></div>
     <div class="warnpanel" role="note"><b>Only tap Paid when you see it in your bank app, not on their screen.</b></div>
@@ -1531,10 +1531,10 @@ setTimeout(function () {
   document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
 }, 6000);
 </script>
-<script src="qrcode.js?v=74"></script>
-<script src="help.js?v=74"></script>
-<script src="app.js?v=74"></script>
-<script src="tour-engine.js?v=74"></script>
-<script src="whatsnew.js?v=74"></script>
+<script src="qrcode.js?v=75"></script>
+<script src="help.js?v=75"></script>
+<script src="app.js?v=75"></script>
+<script src="tour-engine.js?v=75"></script>
+<script src="whatsnew.js?v=75"></script>
 </body>
 </html>

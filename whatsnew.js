@@ -47,18 +47,18 @@
     '<div style="font-size:28px;font-weight:700;border:2px solid #d0d0d5;border-radius:12px;padding:4px 10px;margin:8px 0">£75</div><div class="sm"><b>12% off asking</b> · Profit <b>£15</b> after costs</div>' +
     '<div style="margin-top:8px"><span class="b" style="background:#14804a;display:block;margin-bottom:6px">Cash · logs it now</span><span class="b" style="background:#3d3f8f;display:block">Card · take it in Monzo · fee about £1.25</span></div></div>', 'Sell in person');
   const SELL_CARD = M.receipts('<div class="c"><div class="st">Take £75 in Monzo, then tap Done</div><div class="sm">Card fee £1.25 (1.4% + 20p). Change it in Settings → Selling.</div><div><span class="b">Done, they paid</span><span class="b s">The card didn\'t go through</span></div></div>', 'Card');
-  const PAY_SCREEN = M.receipts('<div class="c"><div class="st">Pay £75 by bank</div><div style="width:120px;height:120px;margin:6px auto;background:repeating-linear-gradient(45deg,#000 0 6px,#fff 6px 12px);border:8px solid #fff;outline:1px solid #ddd"></div>' +
+  const PAY_SCREEN = M.receipts('<div class="c"><div class="st">Pay £75 by bank</div>' +
     '<div class="sm">Name <b>D Example</b> · Sort code <b>12-34-56</b> · Account <b>12345678</b> · Reference <b>EXAMPL-1117</b> <span class="b s">Copy</span></div>' +
     '<div class="sm" style="background:#fff1d6;border-radius:8px;padding:6px 8px;margin:6px 0"><b>Only tap Paid when you see it in your bank app, not on their screen.</b></div>' +
     '<div><span class="b">It\'s in my bank</span><span class="b s">Leave as awaiting payment</span></div><div class="sm" style="color:#0a58ca">They didn\'t pay</div></div>', 'Bank transfer');
   const SELLCH = [
-    { id: 'rs-paybank', day: D17, icon: '🏦', title: 'Get paid by bank in person', summary: 'A QR code and your details on screen; Paid when it\'s in your bank',
+    { id: 'rs-paybank', day: D17, icon: '🏦', title: 'Get paid by bank in person', summary: 'Your details on screen, or your Monzo QR; Paid when it\'s in your bank',
       steps: [
         { title: 'Your bank details, once', go: go(() => openSettings()), target: '#stBankCard',
           text: 'Settings → Selling → <b>Get paid by bank</b>: account name, sort code and account number (buyers see these), and a payment link if you have one. They stay in your own Google account and on your phone, so the pay screen works with no signal.',
           todo: ['Fill them in and tap <b>Save</b>.'] },
         { title: 'Bank transfer', mock: PAY_SCREEN,
-          text: 'On the Sell screen, tap <b>Bank transfer</b>. The sale is logged as <b>Awaiting payment</b> (not in your totals yet) and the buyer scans the QR code: it opens a page with your details, the amount and a short reference, each with a Copy button. Or they type the details from your screen. With Monzo you can still show your own Monzo QR code instead.',
+          text: 'On the Sell screen, tap <b>Bank transfer</b>. The sale is logged as <b>Awaiting payment</b> (not in your totals yet) and your details show in big text with the amount and a short reference, each with a Copy button, for the buyer to type into their banking app. Or show your own Monzo QR code (the screen says how).',
           todo: ['Tap <b>It\'s in my bank</b> only once you see it in your bank app.', 'Paid by card through your Monzo QR? Tick <b>They paid by card</b> and put in the fee.', '<b>They didn\'t pay</b> cancels it and puts the item back in stock (and back on sale in ListMe).'] },
         { title: 'Waiting for the money', go: go(() => show('vHome')), target: '#todo',
           missing: 'Nothing awaiting payment now. When something is, home says <b>💷 1 sale awaiting payment</b>.',
