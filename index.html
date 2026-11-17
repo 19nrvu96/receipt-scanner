@@ -261,6 +261,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 .ordbig{text-align:center;font-size:26px;font-weight:700;letter-spacing:2px;margin:6px 0}
 .pcopts{display:grid;gap:6px;margin:6px 0 10px}.pcopt{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #ddd;border-radius:10px}.pcopt input{margin-top:4px}
 .nextbox{background:#eef6ff;border-radius:10px;padding:10px 12px;margin-top:8px}.nextbox ol{margin:6px 0 0;padding-left:18px}.nextbox li{margin:3px 0}
+.pendlink{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;border:0;cursor:pointer}
 .bcfor{background:#fff8e1;border-radius:8px;padding:8px 10px;margin:4px 0 8px;font-size:15px}
 .hours div{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eee;font-size:15px}
 .hours div.today{font-weight:700;color:#1a73e8}
@@ -913,6 +914,7 @@ html.dark .barcode{background:#fff}
   <!-- PURCHASES: everything logged, newest first, and where it came from -->
   <section id="vPurchases" class="hide">
     <div class="hdr"><button class="back" id="btnPuBack">‹</button><h2 style="margin:0;flex:1">Purchases</h2></div>
+    <div id="puPend"></div>
     <input id="puSearch" type="search" class="search" placeholder="Search items, shops, order numbers" autocomplete="off">
     <div class="chips" id="puFrom" role="group" aria-label="Logged from"></div>
     <p class="hint" id="puHint">Newest first. Each card is one receipt, email or purchase, with where it was logged from.</p>
@@ -1329,9 +1331,9 @@ html.dark .barcode{background:#fff}
 <input type="file" id="inpCam" accept="image/*" capture="environment" class="hide">
 <input type="file" id="inpLib" accept="image/*" multiple class="hide">
 
-<script src="help.js?v=67"></script>
-<script src="app.js?v=67"></script>
-<script src="tour-engine.js?v=67"></script>
+<script src="help.js?v=68"></script>
+<script src="app.js?v=68"></script>
+<script src="tour-engine.js?v=68"></script>
 <script src="whatsnew.js?v=64"></script>
 </body>
 </html>
