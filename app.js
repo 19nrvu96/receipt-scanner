@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v73';
+const APP_VERSION = 'v74';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -3747,7 +3747,7 @@ async function openSettings() {
     segSet('stType', d.type || ''); $('stVat').checked = !!d.vat; $('stYe').value = String(d.yearEnd || 3); $('stInc').value = d.income || '';
     $('stTap').value = d.cardFee && d.cardFee.perTap ? d.cardFee.perTap : ''; $('stPct').value = d.cardFee && d.cardFee.pct ? d.cardFee.pct : '';
     $('stCardApp').value = d.cardApp || 'Other';
-    { const b = d.bank || {}; $('stBankName').value = b.name || ''; $('stSort').value = b.sort ? b.sort.replace(/(\d\d)(\d\d)(\d\d)/, '$1-$2-$3') : ''; $('stAcct').value = b.acct || ''; $('stPayLink').value = b.link || ''; }
+    { const b = d.bank || {}; $('stBankName').value = b.name || ''; $('stBankSort').value = b.sort ? b.sort.replace(/(\d\d)(\d\d)(\d\d)/, '$1-$2-$3') : ''; $('stBankAcct').value = b.acct || ''; $('stPayLink').value = b.link || ''; }
     const a = d.account || {};
     SETTINGS.sheetUrl = a.sheetUrl || '';
     $('stEmail').textContent = a.email || '—'; $('stGoogle').textContent = a.email || '—';
@@ -3874,13 +3874,13 @@ $('btnStSave').onclick = async () => {
   const settings = { type, vat: $('stVat').checked, yearEnd: Number($('stYe').value) || 3, income: $('stInc').value,
                      cardFee: { perTap: Number($('stTap').value) || 0, pct: Number($('stPct').value) || 0 },
                      cardApp: $('stCardApp').value,
-                     bank: { name: $('stBankName').value.trim(), sort: $('stSort').value, acct: $('stAcct').value, link: $('stPayLink').value.trim() },
+                     bank: { name: $('stBankName').value.trim(), sort: $('stBankSort').value, acct: $('stBankAcct').value, link: $('stPayLink').value.trim() },
                      emailSource: $('stSrc').value, orderEmail: $('stSrc').value === 'gmail' ? '' : $('stOrderEmail').value.trim(),
                      monthlyEmail: $('stMonthly').checked };
   if (d.type && (type !== d.type || settings.vat !== !!d.vat) &&
       !confirm('Change your business details from today? Your old records stay as they are, and we keep a copy of your old tax summary.')) return;
-  { const sc = $('stSort').value.replace(/\D/g, ''), ac = $('stAcct').value.replace(/\D/g, '');
-    if ((sc || ac) && (sc.length !== 6 || ac.length !== 8)) { toast('Sort code is 6 numbers and account number is 8', true); $('stSort').scrollIntoView({ block: 'center' }); return; }
+  { const sc = $('stBankSort').value.replace(/\D/g, ''), ac = $('stBankAcct').value.replace(/\D/g, '');
+    if ((sc || ac) && (sc.length !== 6 || ac.length !== 8)) { toast('Sort code is 6 numbers and account number is 8', true); $('stBankSort').scrollIntoView({ block: 'center' }); return; }
     if ($('stPayLink').value.trim() && !/^https:\/\//.test($('stPayLink').value.trim())) { toast('The payment link should start https://', true); return; } }
   const b = $('btnStSave'); b.disabled = true; b.textContent = 'Saving…';
   try {

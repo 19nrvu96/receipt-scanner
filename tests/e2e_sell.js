@@ -375,6 +375,17 @@ function serve() {
     await ctx.close();
   });
 
+  await t('Settings: bank details typed in are saved and reach the pay screen', async () => {
+    g = seed(); const { ctx, page } = await open();
+    await page.click('#btnSettings'); await page.waitForTimeout(800);
+    await page.fill('#stBankName', 'D Example'); await page.fill('#stBankSort', '04-00-03'); await page.fill('#stBankAcct', '12345678');
+    await page.click('#btnStSave'); await page.waitForTimeout(1500);
+    const b = g.call('settings', {}).data.bank;
+    ok(b.sort === '040003' && b.acct === '12345678' && b.name === 'D Example', JSON.stringify(b));
+    ok(await page.evaluate(() => CFG.bank && CFG.bank.acct === '12345678'), 'on the phone');
+    await ctx.close();
+  });
+
   await t('Your numbers shows money awaiting payment', async () => {
     g = seed();
     g.call('saleSave', { clientId: 'a-wait-0000001', sale: { 'sale date': '17/11/2026', platform: 'In person', item: 'Example', 'sale price': 85, 'payment status': 'Awaiting payment' } });

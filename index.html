@@ -975,8 +975,8 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
       <label>Get paid by bank</label>
       <p class="hint">For Bank transfer on the Sell screen. Buyers will see these details. They're kept in your own Google account.</p>
       <label for="stBankName">Account name</label><input id="stBankName" autocomplete="off" placeholder="As it shows on your account">
-      <div class="duo"><div><label for="stSort">Sort code</label><input id="stSort" inputmode="numeric" autocomplete="off" placeholder="12-34-56"></div>
-        <div><label for="stAcct">Account number</label><input id="stAcct" inputmode="numeric" autocomplete="off" placeholder="8 digits"></div></div>
+      <div class="duo"><div><label for="stBankSort">Sort code</label><input id="stBankSort" inputmode="numeric" autocomplete="off" placeholder="12-34-56"></div>
+        <div><label for="stBankAcct">Account number</label><input id="stBankAcct" inputmode="numeric" autocomplete="off" placeholder="8 digits"></div></div>
       <label for="stPayLink">Payment link from your bank app (optional)</label><input id="stPayLink" type="url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="e.g. https://monzo.me/yourname">
       <p class="hint">With a monzo.me link, the amount and reference are filled in for the buyer. Monzo Business payment links can't be: the buyer types the amount.</p>
     </div>
@@ -1531,10 +1531,10 @@ setTimeout(function () {
   document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
 }, 6000);
 </script>
-<script src="qrcode.js?v=73"></script>
-<script src="help.js?v=73"></script>
-<script src="app.js?v=73"></script>
-<script src="tour-engine.js?v=73"></script>
-<script src="whatsnew.js?v=73"></script>
+<script src="qrcode.js?v=74"></script>
+<script src="help.js?v=74"></script>
+<script src="app.js?v=74"></script>
+<script src="tour-engine.js?v=74"></script>
+<script src="whatsnew.js?v=74"></script>
 </body>
 </html>
