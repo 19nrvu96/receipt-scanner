@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v80';
+const APP_VERSION = 'v81';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2507,13 +2507,28 @@ async function openMail(id, href) {
     const from = String(m.from || '').replace(/\s*<[^>]*>/, '');
     box.innerHTML = `<h3 style="margin-bottom:2px">${esc(m.subject)}</h3><div class="sm">${esc(from)} · ${esc(when)}</div>
       <div class="mailbody">${esc(m.text).replace(/(£\s?\d[\d,]*(?:\.\d\d)?)/g, '<b>$1</b>')}</div>
-      <div class="duo"><a class="btn sec" href="${esc(m.gmail)}" target="_blank" rel="noopener" data-raw="1">Find it in Gmail</a><button class="btn" data-close="1">Done</button></div>`;
+      <p class="sm" style="margin:0 0 8px">Want it in Gmail? "Find it in Gmail" copies <b>${esc(mailSearchText(m.subject))}</b>, then opens Gmail: tap the search bar and paste.</p>
+      <div class="duo"><a class="btn sec" href="${esc(m.gmail)}" target="_blank" rel="noopener" data-raw="1" data-copy="${esc(mailSearchText(m.subject))}">Find it in Gmail</a><button class="btn" data-close="1">Done</button></div>`;
   } catch (err) {
     box.innerHTML = `<h3>Couldn't open the email here</h3><p class="sub">${esc(err.message)}</p>
       <div class="duo"><a class="btn sec" href="${esc(href)}" target="_blank" rel="noopener" data-raw="1">Open Gmail</a><button class="btn" data-close="1">Close</button></div>`;
   }
 }
+// What to search Gmail for: the subject without "Fw:" / "Re:" or Gmail's "..." (finds the original and the forward)
+function mailSearchText(subject) {
+  return String(subject || '').replace(/^\s*((fwd?|re)\s*:\s*)+/i, '').replace(/(\.{3}|…)\s*$/, '').replace(/[‘’"]/g, "'").trim();
+}
+function copyText(t) {
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).catch(() => copyOld(t)); return; } } catch (e) {}
+  copyOld(t);
+}
+function copyOld(t) {   // older iPhones: copy through a hidden text box
+  const ta = document.createElement('textarea'); ta.value = t; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:-100px;opacity:0';
+  document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, t.length); try { document.execCommand('copy'); } catch (e) {} ta.remove();
+}
 document.addEventListener('click', e => {
+  const c = e.target.closest('a[data-copy]');
+  if (c) { copyText(c.dataset.copy); toast('Copied: paste it into Gmail\'s search bar'); return; }   // the link still opens Gmail
   const a = e.target.closest('a[href*="mail.google.com"]'); if (!a || a.dataset.raw) return;
   const id = (a.getAttribute('href').match(/#(?:all|inbox|label\/[^/]+)\/([0-9a-f]{10,24})/i) || [])[1];
   if (!id) return;
