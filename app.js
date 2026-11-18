@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v95';
+const APP_VERSION = 'v96';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2093,6 +2093,7 @@ function renderToReturn(d) {
     + open.map((r, i) => r.status === 'Sent back' ? '' : `<div class="card scard"><div class="sb">
     <div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>
     <div class="sm">${[esc(r.store), r.bought ? 'bought ' + esc(r.bought) : '', r.amount ? money(r.amount) : '', r.order ? '#' + esc(r.order) : '', r.from && r.from !== 'Receipts' ? 'from ' + esc(r.from) : ''].filter(Boolean).join(' · ')}</div>
+    ${bundleLines(r)}
     <div class="tags">${r.status === 'Sent back' ? '<span class="tag">' + (r.tracking || r.method === 'Pick-up' ? '🚚 On its way back since ' : 'Returned ') + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}${r.returnBy ? `<span class="tag">${r.extended ? '🎄 Extended return date' : r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>` : ''}${r.code ? '<span class="tag ok">🔢 Code ' + esc(r.code) + ': no printing</span>' : r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
     ${r.status === 'To return' ? codeBox(r) : ''}
     ${r.notes ? '<div class="sm" style="margin-top:4px">' + esc(r.notes) + '</div>' : ''}
@@ -2239,6 +2240,11 @@ function showParcelReceipt(j) {
 
 // Pick-up returns (a courier collects it): the day with a countdown, print the label, how to pack,
 // the shop's own buttons (reschedule, change method, cancel), and the order's details to copy into the shop's page.
+// A parcel of several items (one Temu return): one card, every item listed with its price
+function bundleLines(r) {
+  if (!r.items || r.items.length < 2) return '';
+  return `<ul class="pulines bundle">${r.items.map(x => `<li><span>${x.qty > 1 ? x.qty + ' × ' : ''}${esc(x.item)}</span><b>${x.amount ? money(x.amount) : ''}</b></li>`).join('')}</ul>`;
+}
 const tidyCourier = c => /^evri$/i.test(c) ? 'Evri' : String(c);
 // Temu/Evri short code: typed in at the desk instead of scanning the QR (Temu's QR picture stops loading after 30 minutes)
 function codeBox(r) {
@@ -5300,6 +5306,7 @@ function pendCardHtml(r, top) {
     ${top ? '<button class="pendx" data-ract="read" aria-label="Mark as read">✕</button>' : ''}
     <div class="st">${esc(r.item)}</div>
     <div class="sm">${[esc(r.store), r.order ? '#' + esc(r.order) : '', r.refundEstimate ? 'about ' + money(r.refundEstimate) + ' back' : ''].filter(Boolean).join(' · ')}</div>
+    ${bundleLines(r)}
     <div class="tags"><span class="tag">🚚 On its way back since ${esc(dayName(r.sentOn))}</span>${r.refundTo ? '<span class="tag">💷 to ' + esc(r.refundTo) + '</span>' : ''}</div>
     ${r.tracking || r.returnProof ? `<div class="sm" style="margin-top:4px">📦 ${esc([r.courier, r.tracking].filter(Boolean).join(' '))}${r.returnProof ? ` · <a href="${esc(r.returnProof)}" target="_blank" rel="noopener">${/mail\./.test(r.returnProof) ? 'courier email' : 'courier receipt'}</a>` : ''}</div>` : ''}
     ${retMail(r) ? '<div class="ouacts">' + retMail(r) + '</div>' : ''}
@@ -5360,6 +5367,7 @@ function toRetCardHtml(r) {
   return `<div class="card scard" data-rid="${esc(r.id)}"><div class="sb">
     <div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>
     <div class="sm">${[esc(r.store), r.bought ? 'bought ' + esc(r.bought) : '', r.amount ? money(r.amount) : '', r.order ? '#' + esc(r.order) : ''].filter(Boolean).join(' · ')}</div>
+    ${bundleLines(r)}
     <div class="tags">${last}${step ? '<span class="tag">' + step + '</span>' : ''}${r.code ? '<span class="tag ok">🔢 Code ' + esc(r.code) + '</span>' : r.files || r.link ? '<span class="tag">' + (r.printedOn ? 'Label printed' : 'QR code saved') + '</span>' : ''}${r.from && r.from !== 'Receipts' ? '<span class="tag">from ' + esc(r.from) + '</span>' : ''}</div>
     <div class="duo" style="margin-top:8px">${goes ? `<button class="btn" data-ract="ho">${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Handed it over'}</button>` : '<button class="btn" data-ract="scan">📷 Refund receipt</button>'}<button class="btn sec" data-ract="steps">Return steps ›</button></div>
     ${r.row ? '<button class="link" data-ract="go" style="margin-top:6px;display:block">See the purchase ›</button>' : ''}
@@ -5384,6 +5392,7 @@ function doneCardHtml(r) {
   return `<div class="card scard" data-rid="${esc(r.id)}"><div class="sb">
     <div class="puhead"><div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>${r.refundAmount ? '<div class="amt">' + money(r.refundAmount) + '</div>' : ''}</div>
     <div class="sm">${[esc(r.store), r.order ? '#' + esc(r.order) : '', r.sentOn ? 'sent back ' + esc(dayName(r.sentOn)) : ''].filter(Boolean).join(' · ')}</div>
+    ${bundleLines(r)}
     <div class="tags">${isRefundedRet(r) ? '<span class="tag ok">✅ Refunded ' + esc(dayName(r.refundedOn)) + '</span>' : '<span class="tag ok">✅ Sorted, no amount logged</span>'}${r.refundTo ? '<span class="tag">💷 ' + esc(r.refundTo) + '</span>' : ''}${by}${short}</div>
     ${/^https?:/.test(proof) || r.row || retMail(r) ? `<div class="ouacts">${/^https?:/.test(proof) ? `<a href="${esc(proof)}" target="_blank" rel="noopener">${/mail\.|outlook/.test(proof) ? 'Refund email' : 'Refund proof'} ↗</a>` : ''}${retMail(r)}${r.row ? '<button data-ract="go">See the purchase ›</button>' : ''}</div>` : ''}
     ${proof && !/^https?:/.test(proof) ? '<div class="sm" style="margin-top:4px">' + esc(proof.slice(0, 90)) + '</div>' : ''}
