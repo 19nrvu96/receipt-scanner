@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v89';
+const APP_VERSION = 'v90';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -632,9 +632,10 @@ function buildReview(result, source) {
   $('pMethod').classList.toggle('on', state.method === 'Delivery');
 
   // Already saved? (same order number, or same store, date and total) — checked by your Sheet, free
-  const kp = meta.klarnaPlan, noItems = meta.noItems ? '📝 The email doesn\'t name the items, so this is one line for the whole order. Rename it or add the items before saving.' : '';
+  const kp = meta.klarnaPlan, noItems = meta.noItems ? '📝 The email doesn\'t name the items, so this is one line for the whole order. Rename it or add the items before saving.'
+    : meta.splitEvenly ? '📝 Items read from the email\'s pictures. It shows no price for each, so the total is spread evenly: change any you know.' : '';
   $('dupBanner').textContent = meta.possibleDuplicate ? '⚠️ ' + meta.possibleDuplicate + '. Check before saving.' : meta.returnDone ? '✅ This refund completed your return of ' + meta.returnDone.item + (meta.returnDone.to ? ' (to ' + meta.returnDone.to + ')' : '') + '. Save to log the money.'
-    : [noItems, kp ? '💳 Klarna ' + (kp.plan || '') + (kp.shop ? ' at ' + kp.shop : '') + ' is already on Paying off for this total: saving links them.' : ''].filter(Boolean).join(' ');
+    : [noItems, kp ? (meta.fromKlarna ? '💳 From Klarna\'s email: saving links it to the plan on Paying off.' : '💳 Klarna ' + (kp.plan || '') + (kp.shop ? ' at ' + kp.shop : '') + ' is already on Paying off for this total: saving links them.') : ''].filter(Boolean).join(' ');
   $('dupBanner').classList.toggle('hide', !meta.possibleDuplicate && !meta.returnDone && !kp && !noItems);
 
   // Refunds: each line is matched to the purchase it refunds, which is then marked returned
@@ -1439,7 +1440,7 @@ function renderQueue(d) {
     const sender = meta.orderEmail || q.from;
     const body = q.status === 'ready'
       ? `<div class="sum"><b>${esc(rows[0]?.store || 'Unknown store')}</b> · ${money(total)} · ${rows.length} item${rows.length === 1 ? '' : 's'}</div>
-         ${meta.possibleDuplicate ? `<div class="warn">⚠️ ${esc(meta.possibleDuplicate)}</div>` : ''}${meta.klarnaPlan ? `<div class="sub">💳 Paid with Klarna ${esc(meta.klarnaPlan.plan || '')}: matched to its Klarna email</div>` : ''}${meta.noItems ? '<div class="sub">📝 The email doesn\'t name the items</div>' : ''}
+         ${meta.possibleDuplicate ? `<div class="warn">⚠️ ${esc(meta.possibleDuplicate)}</div>` : ''}${meta.klarnaPlan ? `<div class="sub">💳 Paid with Klarna ${esc(meta.klarnaPlan.plan || '')}: matched to its Klarna email</div>` : ''}${meta.noItems ? '<div class="sub">📝 The email doesn\'t name the items</div>' : meta.splitEvenly ? '<div class="sub">📝 Items read from the email\'s pictures: prices spread evenly</div>' : ''}
          <div class="duo"><button class="btn" data-q="review" data-i="${i}">Review</button>
          <button class="btn sec" data-q="dismiss" data-i="${i}">Dismiss</button></div>`
       : `<div class="warn">${esc(emailError(q.error))}</div>
@@ -5418,10 +5419,12 @@ function payOffCardHtml(p) {
     <div class="sm">${p.lowered > 0 && p.status === 'Refunded' ? money(p.lowered) + ' taken off after a return: nothing to pay' : money(p.paid) + ' of ' + money(owed) + ' paid' + (p.lowered > 0 ? ' · ' + money(p.lowered) + ' taken off after a return (was ' + money(p.total) + ')' : '')}${p.status === 'Waiting for the shop' ? ' · waiting for the shop to send it: the due date comes then' : p.status === 'Paused' ? ' · paused by Klarna' : ''}</div>
     ${live.length ? '<ul class="kpays">' + pays.map(line).join('') + '</ul>' : ''}
     ${retWarn}
-    ${!p.linked ? '<div class="sm" style="margin-top:6px">Not matched to a purchase yet. It links by itself when the purchase is saved (same shop and total).</div>' : ''}
+    ${!p.linked && p.status !== 'Refunded' ? '<div class="sm" style="margin-top:6px">Not matched to a purchase yet. It links by itself when the shop\'s order email is saved (same total). No email? Log it from Klarna\'s details.</div>' : ''}
     <div class="ouacts">${(p.emails || []).slice(-2).map((u, i, a) => `<a href="${esc(u)}" target="_blank" rel="noopener">Klarna email${a.length > 1 ? ' ' + (i + 1) : ''} ↗</a>`).join('')}
       ${nx && /30 days/.test(p.plan || '') && !p.extended ? '<button data-kact="extend">I extended it in Klarna (+10 days)</button>' : ''}
-      ${nx ? '<button data-kact="paid">Mark the next one paid</button>' : ''}</div>
+      ${nx ? '<button data-kact="paid">Mark the next one paid</button>' : ''}
+      ${!p.linked && p.status !== 'Refunded' ? '<button data-kact="log">Log it as a purchase</button>' : ''}
+      ${(p.emails || []).length ? '<button data-kact="reread" class="sec">Read Klarna\'s emails again</button>' : ''}</div>
   </div>`;
 }
 function renderPayOff(q) {
@@ -5442,6 +5445,15 @@ function klarnaAction(e) {
   const b = e.target.closest('[data-kact]'); if (!b) return false;
   const card = b.closest('[data-kid]'), p = (KLARNA || []).find(x => x.id === card.dataset.kid); if (!p) return true;
   const what = b.dataset.kact, nx = kNext(p);
+  if (what === 'log') { klarnaToPurchase(p); return true; }
+  if (what === 'reread') {
+    const v = sheet(`<h3>Read Klarna's emails again?</h3><p class="sub">Builds this plan again from its ${(p.emails || []).length} Klarna email${(p.emails || []).length === 1 ? '' : 's'}, oldest first. Free: no AI. Anything you marked by hand here is redone from the emails.</p>
+      <div class="duo"><button class="btn sec" data-close="1">Cancel</button><button class="btn" data-kyes="1">Read them again</button></div>`);
+    v.querySelector('[data-kyes]').onclick = () => { v.remove(); b.disabled = true;
+      api('klarnaSet', { id: p.id, what: 'reread' }).then(r => { toast('Read ' + ((r && r.read) || 0) + ' Klarna emails again'); return loadKlarna(); })
+        .catch(err => { b.disabled = false; toast(err.message, true); }); };
+    return true;
+  }
   const go = () => { b.disabled = true;
     api('klarnaSet', { id: p.id, what, n: nx && nx.n }).then(() => { toast(what === 'extend' ? 'Moved 10 days later. Klarna lets you do this once per order' : 'Marked as paid'); return loadKlarna(); })
       .catch(err => { b.disabled = false; toast(err.message, true); }); };
@@ -5451,6 +5463,18 @@ function klarnaAction(e) {
     v.querySelector('[data-kyes]').onclick = () => { v.remove(); go(); };
   } else go();
   return true;
+}
+// A Klarna plan whose shop email never came: the purchase from Klarna's own details (shop, items, total, date), no AI
+function klarnaToPurchase(p) {
+  const names = (p.items || []).filter(Boolean), total = Number(p.total) || 0;
+  const list = names.length ? names : [(p.shop || 'Klarna') + ' order'];
+  const each = Math.floor(total / list.length * 100) / 100;
+  const rows = list.map((item, i) => { const v = i === list.length - 1 ? r2(total - each * (list.length - 1)) : each;
+    return { 'purchase date': p.orderDate || today(), item, 'buy price': v, quantity: 1, 'total price': v, 'additional cost': 0, 'total cost': v,
+      store: p.shop || '', notes: 'From Klarna\'s email', purpose: '', method: 'Delivery', 'email or in person': 'Email', 'shared cost?': 'No',
+      'order number': '', 'payment method': ('Klarna ' + (p.plan || '')).trim() + (p.card ? ' (' + p.card + ')' : ''), _confidence: 'low' }; });
+  buildReview({ rows, meta: { receiptTotal: total, feeTotal: 0, isRefund: false, fromKlarna: true, klarnaPlan: { id: p.id, plan: p.plan, shop: p.shop, card: p.card } } }, lastSource);
+  toast('Check the shop name and items: Klarna sometimes names the company, not the shop');
 }
 function puTab(k) {
   PU_TAB = k || ''; renderPurchases();
