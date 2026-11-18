@@ -288,6 +288,8 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 .todo button{display:flex;width:100%;align-items:center;gap:10px;border:0;background:none;padding:11px 0;font-size:16px;text-align:left;color:inherit;border-bottom:1px solid #eee}
 .todo button:last-child{border-bottom:0}
 .todo .go{margin-left:auto;color:#999}
+#todo{overflow-x:clip}.todo .tdrow{display:flex;align-items:center;border-bottom:1px solid #eee;touch-action:pan-y}.todo .tdrow:last-child{border-bottom:0}.todo .tdrow>button[data-todo]{border-bottom:0;flex:1;min-width:0}
+.todo .tdrow>.tdx{flex:none;width:36px;height:36px;justify-content:center;padding:0;border:0;border-radius:50%;color:#8e8e93;font-size:16px;cursor:pointer}.todo .tdrow>.tdx:active{background:#ececf0}
 .tag.late{background:#ffe1e1;color:#b00020;font-weight:700}
 .tag.soon{background:#fff1d6;color:#8a5a00}
 .bar2{height:8px;border-radius:4px;background:#eee;overflow:hidden;margin:6px 0 2px}
@@ -678,6 +680,9 @@ html.dark .tgl.on{border-color:#1a8cff;color:#ffffff}
 html.dark .todo{background:#242424}
 html.dark .todo button{border-bottom:1px solid #464646}
 html.dark .todo .go{color:#999999}
+html.dark .todo .tdrow{border-bottom:1px solid #464646}
+html.dark .todo .tdrow>.tdx{color:#7a7a80}
+html.dark .todo .tdrow>.tdx:active{background:#37373b}
 html.dark .tag.late{background:#4d1d1d;color:#f47189}
 html.dark .tag.soon{background:#53411f;color:#f4c671}
 html.dark .bar2{background:#393939}
@@ -1558,10 +1563,10 @@ setTimeout(function () {
   document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
 }, 6000);
 </script>
-<script src="qrcode.js?v=92"></script>
-<script src="help.js?v=92"></script>
-<script src="app.js?v=92"></script>
-<script src="tour-engine.js?v=92"></script>
-<script src="whatsnew.js?v=92"></script>
+<script src="qrcode.js?v=93"></script>
+<script src="help.js?v=93"></script>
+<script src="app.js?v=93"></script>
+<script src="tour-engine.js?v=93"></script>
+<script src="whatsnew.js?v=93"></script>
 </body>
 </html>

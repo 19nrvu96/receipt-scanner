@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v92';
+const APP_VERSION = 'v93';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1906,16 +1906,24 @@ function renderTodo(w) {
   // Klarna: a payment just taken (until tapped), and anything due in the next 2 days or missed
   const K = CFG.klarna || {}, now0 = new Date(); now0.setHours(0, 0, 0, 0);
   (K.taken || []).filter(x => !seen[x.key]).forEach(x => rows.unshift(['✅', x.text, 'payoff', x.key]));
-  (K.due || []).filter(x => { const d = toDate(x.due); return d && (d - now0) <= 2 * 864e5; }).slice(0, 2).forEach(x => rows.unshift([x.overdue ? '🔴' : '⏰',
-    'Klarna ' + money(x.amount) + (x.overdue ? ' was due ' : ' due ') + dayName(x.due) + ' · ' + x.shop + (x.card ? ' (' + x.card + ')' : '') + (x.overdue ? '. Check the Klarna app' : '. Make sure the money is there'), 'payoff']));
+  (K.due || []).filter(x => { const d = toDate(x.due); return d && (d - now0) <= 2 * 864e5 && !seen['due:' + x.id + ':' + x.due]; }).slice(0, 2).forEach(x => rows.unshift([x.overdue ? '🔴' : '⏰',
+    'Klarna ' + money(x.amount) + (x.overdue ? ' was due ' : ' due ') + dayName(x.due) + ' · ' + x.shop + (x.card ? ' (' + x.card + ')' : '') + (x.overdue ? '. Check the Klarna app' : '. Make sure the money is there'), 'payoff', '', 'due:' + x.id + ':' + x.due]));
   $('todo').classList.toggle('hide', !rows.length);
-  $('todo').innerHTML = rows.slice(0, 5).map(r => `<button data-todo="${r[2]}"${r[3] ? ` data-seen="${esc(r[3])}"` : ''}><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`).join('');
+  // Notifications (a refund done, a Klarna payment taken or due) have a ✕, and swipe away on a phone. Jobs (parcels to post…) stay until done.
+  $('todo').innerHTML = rows.slice(0, 5).map(r => { const b = `<button data-todo="${r[2]}"${r[3] ? ` data-seen="${esc(r[3])}"` : ''}><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`, k = r[4] || r[3];
+    return k ? `<div class="tdrow swipe" data-tdkey="${esc(k)}">${b}<button class="tdx" data-tdx="1" aria-label="Dismiss">✕</button></div>` : b; }).join('');
+}
+function dismissTodo(el) {
+  const k = el && el.dataset.tdkey; if (!k) return;
+  const s = seenRefunds(); s[k] = Date.now(); try { localStorage.setItem(LS_SEEN_REF, JSON.stringify(s)); } catch (err) {}
+  renderTodo(CFG.waiting);
 }
 // Completed-refund notices show until tapped
 const LS_SEEN_REF = 'rs_seen_refunds';
 function seenRefunds() { try { return JSON.parse(localStorage.getItem(LS_SEEN_REF) || '{}'); } catch (e) { return {}; } }
 // Tapping a to-do opens Sales at that section
-$('todo').onclick = e => { const b = e.target.closest('[data-todo]'); if (!b) return;
+$('todo').onclick = e => { if (e.target.closest('[data-tdx]')) return dismissTodo(e.target.closest('.tdrow'));
+  const b = e.target.closest('[data-todo]'); if (!b) return;
   if (b.dataset.seen) { const s = seenRefunds(); s[b.dataset.seen] = Date.now(); try { localStorage.setItem(LS_SEEN_REF, JSON.stringify(s)); } catch (err) {} }
   if (b.dataset.todo === 'trips') openTrip(); else if (b.dataset.todo === 'payoff') openPurchases('payoff'); else if (b.dataset.todo === 'pend') openPurchases(b.dataset.seen ? 'done' : 'pend'); else openSales(b.dataset.todo); };
 function goTo(id) {
@@ -5327,6 +5335,7 @@ function swipeAway(root, sel, done) {
   root.addEventListener('touchcancel', reset);
 }
 swipeAway($('puPend'), '.swipe', dismissPend);
+swipeAway($('todo'), '.tdrow', dismissTodo);
 function toRetCardHtml(r) {
   const goes = r.online || r.method;
   const last = r.daysLeft === null || r.daysLeft === undefined ? '' : r.daysLeft < 0 ? '<span class="tag late">Past the last day: ask the shop</span>'
@@ -5405,13 +5414,51 @@ function renderPurchases() {
       <div class="amt">${money(g.total)}</div></div>
     <div class="tags"><span class="tag pufrom">${PU_ICON[g.from] || ''} ${esc(g.from)}</span>${g.refund ? '<span class="tag ok">refund</span>' : ''}${g.payment ? '<span class="tag">' + esc(g.payment) + '</span>' : ''}${g.order ? '<span class="tag">#' + esc(g.order) + '</span>' : ''}</div>
     <ul class="pulines">${g.lines.slice(0, 8).map(l => `<li><span>${l.qty > 1 ? l.qty + ' × ' : ''}${esc(l.item)}${l.refunded ? ' <span class="tag ok">refunded</span>' : ''}${retTag(l)}</span><b>${money(l.total)}</b></li>`).join('')}${g.lines.length > 8 ? `<li class="sub">+ ${g.lines.length - 8} more</li>` : ''}</ul>
+    ${g.lines.some(l => l.est) ? '<div class="sm" style="margin:6px 0">📝 Prices are estimates: the shop\'s email showed no price per item.</div>' : ''}
     <div class="ouacts">${g.doc ? `<a href="${esc(g.doc.split('\n')[0])}" target="_blank" rel="noopener">${docLabel(g)} ↗</a>` : ''}${listing(g) ? `<a href="${esc(listing(g))}" target="_blank" rel="noopener">Listing ↗</a>` : ''}
+      ${orderUrl(g.store, g.order) ? `<a href="${esc(orderUrl(g.store, g.order))}" target="_blank" rel="noopener">${g.payment ? 'Order details' : 'Order details: how you paid'} ↗</a>` : ''}
+      ${g.lines.some(l => l.est) ? `<button data-puprice="${i}">📸 Get exact prices</button>` : ''}
       ${g.trip ? (g.tripLogged ? '<span class="done">🚗 Trip logged</span>' : `<button data-putrip="${i}">🚗 Log the trip${g.trip.miles ? ' (' + g.trip.miles + ' mi each way)' : ''}</button>`) : ''}</div>
   </div>`).join('') : '<p class="sub" style="padding:10px 0">' + (q || PU_FROM ? 'Nothing matches.' : 'Nothing logged yet.') + '</p>';
   $('puList').dataset.n = String(list.length);
   PU_SHOWN = list;
 }
 var PU_SHOWN = [];
+/* The shop's own page for an order: how you paid, and each item's price (you're signed in to the shop there) */
+function orderUrl(store, order) {
+  const o = String(order || '').trim(), st = String(store || '').toLowerCase();
+  if (!o) return '';
+  if (/amazon/.test(st) && /^\d{3}-\d{7}-\d{7}$/.test(o)) return 'https://www.amazon.co.uk/gp/your-account/order-details?orderID=' + o;
+  if (/temu/.test(st) && /^PO-[\d-]+$/i.test(o)) return 'https://www.temu.com/bgt_order_receipt.html?parent_order_sn=' + o;
+  if (/ebay/.test(st)) return 'https://www.ebay.co.uk/mye/myebay/purchase';
+  return '';
+}
+/* Exact prices: screenshots of the order in the shop's app, matched to these lines in one AI read (Purchases.gs purchaseReprice_) */
+function exactPrices(g) {
+  const url = orderUrl(g.store, g.order), est = g.lines.filter(l => l.est).length;
+  const v = sheet(`<h3>Get exact prices</h3>
+    <p class="sub">${esc(g.store)}'s email showed no price per item, so ${est} line${est === 1 ? ' was' : 's were'} given an even share of ${money(g.total)}.</p>
+    <ol class="sub" style="padding-left:18px;margin:8px 0">
+      <li>Open this order in the ${esc(g.store)} app or website${url ? ' (button below)' : ''}: each item's price is shown there.</li>
+      <li>Take screenshots of the item list. Scroll and take more until every item is in one.</li>
+      <li>Pick the screenshots here. One AI read (about £0.002) matches each line to its price.</li></ol>
+    <p class="sub">The prices are then scaled so the order still adds up to the ${money(g.total)} you paid: discounts and credit are shared out the same way.</p>
+    ${url ? `<a class="btn sec" href="${esc(url)}" target="_blank" rel="noopener" style="display:block;text-align:center;margin-bottom:8px">Open the order in ${esc(g.store)} ↗</a>` : ''}
+    <label class="btn" style="display:block;text-align:center">Pick the screenshots<input type="file" accept="image/*" multiple hidden id="epFiles"></label>
+    <button class="btn sec" data-close="1" style="margin-top:8px">Not now</button>`);
+  v.querySelector('#epFiles').onchange = async ev => {
+    const files = [...ev.target.files].slice(0, 6); if (!files.length) return;
+    v.querySelector('h3').textContent = 'Reading ' + files.length + ' screenshot' + (files.length === 1 ? '' : 's') + '…';
+    try {
+      const images = [];
+      for (const f of files) { const d = await enhance(await readFile(f)); images.push({ base64: d.split(',')[1], mimeType: 'image/jpeg' }); }
+      const r = await api('purchaseReprice', { id: g.id, images });
+      v.remove();
+      toast(r.updated ? 'Exact prices on ' + r.updated + ' of ' + r.of + ' lines' + (r.missing && r.missing.length ? '. Not in the screenshots: ' + r.missing.slice(0, 3).join(', ') + (r.missing.length > 3 ? '…' : '') : '') : 'No prices found in those screenshots', !r.updated);
+      try { PURCH = await api('purchases', { limit: 200 }); localStorage.setItem('rs_purchases', JSON.stringify(PURCH)); } catch (e) {} renderPurchases();
+    } catch (err) { v.querySelector('h3').textContent = 'Get exact prices'; toast(err.message, true); }
+  };
+}
 /* Paying off (Klarna): one card per order. Payments tick off as Klarna's emails arrive (Klarna.gs). */
 var KLARNA = null;
 async function loadKlarna() {
@@ -5540,6 +5587,7 @@ $('puFrom').onclick = e => { const b = e.target.closest('[data-pf]'); if (!b) re
 $('puList').onclick = e => {
   if (retAction(e)) return;
   if (klarnaAction(e)) return;
+  const pr = e.target.closest('[data-puprice]'); if (pr) { const g = PU_SHOWN[Number(pr.dataset.puprice)]; if (g) exactPrices(g); return; }
   const b = e.target.closest('[data-putrip]'); if (!b) return;
   const g = PU_SHOWN[Number(b.dataset.putrip)]; if (!g) return;
   openTrip({ journey: { date: g.date, stops: [g.trip.to].filter(Boolean), purchaseIds: [g.id], miles: g.trip.miles,
