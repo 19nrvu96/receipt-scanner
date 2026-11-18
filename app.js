@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v94';
+const APP_VERSION = 'v95';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2244,7 +2244,13 @@ const tidyCourier = c => /^evri$/i.test(c) ? 'Evri' : String(c);
 function codeBox(r) {
   if (!r.code) return '';
   return `<div class="dcode"><div class="sm">No printer needed. At the ${esc(r.courier ? tidyCourier(r.courier) : 'drop-off')} desk, read out or type in this code instead of the QR code. They print the label there.</div>
-    <div class="dcodev">${esc(r.code)}</div><button type="button" class="link" data-copy="${esc(r.code)}">📋 Copy the code</button></div>`;
+    <div class="dcodev">${esc(r.code)}</div><button type="button" class="link" data-copy="${esc(r.code)}">📋 Copy the code</button>${shopReturnBtn(r)}</div>`;
+}
+// This return's own page on the shop's site/app (Temu: the return's QR code, label and drop-off details). Signed in to the shop, it opens straight there.
+const shopReturnUrl = r => (r.links && r.links.manage) || (/^https?:/.test(r.link || '') ? r.link : '');
+function shopReturnBtn(r) {
+  const u = shopReturnUrl(r); if (!u) return '';
+  return `<a class="btn sec" href="${esc(u)}" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:8px">📱 Open this return on ${esc(r.store || 'the shop')} (QR code)</a>`;
 }
 function pickupTag(r) {
   if (!r.pickupDate) return '';
@@ -2349,10 +2355,10 @@ async function showReturnCode(r) {
     veil.querySelector('.sheet').innerHTML = `<button class="close" data-close="1" aria-label="Close">✕</button><h3>Return: ${esc(r.item)}</h3>
       <p class="hint">Show this at ${esc(r.store || 'the shop')} or the drop-off point. Turn your screen brightness up.${cached ? ' Saved on this phone, so it works with no signal.' : ''}</p>
       <p class="sub">${[r.order ? '#' + r.order : '', r.returnBy ? 'last day ' + dayName(r.returnBy) : ''].filter(Boolean).map(esc).join(' · ')}</p>
-      ${r.code ? `<div class="dcode"><div class="sm">${esc(r.courier ? tidyCourier(r.courier) : 'Drop-off')} code: read it out or type it in at the desk instead of the QR code. No printing needed.</div><div class="dcodev big">${esc(r.code)}</div></div>` : ''}
+      ${r.code ? `<div class="dcode"><div class="sm">${esc(r.courier ? tidyCourier(r.courier) : 'Drop-off')} code: read it out or type it in at the desk instead of the QR code. No printing needed.</div><div class="dcodev big">${esc(r.code)}</div>${shopReturnBtn(r)}</div>` : ''}
       ${f.images.map(src => `<img class="qrimg" src="${src}" alt="Return QR code">`).join('')}
       ${f.pdfs.map(p => `<a class="btn sec" href="${esc(p.url || p)}" target="_blank" rel="noopener">Open the return label</a>`).join('')}
-      ${f.link ? `<a class="btn sec" href="${esc(f.link)}" target="_blank" rel="noopener">Open the shop's return page</a>` : ''}
+      ${f.link && !(r.code && shopReturnUrl(r)) ? `<a class="btn sec" href="${esc(f.link)}" target="_blank" rel="noopener">Open the shop's return page</a>` : ''}
       ${!f.images.length && !f.pdfs.length && !f.link && !r.code ? '<p class="sub">No code was in the email. Open it in your email app.</p>' : ''}
       <button class="btn ghost" data-close="1">Close</button>`;
   } catch (err) {
