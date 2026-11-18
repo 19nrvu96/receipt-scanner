@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v97';
+const APP_VERSION = 'v98';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2183,6 +2183,12 @@ function refundNextHtml(r) {
     <li>${r.refundTime ? 'The money usually reaches you ' + esc(r.refundTime) + ' after the refund is issued.' : 'Card refunds usually take 3–5 working days to show; shop balance or gift card ones are quicker.'}</li></ol></div>`;
 }
 
+// Returns that go back in one parcel (a Temu return of several items) are offered once, as that parcel
+function bundleOpts(opts) {
+  const open = RET_OPEN(), seen = {};
+  return opts.filter(o => { if (o.kind !== 'return') return true; const b = open.find(x => (x.ids || [x.id]).indexOf(o.id) > -1); if (!b) return true; if (seen[b.id]) return false; seen[b.id] = 1;
+    o.id = b.id; o.key = 'r:' + b.id; if (b.items) { o.label = '↩️ Return: ' + b.item + ' (' + b.items.map(x => x.item).join(', ').slice(0, 70) + ')'; } return true; });
+}
 // One receipt for several parcels (a Post Office certificate of posting): each barcode goes on its own return.
 // A tracking number already on a return picks itself; the rest are suggested in the order printed, which is the
 // order they were handed over, and you check each one. One photo, saved once, is the proof on every return.
@@ -2191,8 +2197,7 @@ function showParcelsReceipt(j) {
   const opts = C.returns.map(r => ({ key: 'r:' + r.id, kind: 'return', id: r.id, label: '↩️ ' + r.item + (r.store ? ' · ' + r.store : '') }))
     .concat(C.labels.map(l => ({ key: 'l:' + l.id, kind: 'label', id: l.id, label: '📦 To post: ' + (l.item || 'parcel') + (l.platform ? ' · ' + l.platform : '') })));
   // Bundled returns (one parcel, several items) share a card: offer each parcel once
-  const open = RET_OPEN(), seenB = {};
-  const pickOpts = opts.filter(o => { if (o.kind !== 'return') return true; const b = open.find(x => (x.ids || [x.id]).indexOf(o.id) > -1); if (!b) return true; if (seenB[b.id]) return false; seenB[b.id] = 1; o.id = b.id; o.key = 'r:' + b.id; o.label = '↩️ ' + b.item + (b.items ? ': ' + b.items.map(x => x.item).join(', ').slice(0, 60) : '') + (b.store ? ' · ' + b.store : ''); return true; });
+  const open = RET_OPEN(), pickOpts = bundleOpts(opts);
   const chosen = P.map((p, i) => { const m = M[i] || {}; return m.kind && m.how !== 'courier' ? (m.kind === 'return' ? 'r:' : 'l:') + (open.find(x => (x.ids || [x.id]).indexOf(m.ids[0]) > -1) || { id: m.ids[0] }).id : ''; });
   const why = P.map((p, i) => chosen[i] ? 'matched by ' + ((M[i] || {}).how || 'tracking') : '');
   // Fill the rest in order: the same courier's open returns, first one first (from the card it was taken from, if any)
@@ -2246,7 +2251,9 @@ function showParcelReceipt(j) {
   }
   const opts = C.returns.map(r => ({ key: 'r:' + r.id, kind: 'return', id: r.id, label: '↩️ Return: ' + r.item, sub: [r.store, r.order ? '#' + r.order : '', r.courier ? r.courier + (r.method ? ' ' + r.method.toLowerCase() : '') : ''].filter(Boolean).join(' · ') }))
     .concat(C.labels.map(l => ({ key: 'l:' + l.id, kind: 'label', id: l.id, label: '📦 To post: ' + (l.item || 'parcel'), sub: [l.platform, l.courier, l.tracking].filter(Boolean).join(' · ') })));
-  let pickKey = j.parcelFor ? 'r:' + j.parcelFor : m.kind ? (m.kind === 'return' ? 'r:' : 'l:') + m.ids[0] : (opts.length === 1 ? opts[0].key : '');
+  const opts1 = bundleOpts(opts); opts.length = 0; opts1.forEach(o => opts.push(o));
+  const inB = id => { const b = RET_OPEN().find(x => (x.ids || [x.id]).indexOf(id) > -1); return b ? b.id : id; };
+  let pickKey = j.parcelFor ? 'r:' + inB(j.parcelFor) : m.kind ? (m.kind === 'return' ? 'r:' + inB(m.ids[0]) : 'l:' + m.ids[0]) : (opts.length === 1 ? opts[0].key : '');
   const fromCard = !!j.parcelFor;
   const why = { reference: 'its return reference ' + esc(p.reference) + ' is on this return', tracking: 'the tracking number matches', order: 'the order number matches',
     pickup: 'same courier, pick-up booked for that day', courier: 'the only open return with ' + esc(p.carrier) }[m.how] || '';
@@ -2258,19 +2265,44 @@ function showParcelReceipt(j) {
     <p class="sub">Proof it's on its way back. Saved with the return as <b>Sent back</b>: it doesn't mark anything as refunded. The refund comes from the shop's email (or a refund receipt) later.</p>
     ${facts ? `<div class="pkbox">${facts}</div>` : '<p class="hint">Couldn\'t read the tracking details from this photo. It\'s still saved with the return as proof.</p>'}
     ${m.kind && !fromCard ? `<p class="hint" style="margin-top:8px">✓ Matched: ${why}.${m.already ? ' Already marked as gone: this adds the receipt to it.' : ''}</p>` : !fromCard && opts.length ? '<p class="hint" style="margin-top:8px">Which is it for?</p>' : ''}
-    ${opts.length ? `<div class="pcopts">${opts.map(o => `<label class="pcopt"><input type="radio" name="pcfor" value="${esc(o.key)}" ${o.key === pickKey ? 'checked' : ''}><span><b>${esc(o.label)}</b><br><span class="sm">${esc(o.sub)}</span></span></label>`).join('')}</div>`
+    ${opts.length > 1 ? '<p class="hint" style="margin:6px 0 0">Tick one, several or all: one receipt can cover several parcels handed in together.</p><button type="button" class="link" data-pcall="1">☑︎ Select all</button>' : ''}
+    ${opts.length ? `<div class="pcopts">${opts.map(o => `<label class="pcopt"><input type="checkbox" name="pcfor" value="${esc(o.key)}" ${o.key === pickKey ? 'checked' : ''}><span><b>${esc(o.label)}</b><br><span class="sm">${esc(o.sub)}</span></span></label>`).join('')}</div>`
       : '<p class="hint">Nothing open to match it to: no returns waiting and no parcels to post. You can keep the photo here and try again later.</p>'}
+    <p class="sm pcmany hide" style="margin-top:6px">Only one barcode was read (${esc(p.tracking || 'none')}), so it goes on none of them: each gets the receipt as proof. Add the right tracking to each later if you need it.</p>
     <button class="btn" data-pcsave="1" ${pickKey ? '' : 'disabled'}>${(pickKey || '').startsWith('l:') ? '✓ Mark it posted' : '✓ Mark it sent back'}</button>
     <button class="btn ghost" data-close="1">Later (keep it in Photos to review)</button>
     <button class="btn ghost danger" data-pcdel="1">Delete this photo</button>`);
-  const btn = v.querySelector('[data-pcsave]');
-  v.querySelector('.sheet').addEventListener('change', e => {
-    if (e.target.name !== 'pcfor') return;
-    pickKey = e.target.value; btn.disabled = false; btn.textContent = pickKey.startsWith('l:') ? '✓ Mark it posted' : '✓ Mark it sent back';
-  });
-  v.querySelector('.sheet').addEventListener('click', async e => {
+  const btn = v.querySelector('[data-pcsave]'), shp = v.querySelector('.sheet');
+  const ticked = () => [...shp.querySelectorAll('input[name="pcfor"]:checked')].map(x => x.value);
+  const sync = () => {
+    const t = ticked(); pickKey = t[0] || ''; btn.disabled = !t.length;
+    btn.textContent = t.length > 1 ? '✓ Mark these ' + t.length + ' sent' : pickKey.startsWith('l:') ? '✓ Mark it posted' : '✓ Mark it sent back';
+    shp.querySelector('.pcmany').classList.toggle('hide', t.length < 2 || !p.tracking);
+    const all = shp.querySelector('[data-pcall]'); if (all) all.textContent = t.length === opts.length ? '☐ Select none' : '☑︎ Select all';
+  };
+  shp.addEventListener('change', e => { if (e.target.name === 'pcfor') sync(); });
+  shp.addEventListener('click', async e => {
+    if (e.target.dataset.pcall) { const on = ticked().length !== opts.length; shp.querySelectorAll('input[name="pcfor"]').forEach(x => { x.checked = on; }); sync(); return; }
     if (e.target.dataset.pcdel) { v.remove(); await jobDel(j.id); job = null; refreshJobs(); toast('Photo deleted'); return; }
     if (!e.target.dataset.pcsave || !pickKey) return;
+    const keys = ticked();
+    if (keys.length > 1) {   // several parcels on one receipt with one barcode read: each gets the receipt as proof, no tracking
+      btn.disabled = true; btn.textContent = 'Saving…';
+      let proof = '', done = 0;
+      try {
+        for (const k of keys) {
+          const o = opts.find(x => x.key === k);
+          const r = await api('parcelReceipt', { target: o.kind === 'return' ? { kind: 'return', id: o.id } : { kind: 'label', ids: [o.id] },
+            parcel: Object.assign({}, p, { tracking: '', reference: '', sentTo: '' }), image: proof ? '' : (j.pages[0] || {}).dataUrl || '', proofUrl: proof || undefined });
+          proof = proof || r.proof || ''; done++;
+        }
+        v.remove(); await jobDel(j.id); job = null; refreshJobs(); SALES = null;
+        if (PARCEL_BACK === 'pu') { show('vPurchases'); await loadPend(); } else await openSales('slToRetWrap');
+        PARCEL_BACK = '';
+        toast('✓ ' + done + ' marked sent back, each with the receipt as proof');
+      } catch (err) { btn.disabled = false; sync(); toast(err.message + (done ? ' (' + done + ' saved)' : ''), true); }
+      return;
+    }
     const o = opts.find(x => x.key === pickKey);
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
