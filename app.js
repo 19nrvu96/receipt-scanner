@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v96';
+const APP_VERSION = 'v97';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2183,9 +2183,61 @@ function refundNextHtml(r) {
     <li>${r.refundTime ? 'The money usually reaches you ' + esc(r.refundTime) + ' after the refund is issued.' : 'Card refunds usually take 3–5 working days to show; shop balance or gift card ones are quicker.'}</li></ol></div>`;
 }
 
+// One receipt for several parcels (a Post Office certificate of posting): each barcode goes on its own return.
+// A tracking number already on a return picks itself; the rest are suggested in the order printed, which is the
+// order they were handed over, and you check each one. One photo, saved once, is the proof on every return.
+function showParcelsReceipt(j) {
+  const R = j.result, P = R.parcels, M = R.matches || [], C = (R.match && R.match.candidates) || { returns: [], labels: [] };
+  const opts = C.returns.map(r => ({ key: 'r:' + r.id, kind: 'return', id: r.id, label: '↩️ ' + r.item + (r.store ? ' · ' + r.store : '') }))
+    .concat(C.labels.map(l => ({ key: 'l:' + l.id, kind: 'label', id: l.id, label: '📦 To post: ' + (l.item || 'parcel') + (l.platform ? ' · ' + l.platform : '') })));
+  // Bundled returns (one parcel, several items) share a card: offer each parcel once
+  const open = RET_OPEN(), seenB = {};
+  const pickOpts = opts.filter(o => { if (o.kind !== 'return') return true; const b = open.find(x => (x.ids || [x.id]).indexOf(o.id) > -1); if (!b) return true; if (seenB[b.id]) return false; seenB[b.id] = 1; o.id = b.id; o.key = 'r:' + b.id; o.label = '↩️ ' + b.item + (b.items ? ': ' + b.items.map(x => x.item).join(', ').slice(0, 60) : '') + (b.store ? ' · ' + b.store : ''); return true; });
+  const chosen = P.map((p, i) => { const m = M[i] || {}; return m.kind && m.how !== 'courier' ? (m.kind === 'return' ? 'r:' : 'l:') + (open.find(x => (x.ids || [x.id]).indexOf(m.ids[0]) > -1) || { id: m.ids[0] }).id : ''; });
+  const why = P.map((p, i) => chosen[i] ? 'matched by ' + ((M[i] || {}).how || 'tracking') : '');
+  // Fill the rest in order: the same courier's open returns, first one first (from the card it was taken from, if any)
+  const free = pickOpts.filter(o => o.kind === 'return' && chosen.indexOf(o.key) < 0);
+  if (j.parcelFor) free.sort((a, b) => (b.key === 'r:' + j.parcelFor) - (a.key === 'r:' + j.parcelFor));
+  P.forEach((p, i) => { if (!chosen[i] && free.length) { chosen[i] = free.shift().key; why[i] = 'a guess: check it'; } });
+  const dest = p => [p.sentTo, p.service && !/drop off/i.test(p.service) ? p.service : ''].filter(Boolean).join(' · ');
+  const v = sheet(`<button class="close" data-close="1" aria-label="Close">✕</button>
+    <h3>📦 ${P.length} parcels on one receipt</h3>
+    <p class="sub">${esc(P[0].carrier || 'Courier')}${P[0].dropOff ? ' at ' + esc(P[0].dropOff) : ''}${P[0].date ? ', ' + esc(dayName(P[0].date)) + (P[0].time ? ' ' + esc(P[0].time) : '') : ''}. Each barcode goes on its own return as proof it's on its way back. Nothing is marked refunded.</p>
+    <p class="hint">They're listed in the order you handed them over. Pick which return each one was.</p>
+    ${P.map((p, i) => `<div class="pkbox" style="margin-top:8px"><div class="cprow"><span class="sm">Parcel ${i + 1}</span><b>${esc(p.tracking || 'no barcode read')}</b></div>
+      ${dest(p) ? `<div class="sm">Going to ${esc(dest(p))}</div>` : ''}
+      <select data-pi="${i}" style="width:100%;margin-top:6px"><option value="">Not one of mine / skip</option>${pickOpts.map(o => `<option value="${esc(o.key)}" ${o.key === chosen[i] ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>
+      ${why[i] ? `<div class="sm" style="margin-top:4px">${esc(why[i])}</div>` : ''}</div>`).join('')}
+    <p class="sub pcwarn hide" style="color:#c00">Two parcels are set to the same return.</p>
+    <button class="btn" data-pcsaveall="1" style="margin-top:10px">✓ Save all ${P.length}</button>
+    <button class="btn ghost" data-close="1">Later (keep it in Photos to review)</button>`);
+  const sh = v.querySelector('.sheet'), btn = sh.querySelector('[data-pcsaveall]');
+  const sel = () => [...sh.querySelectorAll('select[data-pi]')].map(x => x.value);
+  const check = () => { const s = sel().filter(Boolean), dup = s.length !== new Set(s).size; sh.querySelector('.pcwarn').classList.toggle('hide', !dup); btn.disabled = dup || !s.length; };
+  sh.addEventListener('change', check); check();
+  const saved = new Set(); let proof = '', done = 0;   // a retry after a dropped signal skips the ones already saved
+  btn.onclick = async () => {
+    const picks = sel(); btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      for (let i = 0; i < P.length; i++) {
+        if (!picks[i] || saved.has(i)) continue;
+        const o = pickOpts.find(x => x.key === picks[i]);
+        const r = await api('parcelReceipt', { target: o.kind === 'return' ? { kind: 'return', id: o.id } : { kind: 'label', ids: [o.id] }, parcel: P[i],
+          image: proof ? '' : (j.pages[0] || {}).dataUrl || '', proofUrl: proof || undefined });
+        proof = proof || r.proof || ''; done++; saved.add(i);
+      }
+      v.remove(); await jobDel(j.id); job = null; refreshJobs(); SALES = null;
+      if (PARCEL_BACK === 'pu') { show('vPurchases'); await loadPend(); } else await openSales('slToRetWrap');
+      PARCEL_BACK = '';
+      toast('✓ ' + done + ' parcel' + (done === 1 ? '' : 's') + ' on ' + (done === 1 ? 'its' : 'their') + ' way back, each with its tracking number');
+    } catch (err) { btn.disabled = false; btn.textContent = '✓ Save the rest'; toast(err.message + (done ? ' (' + done + ' saved)' : ''), true); }
+  };
+}
+
 // A courier's receipt (UPS collection, Evri drop-off…): not a purchase. Ties it to the return going back
 // (Sent back, tracking, where it went, the photo as proof) or to a parcel you're posting (Posted, where and when).
 function showParcelReceipt(j) {
+  if (j.result && j.result.parcels && j.result.parcels.length > 1) return showParcelsReceipt(j);
   const p = (j.result && j.result.parcel) || {}, m = (j.result && j.result.match) || { candidates: { returns: [], labels: [] } };
   const C = m.candidates || { returns: [], labels: [] };
   if (j.parcelFor && !C.returns.some(r => r.id === j.parcelFor)) {   // taken from that return's card: it's an option even if the read didn't find it
