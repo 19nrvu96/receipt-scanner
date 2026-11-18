@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v88';
+const APP_VERSION = 'v89';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -632,8 +632,10 @@ function buildReview(result, source) {
   $('pMethod').classList.toggle('on', state.method === 'Delivery');
 
   // Already saved? (same order number, or same store, date and total) — checked by your Sheet, free
-  $('dupBanner').textContent = meta.possibleDuplicate ? '⚠️ ' + meta.possibleDuplicate + '. Check before saving.' : meta.returnDone ? '✅ This refund completed your return of ' + meta.returnDone.item + (meta.returnDone.to ? ' (to ' + meta.returnDone.to + ')' : '') + '. Save to log the money.' : '';
-  $('dupBanner').classList.toggle('hide', !meta.possibleDuplicate && !meta.returnDone);
+  const kp = meta.klarnaPlan, noItems = meta.noItems ? '📝 The email doesn\'t name the items, so this is one line for the whole order. Rename it or add the items before saving.' : '';
+  $('dupBanner').textContent = meta.possibleDuplicate ? '⚠️ ' + meta.possibleDuplicate + '. Check before saving.' : meta.returnDone ? '✅ This refund completed your return of ' + meta.returnDone.item + (meta.returnDone.to ? ' (to ' + meta.returnDone.to + ')' : '') + '. Save to log the money.'
+    : [noItems, kp ? '💳 Klarna ' + (kp.plan || '') + (kp.shop ? ' at ' + kp.shop : '') + ' is already on Paying off for this total: saving links them.' : ''].filter(Boolean).join(' ');
+  $('dupBanner').classList.toggle('hide', !meta.possibleDuplicate && !meta.returnDone && !kp && !noItems);
 
   // Refunds: each line is matched to the purchase it refunds, which is then marked returned
   if (state.refund) {
@@ -1437,7 +1439,7 @@ function renderQueue(d) {
     const sender = meta.orderEmail || q.from;
     const body = q.status === 'ready'
       ? `<div class="sum"><b>${esc(rows[0]?.store || 'Unknown store')}</b> · ${money(total)} · ${rows.length} item${rows.length === 1 ? '' : 's'}</div>
-         ${meta.possibleDuplicate ? `<div class="warn">⚠️ ${esc(meta.possibleDuplicate)}</div>` : ''}
+         ${meta.possibleDuplicate ? `<div class="warn">⚠️ ${esc(meta.possibleDuplicate)}</div>` : ''}${meta.klarnaPlan ? `<div class="sub">💳 Paid with Klarna ${esc(meta.klarnaPlan.plan || '')}: matched to its Klarna email</div>` : ''}${meta.noItems ? '<div class="sub">📝 The email doesn\'t name the items</div>' : ''}
          <div class="duo"><button class="btn" data-q="review" data-i="${i}">Review</button>
          <button class="btn sec" data-q="dismiss" data-i="${i}">Dismiss</button></div>`
       : `<div class="warn">${esc(emailError(q.error))}</div>
