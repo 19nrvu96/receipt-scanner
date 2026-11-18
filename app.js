@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v90';
+const APP_VERSION = 'v91';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -5409,7 +5409,7 @@ function kNext(p) { return (p.payments || []).filter(x => !x.paid && !x.cancelle
 function payOffCardHtml(p) {
   const pays = p.payments || [], live = pays.filter(x => !x.cancelled), nx = kNext(p), done = /Paid off|Refunded/.test(p.status);
   const owed = Math.max(0, (p.total || 0) - (p.lowered || 0)), pct = owed ? Math.min(100, Math.round(p.paid / owed * 100)) : (done ? 100 : 0);
-  const line = x => `<li class="${x.paid ? 'kpaid' : x.cancelled ? 'kcan' : x === nx ? 'knext' : ''}"><span>${x.paid ? '✓' : x.cancelled ? '✕' : x === nx ? '⏳' : '○'} ${esc(kDay(x.due))}${x.extended ? ' <span class="tag">extended' + (x.was ? ' from ' + esc(kDay(x.was)) : '') + '</span>' : ''}${x.assumed ? ' <span class="sm">(no email: assumed taken)</span>' : ''}${x.cancelled ? ' <span class="sm">not needed now</span>' : ''}</span><b>${money(x.amount)}</b></li>`;
+  const line = x => `<li class="${x.paid ? 'kpaid' : x.cancelled ? 'kcan' : x === nx ? 'knext' : ''}"><span>${x.paid ? '✓' : x.cancelled ? '✕' : x === nx ? '⏳' : '○'} ${x.earlier ? 'Earlier payment' : esc(kDay(x.due))}${x.extended ? ' <span class="tag">extended' + (x.was ? ' from ' + esc(kDay(x.was)) : '') + '</span>' : ''}${x.assumed ? ' <span class="sm">(no email: assumed taken)</span>' : ''}${x.cancelled ? ' <span class="sm">not needed now</span>' : ''}</span><b>${money(x.amount)}</b></li>`;
   const retWarn = p.ret && nx && !done ? `<div class="kwarn">↩️ <b>You're returning ${esc(p.ret.item)}</b> (${esc(p.ret.status)}). Report the return in the Klarna app so the next ${money(nx.amount)} on ${esc(kDay(nx.due))} is paused until the shop refunds you.</div>` : '';
   return `<div class="card kcard${done ? ' kdone' : ''}" data-kid="${esc(p.id)}">
     <div class="puhead"><div><div class="st">${esc(p.shop || 'Klarna')}</div><div class="sm">${esc(p.plan || 'Klarna')}${p.orderDate ? ' · ordered ' + esc(p.orderDate) : ''}${p.card ? ' · from ' + esc(p.card) : ''}</div></div>
