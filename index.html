@@ -457,6 +457,8 @@ input.ro{background:#f4f5f7;color:#555}
 .recbtn{display:block;width:100%;margin:10px 0 6px}
 .copied{background:#e8f8ee;border:1px solid #34c759;color:#1c1c1e;border-radius:12px;padding:12px 14px;margin:0 0 10px;font-size:15px;line-height:1.4}.copied .btn{display:block;text-align:center;text-decoration:none}
 .mailbody{white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.45;max-height:58vh;overflow:auto;background:#fff;color:#1c1c1e;border:1px solid #e3e3e8;border-radius:10px;padding:12px;margin:10px 0}
+.spform label{display:block;font-size:12px;color:#888;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.3px}.spform input,.spform select{display:block;width:100%;padding:10px;border:1px solid #ddd;border-radius:9px;font-size:16px;font-family:inherit;background:#fff;color:inherit}.spform+.duo{margin-top:14px}
+.payask{padding:10px 12px;border-radius:10px;background:#fff6e5;margin:6px 0 10px;font-size:15px;line-height:1.4}.paychips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.paychips button{border:1px solid #d0d0d5;background:#fff;border-radius:999px;padding:7px 12px;font:inherit;font-size:14px;cursor:pointer;color:inherit}
 .rvmail{padding:11px 13px;border-radius:10px;background:#eef5ff;margin:-4px 0 10px;font-size:15px;line-height:1.4}.rvmail .ouacts{margin-top:8px}.recwhy{margin-top:6px;font-size:15px;line-height:1.4}
 .pucard{padding:12px 14px}.puhead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.puhead .amt{font-weight:700;font-size:17px}
 .pulines{list-style:none;margin:8px 0 0;padding:0}.pulines li{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid #eee;font-size:15px}.pulines li b{font-weight:600;white-space:nowrap}
@@ -751,6 +753,10 @@ html.dark .putabs button.on{border-color:#1a8cff;color:#ffffff}
 html.dark .putabs button.on span{color:#ffffff}
 html.dark .copied{background:#1d4d2f;border:1px solid #49cf6b;color:#e4e4e6}
 html.dark .mailbody{background:#242424;color:#e4e4e6;border:1px solid #494950}
+html.dark .spform label{color:#858585}
+html.dark .spform input,html.dark .spform select{border:1px solid #535353;background:#242424}
+html.dark .payask{background:#4a3a1c}
+html.dark .paychips button{border:1px solid #59595e;background:#242424}
 html.dark .rvmail{background:#1a2c45}
 html.dark .pulines li{border-top:1px solid #464646}
 html.dark .tag.pufrom{background:#1b2c47;color:#7fabe6}
@@ -1500,9 +1506,10 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
       <input id="fOrder" placeholder="Optional">
       <label>Payment method</label>
       <div class="combo">
-        <input id="fPay" placeholder="e.g. Visa ••4521 or eBay balance">
-        <select id="payPick" aria-label="Saved payment methods"></select>
+        <input id="fPay" placeholder="e.g. Visa ••4521">
+        <select id="payPick" aria-label="Ways to pay"></select>
       </div>
+      <div id="payAsk" class="payask hide" role="status"></div>
       <label>Notes (applies to all lines)</label>
       <input id="fNotes" placeholder="Optional">
       <label class="check"><input type="checkbox" id="fExtRet"> <span id="fExtRetLbl">This shop gives longer than the usual 28 days to return</span></label>
@@ -1539,10 +1546,10 @@ setTimeout(function () {
   document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
 }, 6000);
 </script>
-<script src="qrcode.js?v=83"></script>
-<script src="help.js?v=83"></script>
-<script src="app.js?v=83"></script>
-<script src="tour-engine.js?v=83"></script>
-<script src="whatsnew.js?v=83"></script>
+<script src="qrcode.js?v=84"></script>
+<script src="help.js?v=84"></script>
+<script src="app.js?v=84"></script>
+<script src="tour-engine.js?v=84"></script>
+<script src="whatsnew.js?v=84"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 const LS_URL = 'rs_url';
 const LS_CACHE = 'rs_cache';
 
-let CFG = { purposes: [], stores: [], payments: [], vat: false, business: '' };
+let CFG = { purposes: [], stores: [], payments: [], payByStore: {}, vat: false, business: '' };
 let state = null;          // current receipt being reviewed
 let pages = [];            // photos of the receipt being captured: [{ dataUrl, blurry, dark }]
 let job = null;            // the photo job being read or reviewed (see the offline queue below)
@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v83';
+const APP_VERSION = 'v84';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -659,6 +659,7 @@ function buildReview(result, source) {
 
    
    renderItems();
+  fillPayPicker();   // ways to pay that fit this shop, and "how did you pay?" when the email or receipt doesn't say
   show('vReview');
 }
 
@@ -865,6 +866,7 @@ function recalc(keepVat) {
       el.innerHTML = head + '<div class="recwhy">Check the prices and quantities above.</div>' + esc(shareNote);
     }
   }
+  payHelp();   // "how did you pay the rest?" follows the total
   updateSave();
 }
 
@@ -1056,18 +1058,124 @@ function applyPurpose(val) {
   toast('Purpose set');
 }
 
-/* ---------- payment memory ---------- */
-function fillPayPicker() {
-  const sel = $('payPick');
-  // Your saved ones first, then marketplace balances (paying from what you've earned on eBay or Vinted)
-  const extra = ['eBay balance', 'Vinted balance'].filter(b => !CFG.payments.some(p => p.toLowerCase() === b.toLowerCase()));
-  sel.innerHTML = '<option value="">▾</option>' +
-    CFG.payments.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('') +
-    (extra.length ? '<optgroup label="Marketplace balance">' + extra.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('') + '</optgroup>' : '');
-  sel.onchange = () => {
-    if (sel.value) { $('fPay').value = sel.value; sel.value = ''; }
-  };
+/* ---------- payment method: filled from the email when it says, else picked from what fits the shop ---------- */
+// What each marketplace takes at checkout (eBay, Vinted and Amazon UK help pages, Nov 2026). Others: the usual ways.
+const PAY_WAYS = {
+  eBay:   ['eBay balance', 'eBay gift card', 'PayPal', 'PayPal Credit', 'Klarna', 'Apple Pay', 'Google Pay', 'Pay by Bank'],
+  Vinted: ['Vinted balance', 'Apple Pay', 'Google Pay'],
+  Amazon: ['Amazon gift card', 'Instalments by Barclays', 'Pay by Bank', 'Shop with Points'],
+  '':     ['PayPal', 'Klarna', 'Clearpay', 'Apple Pay', 'Google Pay', 'Cash', 'Gift card']
+};
+// Ways that often pay only part of an order, with a card paying the rest
+const PAY_PARTS = { eBay: ['eBay balance', 'eBay gift card'], Vinted: ['Vinted balance'], Amazon: ['Amazon gift card', 'Shop with Points'], '': ['Gift card'] };
+function payPlatform() {
+  const t = ($('fStore').value + ' ' + ($('fEmail').value || '') + ' ' + ((state && state.meta && state.meta.orderEmail) || '')).toLowerCase();
+  return /vinted/.test(t) ? 'Vinted' : /ebay/.test(t) ? 'eBay' : /amazon/.test(t) ? 'Amazon' : '';
 }
+const isCard = p => /visa|master\s*card|amex|american express|maestro|debit|credit card|card\s*(?:••|ending)|••|ending (?:in )?\d{4}|^\d{4}$/i.test(p) && !/gift/i.test(p);
+const isPartPay = p => /gift card|balance|points/i.test(p);
+// Something only one marketplace takes (eBay balance, Vinted balance, Amazon gift card…) is offered only on that marketplace,
+// and on eBay, Vinted and Amazon only the ways their checkout takes (no PayPal on Vinted or Amazon, say)
+const PAY_KNOWN = [...new Set(Object.values(PAY_WAYS).flat())].map(w => w.toLowerCase());
+const payFits = (p, plat) => { const m = (p.match(/\b(ebay|vinted|amazon)\b/i) || [])[1];
+  if (m) return m.toLowerCase() === plat.toLowerCase();
+  return !plat || !PAY_KNOWN.includes(p.toLowerCase()) || PAY_WAYS[plat].some(w => w.toLowerCase() === p.toLowerCase()); };
+function payParts(pm) {   // "Amazon gift card £10.00 + Visa ••4521 £33.69" → [{name, amt}, …]
+  return String(pm || '').split(/\s+\+\s+/).map(p => { const m = p.match(/^(.*?)\s*£\s*(\d[\d,]*(?:\.\d\d)?)\s*$/);
+    return m ? { name: m[1].trim(), amt: Number(m[2].replace(/,/g, '')) } : { name: p.trim(), amt: null }; }).filter(x => x.name);
+}
+function payTotal() {
+  const sum = state ? r2(state.rows.reduce((t, r) => t + (Number(r['total cost']) || 0), 0)) : 0;
+  return state && state.meta.receiptTotal != null ? Number(state.meta.receiptTotal) : sum;
+}
+function payChoices() {
+  const plat = payPlatform(), store = $('fStore').value.trim().toLowerCase();
+  const saved = (CFG.payments || []).filter(p => payFits(p, plat));
+  const last = (CFG.payByStore || {})[store];
+  return { plat, last: last && payParts(last).every(x => payFits(x.name, plat)) ? last : '',
+    cards: saved.filter(isCard).slice(0, 8),
+    ways: PAY_WAYS[plat] || PAY_WAYS[''],
+    other: saved.filter(p => !isCard(p) && !(PAY_WAYS[plat] || PAY_WAYS['']).includes(p)).slice(0, 8),
+    parts: PAY_PARTS[plat] || PAY_PARTS[''] };
+}
+function fillPayPicker() {
+  const sel = $('payPick'), c = payChoices(), o = p => `<option value="${esc(p)}">${esc(p)}</option>`;
+  const grp = (label, list) => list.length ? `<optgroup label="${esc(label)}">${list.map(o).join('')}</optgroup>` : '';
+  sel.innerHTML = '<option value="">▾</option>' +
+    (c.last ? grp('Last time at ' + $('fStore').value.trim(), [c.last]) : '') +
+    grp('Your cards', c.cards) +
+    grp(c.plat ? 'Ways to pay on ' + c.plat : 'Other ways to pay', c.ways) +
+    grp('Other ways you\'ve paid', c.other) +
+    `<optgroup label="Paid in two parts"><option value="__split">${esc(c.parts[0])} + another way…</option></optgroup>`;
+  sel.onchange = () => {
+    const v = sel.value; sel.value = '';
+    if (v === '__split') return paySplit();
+    if (v) { $('fPay').value = v; payHelp(); }
+  };
+  payHelp();
+}
+// Under the field: ask how you paid when the email doesn't say, and ask how the rest was paid after a gift card or balance
+function payHelp() {
+  const box = $('payAsk'); if (!box || !state) return;
+  const pm = $('fPay').value.trim(), c = payChoices(), total = payTotal(), parts = payParts(pm);
+  const chip = (label, val, extra) => `<button type="button" data-pay="${esc(val)}"${extra || ''}>${esc(label)}</button>`;
+  let html = '';
+  if (!pm) {
+    const opts = [...new Set([c.last, ...c.cards.slice(0, 3), ...c.ways.slice(0, 4)].filter(Boolean))];
+    html = `<div><b>How did you pay?</b> ${state.channel === 'Email' ? "The email doesn't say." : "The receipt doesn't say."} Tap one, or type it.</div>
+      <div class="paychips">${opts.map(p => chip(p, p)).join('')}${chip(c.parts[0] + ' + another way…', '', ' data-split="1"')}</div>`;
+  } else if (parts.length === 1 && isPartPay(parts[0].name) && total > 0) {
+    const p = parts[0];
+    const rest = p.amt != null ? r2(total - p.amt) : null;
+    if (rest != null && rest > 0.01) {
+      const opts = [...new Set([...c.cards, ...c.ways.filter(w => !isPartPay(w))].filter(Boolean))].slice(0, 7);
+      html = `<div><b>${esc(p.name)} paid ${esc(money(p.amt))}.</b> How did you pay the other ${esc(money(rest))}?</div>
+        <div class="paychips">${opts.map(o => chip(o, p.name + ' ' + money(p.amt) + ' + ' + o + ' ' + money(rest))).join('')}${chip('Something else…', '', ' data-split="1"')}</div>`;
+    } else if (p.amt == null) {
+      html = `<div><b>Did the ${esc(p.name.replace(/^(\w)/, m => m.toLowerCase()))} pay all ${esc(money(total))}?</b></div>
+        <div class="paychips">${chip('Yes, all of it', p.name + ' ' + money(total))}${chip('No, only part…', '', ' data-split="1"')}</div>`;
+    }
+  } else if (parts.length > 1 && parts.every(x => x.amt != null) && Math.abs(parts.reduce((t, x) => t + x.amt, 0) - total) > 0.02) {
+    html = `<div><b>The parts add up to ${esc(money(r2(parts.reduce((t, x) => t + x.amt, 0))))}, but the order is ${esc(money(total))}.</b></div>
+      <div class="paychips">${chip('Fix the amounts…', '', ' data-split="1"')}</div>`;
+  }
+  box.innerHTML = html; box.classList.toggle('hide', !html);
+}
+// Paid in two parts: a gift card, balance or points first, then a card (or other way) for the rest
+function paySplit() {
+  const c = payChoices(), total = payTotal(), cur = payParts($('fPay').value);
+  const firstOpts = [...new Set([...c.parts, ...c.ways.filter(isPartPay)])];
+  const restOpts = [...new Set([...c.cards, ...c.ways.filter(w => !isPartPay(w)), ...c.other])];
+  const f0 = cur[0] && isPartPay(cur[0].name) ? cur[0] : { name: firstOpts[0], amt: null };
+  const r0 = cur[1] ? cur[1].name : (restOpts[0] || '');
+  const o = (list, v) => list.map(p => `<option${p === v ? ' selected' : ''}>${esc(p)}</option>`).join('');
+  const v = sheet(`<h3>Paid in two parts</h3>
+    <p class="sub">For example a gift card or your balance first, then a card for the rest. The order is ${esc(money(total))}.</p>
+    <div class="spform"><label>First part</label><select id="spA">${o(firstOpts, f0.name)}</select>
+    <label>Amount it paid</label><input id="spAmt" type="number" step="0.01" inputmode="decimal" placeholder="0.00" value="${f0.amt != null ? f0.amt.toFixed(2) : ''}">
+    <label>The rest was paid by</label><input id="spB" list="spList" value="${esc(r0)}" placeholder="e.g. Visa ••4521"><datalist id="spList">${restOpts.map(p => `<option value="${esc(p)}">`).join('')}</datalist>
+    <div class="sub" id="spRest" style="margin-top:6px"></div></div>
+    <div class="duo"><button class="btn sec" data-close="1">Cancel</button><button class="btn" id="spOk">Use this</button></div>`);
+  const restText = () => { const a = Number($('spAmt').value) || 0, r = r2(total - a);
+    $('spRest').textContent = a ? (r > 0.01 ? 'The rest: ' + money(r) : a > total + 0.01 ? 'That is more than the order (' + money(total) + ').' : 'That paid all of it.') : ''; };
+  $('spAmt').oninput = restText; restText();
+  $('spOk').onclick = () => {
+    const a = r2(Number($('spAmt').value) || 0), r = r2(total - a), first = $('spA').value, rest = $('spB').value.trim();
+    if (!a) { toast('Put in how much the ' + first.toLowerCase() + ' paid', true); $('spAmt').focus(); return; }
+    if (a > total + 0.01) { toast('That is more than the order', true); return; }
+    if (r > 0.01 && !rest) { toast('Say how you paid the rest', true); $('spB').focus(); return; }
+    $('fPay').value = first + ' ' + money(a) + (r > 0.01 ? ' + ' + rest + ' ' + money(r) : '');
+    v.remove(); payHelp();
+  };
+  setTimeout(() => { if (!$('spAmt').value) $('spAmt').focus(); }, 50);
+}
+$('payAsk').addEventListener('click', e => {
+  const b = e.target.closest('[data-pay],[data-split]'); if (!b) return;
+  if (b.dataset.split) return paySplit();
+  $('fPay').value = b.dataset.pay; payHelp();
+});
+$('fPay').addEventListener('input', () => payHelp());
+$('fStore').addEventListener('change', () => fillPayPicker());
 
 function fillStores() {
   $('storeList').innerHTML =
@@ -1140,7 +1248,8 @@ async function saveToSheet(force) {
     }, job && jobId ? withLegacy(jobImages(job)) : {}));
 
     if (store && !CFG.stores.includes(store)) { CFG.stores.push(store); CFG.stores.sort(); }
-    if (pay && !CFG.payments.includes(pay))   { CFG.payments.push(pay); CFG.payments.sort(); }
+    payParts(pay).forEach(x => { if (!CFG.payments.includes(x.name)) CFG.payments.push(x.name); });
+    if (pay && store) (CFG.payByStore = CFG.payByStore || {})[store.toLowerCase()] = pay;
     rememberEmail(store, email);
     saveCache(); fillStores(); fillPayPicker();
 
@@ -3136,7 +3245,8 @@ async function refreshConfig() {
     const d = await api('bootstrap', {});
     CFG.purposes = d.purposes || [];
     CFG.stores   = d.stores   || [];
-    CFG.payments = d.payments || [];
+    if (d.payments) CFG.payments = d.payments;          // how you've paid before, most used first (Purchases tab)
+    if (d.payByStore) CFG.payByStore = d.payByStore;    // the last way you paid at each shop
     CFG.vat      = !!d.vat;
     CFG.business = d.business || '';
     CFG.platforms = d.platforms || [];
