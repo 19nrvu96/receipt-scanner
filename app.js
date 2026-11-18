@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v78';
+const APP_VERSION = 'v80';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1059,8 +1059,11 @@ function applyPurpose(val) {
 /* ---------- payment memory ---------- */
 function fillPayPicker() {
   const sel = $('payPick');
+  // Your saved ones first, then marketplace balances (paying from what you've earned on eBay or Vinted)
+  const extra = ['eBay balance', 'Vinted balance'].filter(b => !CFG.payments.some(p => p.toLowerCase() === b.toLowerCase()));
   sel.innerHTML = '<option value="">▾</option>' +
-    CFG.payments.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+    CFG.payments.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('') +
+    (extra.length ? '<optgroup label="Marketplace balance">' + extra.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('') + '</optgroup>' : '');
   sel.onchange = () => {
     if (sel.value) { $('fPay').value = sel.value; sel.value = ''; }
   };
@@ -2495,6 +2498,27 @@ function sheet(html) {
   document.body.appendChild(veil);
   return veil;
 }
+// Gmail links: on a phone Gmail opens the inbox, not the email, so read the email here instead (Email.gs emailView)
+async function openMail(id, href) {
+  const v = sheet('<h3>Opening the email…</h3><p class="sub">One moment.</p>'), box = v.querySelector('.sheet');
+  try {
+    const m = await api('emailView', { id });
+    const when = new Date(m.date).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const from = String(m.from || '').replace(/\s*<[^>]*>/, '');
+    box.innerHTML = `<h3 style="margin-bottom:2px">${esc(m.subject)}</h3><div class="sm">${esc(from)} · ${esc(when)}</div>
+      <div class="mailbody">${esc(m.text).replace(/(£\s?\d[\d,]*(?:\.\d\d)?)/g, '<b>$1</b>')}</div>
+      <div class="duo"><a class="btn sec" href="${esc(m.gmail)}" target="_blank" rel="noopener" data-raw="1">Find it in Gmail</a><button class="btn" data-close="1">Done</button></div>`;
+  } catch (err) {
+    box.innerHTML = `<h3>Couldn't open the email here</h3><p class="sub">${esc(err.message)}</p>
+      <div class="duo"><a class="btn sec" href="${esc(href)}" target="_blank" rel="noopener" data-raw="1">Open Gmail</a><button class="btn" data-close="1">Close</button></div>`;
+  }
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[href*="mail.google.com"]'); if (!a || a.dataset.raw) return;
+  const id = (a.getAttribute('href').match(/#(?:all|inbox|label\/[^/]+)\/([0-9a-f]{10,24})/i) || [])[1];
+  if (!id) return;
+  e.preventDefault(); openMail(id, a.href);
+});
 function showCollect(c) {
   const v = sheet(collectSheetHtml(c));
   v.querySelector('.sheet').addEventListener('click', e => {

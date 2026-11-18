@@ -455,6 +455,7 @@ input.ro{background:#f4f5f7;color:#555}
 .putabs button.on{background:#0a84ff;border-color:#0a84ff;color:#fff}.putabs button.on span{color:#fff}
 .rtag{border:0;font:inherit;font-size:11px;cursor:pointer}.putot{margin:0 0 8px}
 .recbtn{display:block;width:100%;margin:10px 0 6px}
+.mailbody{white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.45;max-height:58vh;overflow:auto;background:#fff;color:#1c1c1e;border:1px solid #e3e3e8;border-radius:10px;padding:12px;margin:10px 0}
 .rvmail{padding:11px 13px;border-radius:10px;background:#eef5ff;margin:-4px 0 10px;font-size:15px;line-height:1.4}.rvmail .ouacts{margin-top:8px}.recwhy{margin-top:6px;font-size:15px;line-height:1.4}
 .pucard{padding:12px 14px}.puhead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.puhead .amt{font-weight:700;font-size:17px}
 .pulines{list-style:none;margin:8px 0 0;padding:0}.pulines li{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid #eee;font-size:15px}.pulines li b{font-weight:600;white-space:nowrap}
@@ -747,6 +748,7 @@ html.dark .putabs button{border:1px solid #59595e;background:#242424;color:#e4e4
 html.dark .putabs span{color:#b2b2b2}
 html.dark .putabs button.on{border-color:#1a8cff;color:#ffffff}
 html.dark .putabs button.on span{color:#ffffff}
+html.dark .mailbody{background:#242424;color:#e4e4e6;border:1px solid #494950}
 html.dark .rvmail{background:#1a2c45}
 html.dark .pulines li{border-top:1px solid #464646}
 html.dark .tag.pufrom{background:#1b2c47;color:#7fabe6}
@@ -1496,7 +1498,7 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
       <input id="fOrder" placeholder="Optional">
       <label>Payment method</label>
       <div class="combo">
-        <input id="fPay" placeholder="e.g. Visa ••4521">
+        <input id="fPay" placeholder="e.g. Visa ••4521 or eBay balance">
         <select id="payPick" aria-label="Saved payment methods"></select>
       </div>
       <label>Notes (applies to all lines)</label>
@@ -1535,10 +1537,10 @@ setTimeout(function () {
   document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
 }, 6000);
 </script>
-<script src="qrcode.js?v=78"></script>
-<script src="help.js?v=78"></script>
-<script src="app.js?v=78"></script>
-<script src="tour-engine.js?v=78"></script>
-<script src="whatsnew.js?v=78"></script>
+<script src="qrcode.js?v=80"></script>
+<script src="help.js?v=80"></script>
+<script src="app.js?v=80"></script>
+<script src="tour-engine.js?v=80"></script>
+<script src="whatsnew.js?v=80"></script>
 </body>
 </html>
