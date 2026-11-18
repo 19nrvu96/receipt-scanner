@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v98';
+const APP_VERSION = 'v99';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1908,8 +1908,11 @@ function renderTodo(w) {
   (K.taken || []).filter(x => !seen[x.key]).forEach(x => rows.unshift(['✅', x.text, 'payoff', x.key]));
   (K.due || []).filter(x => { const d = toDate(x.due); return d && (d - now0) <= 2 * 864e5 && !seen['due:' + x.id + ':' + x.due]; }).slice(0, 2).forEach(x => rows.unshift([x.overdue ? '🔴' : '⏰',
     'Klarna ' + money(x.amount) + (x.overdue ? ' was due ' : ' due ') + dayName(x.due) + ' · ' + x.shop + (x.card ? ' (' + x.card + ')' : '') + (x.overdue ? '. Check the Klarna app' : '. Make sure the money is there'), 'payoff', '', 'due:' + x.id + ':' + x.due]));
+  // Every row has a ✕ and swipes away. A count row ("3 pending refunds") is hidden until its number changes, then shows again.
+  rows.forEach(r => { if (!r[3] && !r[4]) r[4] = 'n:' + r[2] + ':' + r[1]; });
+  const vis = rows.filter(r => !seen[r[4] || r[3]]);
+  rows.length = 0; vis.forEach(r => rows.push(r));
   $('todo').classList.toggle('hide', !rows.length);
-  // Notifications (a refund done, a Klarna payment taken or due) have a ✕, and swipe away on a phone. Jobs (parcels to post…) stay until done.
   $('todo').innerHTML = rows.slice(0, 5).map(r => { const b = `<button data-todo="${r[2]}"${r[3] ? ` data-seen="${esc(r[3])}"` : ''}><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`, k = r[4] || r[3];
     return k ? `<div class="tdrow swipe" data-tdkey="${esc(k)}">${b}<button class="tdx" data-tdx="1" aria-label="Dismiss">✕</button></div>` : b; }).join('');
 }
