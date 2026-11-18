@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v82';
+const APP_VERSION = 'v83';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2518,7 +2518,10 @@ async function openMail(id, href) {
 }
 // What to search Gmail for: the subject without "Fw:" / "Re:" or Gmail's "..." (finds the original and the forward)
 function mailSearchText(subject) {
-  return String(subject || '').replace(/^\s*((fwd?|re)\s*:\s*)+/i, '').replace(/(\.{3}|…)\s*$/, '').replace(/[‘’"]/g, "'").trim();
+  // plain words only: Gmail reads "Ordered:" as a search operator and quotes/colons break the search
+  return String(subject || '').replace(/^\s*((fwd?|re)\s*:\s*)+/i, '')
+    .replace(/[‘’“”"'`]/g, ' ').replace(/\.{3}|…/g, ' ').replace(/:/g, ' ')
+    .replace(/\s+/g, ' ').trim();
 }
 function copyText(t) {
   try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).catch(() => copyOld(t)); return; } } catch (e) {}
