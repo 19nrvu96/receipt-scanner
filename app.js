@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v93';
+const APP_VERSION = 'v94';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2093,15 +2093,16 @@ function renderToReturn(d) {
     + open.map((r, i) => r.status === 'Sent back' ? '' : `<div class="card scard"><div class="sb">
     <div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>
     <div class="sm">${[esc(r.store), r.bought ? 'bought ' + esc(r.bought) : '', r.amount ? money(r.amount) : '', r.order ? '#' + esc(r.order) : '', r.from && r.from !== 'Receipts' ? 'from ' + esc(r.from) : ''].filter(Boolean).join(' · ')}</div>
-    <div class="tags">${r.status === 'Sent back' ? '<span class="tag">' + (r.tracking || r.method === 'Pick-up' ? '🚚 On its way back since ' : 'Returned ') + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}${r.returnBy ? `<span class="tag">${r.extended ? '🎄 Extended return date' : r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>` : ''}${r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
+    <div class="tags">${r.status === 'Sent back' ? '<span class="tag">' + (r.tracking || r.method === 'Pick-up' ? '🚚 On its way back since ' : 'Returned ') + esc(dayName(r.sentOn)) + ': waiting for the refund</span>' : lastDay(r)}${r.returnBy ? `<span class="tag">${r.extended ? '🎄 Extended return date' : r.online ? '🌐 Online: 14 days' : '🏬 Shop: often 28–30 days'}</span>` : ''}${r.code ? '<span class="tag ok">🔢 Code ' + esc(r.code) + ': no printing</span>' : r.files || r.link ? '<span class="tag">QR code saved</span>' : ''}</div>
+    ${r.status === 'To return' ? codeBox(r) : ''}
     ${r.notes ? '<div class="sm" style="margin-top:4px">' + esc(r.notes) + '</div>' : ''}
     ${r.tracking || r.returnProof ? `<div class="sm" style="margin-top:4px">📦 ${esc([r.courier, r.tracking].filter(Boolean).join(' '))}${r.sentTo ? ' → ' + esc(r.sentTo) : ''}${r.returnProof ? ` · <a href="${esc(r.returnProof)}" target="_blank" rel="noopener">courier receipt</a>` : ''}</div>` : ''}
     ${r.status === 'Sent back' ? refundNextHtml(r) : ''}
     ${r.refundTo ? `<div class="sm" style="margin-top:4px">💷 Refund to ${esc(r.refundTo)}${r.refundTime ? ' · arrives ' + esc(r.refundTime) + ' after it\'s issued' : ''} <button class="link" data-rto="${i}">change</button></div>`
       : r.online || r.method ? `<div class="sm" style="margin-top:4px">💷 Where does the refund go? <button class="link" data-rto="${i}">Choose</button></div>` : ''}
     ${pickupHtml(r, i)}
-    ${r.files || r.link ? `<button class="btn" data-rqr="${i}" style="margin-top:10px">Show return QR code</button>` : ''}
-    <div class="duo" style="margin-top:8px">${r.status === 'To return' ? `<button class="btn ${r.files || r.link ? 'sec' : ''}" data-rsent="${i}">${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Returned it'}</button>` : `<button class="btn sec" data-rsorted="${i}">Refund came another way</button>`}
+    ${r.files || r.link || r.code ? `<button class="btn" data-rqr="${i}" style="margin-top:10px">${r.code && !r.files ? 'Show the return code' : 'Show return QR code'}</button>` : ''}
+    <div class="duo" style="margin-top:8px">${r.status === 'To return' ? `<button class="btn ${r.files || r.link || r.code ? 'sec' : ''}" data-rsent="${i}">${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Returned it'}</button>` : `<button class="btn sec" data-rsorted="${i}">Refund came another way</button>`}
       ${r.online || r.method ? (!r.returnProof ? `<button class="btn sec" data-rparcel="${i}">📷 ${r.method === 'Pick-up' ? 'Collection' : 'Drop-off'} receipt</button>` : `<button class="btn ${r.status === 'Sent back' ? '' : 'sec'}" data-rscan="${i}">📷 Refund receipt</button>`)
         : `<button class="btn ${r.status === 'Sent back' ? '' : 'sec'}" data-rscan="${i}">📷 Refund receipt</button>`}</div>
     ${(r.online || r.method) && !r.returnProof ? `<button class="link" data-rscan="${i}" style="margin-top:6px">📷 Refund receipt${r.online ? ' (or forward the refund email)' : ''}</button>` : ''}
@@ -2238,6 +2239,13 @@ function showParcelReceipt(j) {
 
 // Pick-up returns (a courier collects it): the day with a countdown, print the label, how to pack,
 // the shop's own buttons (reschedule, change method, cancel), and the order's details to copy into the shop's page.
+const tidyCourier = c => /^evri$/i.test(c) ? 'Evri' : String(c);
+// Temu/Evri short code: typed in at the desk instead of scanning the QR (Temu's QR picture stops loading after 30 minutes)
+function codeBox(r) {
+  if (!r.code) return '';
+  return `<div class="dcode"><div class="sm">No printer needed. At the ${esc(r.courier ? tidyCourier(r.courier) : 'drop-off')} desk, read out or type in this code instead of the QR code. They print the label there.</div>
+    <div class="dcodev">${esc(r.code)}</div><button type="button" class="link" data-copy="${esc(r.code)}">📋 Copy the code</button></div>`;
+}
 function pickupTag(r) {
   if (!r.pickupDate) return '';
   const d = r.pickupDays, when = d === 0 ? 'today' : d === 1 ? 'tomorrow' : d < 0 ? 'was ' + dayName(r.pickupDate) : dayName(r.pickupDate) + ' (in ' + d + ' days)';
@@ -2257,9 +2265,9 @@ function pickupHtml(r, i) {
     <div class="tags">${pickupTag(r)}${r.method && r.method !== 'Pick-up' ? '<span class="tag">📍 ' + esc(r.method) + '</span>' : ''}${r.refundEstimate ? '<span class="tag ok">About ' + money(r.refundEstimate) + ' back</span>' : ''}</div>
     ${r.pickupFrom ? `<div class="sm">📍 Collected from ${esc(r.pickupFrom)}</div>` : ''}
     <ol class="pksteps">
-      <li class="${r.printedOn ? 'done' : ''}"><b>Print the label</b>${!r.labelNeeded ? '<span class="sm"> (the email says the driver can bring one)</span>' : ''}
+      ${r.code ? `<li><b>No printing needed</b><span class="sm">: give the ${esc(r.courier ? tidyCourier(r.courier) : 'drop-off')} desk the code <b>${esc(r.code)}</b> (or show the QR code). They print the label.</span></li>` : `<li class="${r.printedOn ? 'done' : ''}"><b>Print the label</b>${!r.labelNeeded ? '<span class="sm"> (the email says the driver can bring one)</span>' : ''}
         <div class="pkrow">${L.print ? `<a class="btn sec sm2" href="${esc(L.print)}" target="_blank" rel="noopener" data-rprint="${i}">🖨 Print label</a>` : ''}
-        ${r.printedOn ? '<span class="tag ok">Printed ' + esc(dayName(r.printedOn)) + '</span>' : `<button class="btn sec sm2" data-rprinted="${i}">✓ Printed</button>`}</div></li>
+        ${r.printedOn ? '<span class="tag ok">Printed ' + esc(dayName(r.printedOn)) + '</span>' : `<button class="btn sec sm2" data-rprinted="${i}">✓ Printed</button>`}</div></li>`}
       <li><b>Pack it</b>${r.instructions && r.instructions.length ? `<details><summary class="sm">How to pack it (${r.instructions.length})</summary><ul class="sm">${r.instructions.map(x => '<li>' + esc(x) + '</li>').join('')}</ul></details>` : ''}</li>
       <li><b>${r.method === 'Pick-up' ? 'Hand it to the driver' : 'Send it back'}</b>, then tap <b>${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Returned it'}</b> below</li>
     </ol>
@@ -2337,14 +2345,15 @@ async function showReturnCode(r) {
   document.body.appendChild(veil);
   try {
     const cached = await labGet('r:' + r.id);
-    const f = cached || await fetchReturnCode(r);
+    const f = cached || (r.files || r.link ? await fetchReturnCode(r).catch(e => { if (r.code) return { images: [], pdfs: [], link: r.link || '' }; throw e; }) : { images: [], pdfs: [], link: '' });
     veil.querySelector('.sheet').innerHTML = `<button class="close" data-close="1" aria-label="Close">✕</button><h3>Return: ${esc(r.item)}</h3>
       <p class="hint">Show this at ${esc(r.store || 'the shop')} or the drop-off point. Turn your screen brightness up.${cached ? ' Saved on this phone, so it works with no signal.' : ''}</p>
       <p class="sub">${[r.order ? '#' + r.order : '', r.returnBy ? 'last day ' + dayName(r.returnBy) : ''].filter(Boolean).map(esc).join(' · ')}</p>
+      ${r.code ? `<div class="dcode"><div class="sm">${esc(r.courier ? tidyCourier(r.courier) : 'Drop-off')} code: read it out or type it in at the desk instead of the QR code. No printing needed.</div><div class="dcodev big">${esc(r.code)}</div></div>` : ''}
       ${f.images.map(src => `<img class="qrimg" src="${src}" alt="Return QR code">`).join('')}
       ${f.pdfs.map(p => `<a class="btn sec" href="${esc(p.url || p)}" target="_blank" rel="noopener">Open the return label</a>`).join('')}
       ${f.link ? `<a class="btn sec" href="${esc(f.link)}" target="_blank" rel="noopener">Open the shop's return page</a>` : ''}
-      ${!f.images.length && !f.pdfs.length && !f.link ? '<p class="sub">No code was in the email. Open it in your email app.</p>' : ''}
+      ${!f.images.length && !f.pdfs.length && !f.link && !r.code ? '<p class="sub">No code was in the email. Open it in your email app.</p>' : ''}
       <button class="btn ghost" data-close="1">Close</button>`;
   } catch (err) {
     veil.querySelector('.sheet').innerHTML = '<p class="sub">' + esc(err.message) + '</p><button class="btn ghost" data-close="1">Close</button>';
@@ -2733,11 +2742,12 @@ function sheet(html) {
 async function openMail(id, href) {
   const v = sheet('<h3>Opening the email…</h3><p class="sub">One moment.</p>'), box = v.querySelector('.sheet');
   try {
-    const m = await api('emailView', { id });
+    // A first tap can catch the script waking up: try once more before giving up
+    const m = await api('emailView', { id }).catch(e => /isn't|know/.test(e.message) ? Promise.reject(e) : new Promise(r => setTimeout(r, 900)).then(() => api('emailView', { id })));
     const when = new Date(m.date).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     const from = String(m.from || '').replace(/\s*<[^>]*>/, '');
     box.innerHTML = `<h3 style="margin-bottom:2px">${esc(m.subject)}</h3><div class="sm">${esc(from)} · ${esc(when)}</div>
-      <div class="mailbody">${esc(m.text).replace(/(£\s?\d[\d,]*(?:\.\d\d)?)/g, '<b>$1</b>')}</div>
+      <div class="mailbody">${esc(m.text).replace(/(£\s?\d[\d,]*(?:\.\d\d)?)/g, '<b>$1</b>')}${(m.pictures || []).map(u => `<img class="mailpic" src="${esc(u)}" alt="Picture from the email" loading="lazy">`).join('')}</div>
       <div class="copied hide" role="status"><b>✅ Copied to clipboard</b><div>${esc(mailSearchText(m.subject))}</div>
         <div style="margin-top:6px">Now open Gmail, tap the <b>search bar</b> at the top and <b>paste</b>.</div>
         <a class="btn" style="margin-top:10px" href="${esc(m.gmail)}" target="_blank" rel="noopener" data-raw="1">Open Gmail</a></div>
@@ -5344,7 +5354,7 @@ function toRetCardHtml(r) {
   return `<div class="card scard" data-rid="${esc(r.id)}"><div class="sb">
     <div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>
     <div class="sm">${[esc(r.store), r.bought ? 'bought ' + esc(r.bought) : '', r.amount ? money(r.amount) : '', r.order ? '#' + esc(r.order) : ''].filter(Boolean).join(' · ')}</div>
-    <div class="tags">${last}${step ? '<span class="tag">' + step + '</span>' : ''}${r.files || r.link ? '<span class="tag">' + (r.printedOn ? 'Label printed' : 'QR code saved') + '</span>' : ''}${r.from && r.from !== 'Receipts' ? '<span class="tag">from ' + esc(r.from) + '</span>' : ''}</div>
+    <div class="tags">${last}${step ? '<span class="tag">' + step + '</span>' : ''}${r.code ? '<span class="tag ok">🔢 Code ' + esc(r.code) + '</span>' : r.files || r.link ? '<span class="tag">' + (r.printedOn ? 'Label printed' : 'QR code saved') + '</span>' : ''}${r.from && r.from !== 'Receipts' ? '<span class="tag">from ' + esc(r.from) + '</span>' : ''}</div>
     <div class="duo" style="margin-top:8px">${goes ? `<button class="btn" data-ract="ho">${r.method === 'Pick-up' ? '✓ Picked up' : '✓ Handed it over'}</button>` : '<button class="btn" data-ract="scan">📷 Refund receipt</button>'}<button class="btn sec" data-ract="steps">Return steps ›</button></div>
     ${r.row ? '<button class="link" data-ract="go" style="margin-top:6px;display:block">See the purchase ›</button>' : ''}
   </div></div>`;
