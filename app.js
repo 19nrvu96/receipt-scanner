@@ -4,7 +4,7 @@
 const LS_URL = 'rs_url';
 const LS_CACHE = 'rs_cache';
 
-let CFG = { purposes: [], stores: [], payments: [], payByStore: {}, vat: false, business: '' };
+let CFG = { purposes: [], stores: [], payments: [], payByStore: {}, klarna: null, calUrl: '', vat: false, business: '' };
 let state = null;          // current receipt being reviewed
 let pages = [];            // photos of the receipt being captured: [{ dataUrl, blurry, dark }]
 let job = null;            // the photo job being read or reviewed (see the offline queue below)
@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v86';
+const APP_VERSION = 'v87';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1083,6 +1083,7 @@ const payFits = (p, plat) => { const m = (p.match(/\b(ebay|vinted|amazon)\b/i) |
 // One name per card however it was written ("Debit Mastercard ••••9546" = "Mastercard ••9546"), same as the Sheet side
 function payName(p) {
   p = String(p || '').trim(); if (/^gift\s*card$/i.test(p)) return 'Gift card';
+  if (/klarna/i.test(p)) return 'Klarna';
   const brand = /visa/i.test(p) ? 'Visa' : /master\s*card/i.test(p) ? 'Mastercard' : /amex|american express/i.test(p) ? 'Amex' : /maestro/i.test(p) ? 'Maestro' : '';
   const last4 = (p.match(/(\d{4})(?!.*\d{4})/) || [])[1];
   return brand && !/gift/i.test(p) ? (last4 ? brand + ' ••' + last4 : brand) : p;
@@ -1119,6 +1120,7 @@ function fillPayPicker() {
     const v = sel.value; sel.value = '';
     if (v === '__split') return paySplit();
     if (v === '__addcard') return addCard(n => { $('fPay').value = n; payHelp(); });
+    if (/^klarna$/i.test(v)) return klarnaPick();
     if (v) { $('fPay').value = v; payHelp(); }
   };
   payHelp();
@@ -1129,7 +1131,10 @@ function payHelp() {
   const pm = $('fPay').value.trim(), c = payChoices(), total = payTotal(), parts = payParts(pm);
   const chip = (label, val, extra) => `<button type="button" data-pay="${esc(val)}"${extra || ''}>${esc(label)}</button>`;
   let html = '';
-  if (!pm) {
+  if (/^klarna\b/i.test(pm) && !/pay in|pay now|financing/i.test(pm)) {
+    html = `<div><b>Paid with Klarna: which way?</b> Pick how you're paying it back, so Paying off can track it and remind you.</div>
+      <div class="paychips">${chip('Choose…', '', ' data-klarna="1"')}</div>`;
+  } else if (!pm) {
     const opts = [...new Set([c.last, ...c.cards.slice(0, 3), ...c.ways.slice(0, 4)].filter(Boolean))];
     html = `<div><b>How did you pay?</b> ${state.channel === 'Email' ? "The email doesn't say." : "The receipt doesn't say."} Tap one, or type it.</div>
       <div class="paychips">${opts.map(p => chip(p, p)).join('')}${chip('＋ Add a card', '', ' data-addcard="1"')}${chip(c.parts[0] + ' + another way…', '', ' data-split="1"')}</div>`;
@@ -1178,6 +1183,57 @@ function paySplit() {
   };
   setTimeout(() => { if (!$('spAmt').value) $('spAmt').focus(); }, 50);
 }
+/* ---------- Klarna (pay later): picked here, tracked on Purchases → Paying off ---------- */
+const KLARNA_PLANS = [['Pay in 3', '3 payments: one when the shop sends it, then every 30 days'], ['Pay in 30 days', 'All of it, 30 days after the shop sends it'],
+  ['Pay now', 'Taken straight away, nothing to pay back'], ['Financing', 'Monthly payments, 6 to 36 months']];
+function klarnaPreview(plan, total, start, months) {
+  const d0 = toDate(start) || new Date(), day = (n, m) => { const d = new Date(d0); if (m) d.setMonth(d.getMonth() + n); else d.setDate(d.getDate() + n); return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
+  if (!total) return '';
+  if (plan === 'Pay now') return money(total) + ' taken now. Nothing to track.';
+  if (plan === 'Pay in 30 days') return money(total) + ' on ' + day(30) + ' (you can extend it once by 10 days in Klarna).';
+  const n = plan === 'Pay in 3' ? 3 : Math.max(1, Number(months) || 6), each = Math.floor(total / n * 100) / 100, last = r2(total - each * (n - 1));
+  if (plan === 'Pay in 3') return money(each) + ' ' + day(0) + ', ' + money(each) + ' on ' + day(30) + ', ' + money(last) + ' on ' + day(60) + '.';
+  return n + ' monthly payments of about ' + money(each) + ', from ' + day(1, true) + '.';
+}
+function klarnaPick() {
+  const c = payChoices(), total = payTotal(), cur = $('fPay').value;
+  const cur0 = (KLARNA_PLANS.find(p => cur.toLowerCase().indexOf(p[0].toLowerCase()) > -1) || [(state && state.klarna && state.klarna.plan) || 'Pay in 3'])[0];
+  const curCard = (cur.match(/\(([^)]+)\)/) || [])[1] || (state && state.klarna && state.klarna.card) || c.cards[0] || '';
+  const v = sheet(`<h3>Paid with Klarna</h3>
+    <p class="sub">How are you paying it back? Paying off (in Purchases) tracks each payment, puts them in your calendar and tells you when one's taken.</p>
+    <div class="kplans" role="radiogroup">${KLARNA_PLANS.map(p => `<button type="button" role="radio" data-kp="${esc(p[0])}" class="${p[0] === cur0 ? 'on' : ''}" aria-checked="${p[0] === cur0}"><b>${esc(p[0])}</b><span>${esc(p[1])}</span></button>`).join('')}</div>
+    <div class="spform"><div id="kMonW" class="hide"><label>How many months</label><input id="kMonths" type="number" inputmode="numeric" min="3" max="36" value="${(state && state.klarna && state.klarna.months) || 6}"></div>
+    <label>Order date</label><input id="kStart" inputmode="numeric" placeholder="DD/MM/YYYY" value="${esc($('fDate').value || today())}">
+    <div id="kCardW"><label>Card Klarna takes it from</label><select id="kCard"><option value="">Not sure</option>${[...new Set([curCard, ...c.cards].filter(Boolean))].map(x => `<option${x === curCard ? ' selected' : ''}>${esc(x)}</option>`).join('')}<option value="__add">＋ Add a card…</option></select></div></div>
+    <div class="sub" id="kPrev" style="margin-top:8px"></div>
+    <div class="duo"><button class="btn sec" data-close="1">Cancel</button><button class="btn" id="kOk">Use this</button></div>`);
+  let plan = cur0;
+  const upd = () => {
+    v.querySelectorAll('[data-kp]').forEach(b => { const on = b.dataset.kp === plan; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+    $('kMonW').classList.toggle('hide', plan !== 'Financing'); $('kCardW').classList.toggle('hide', false);
+    $('kPrev').textContent = klarnaPreview(plan, total, $('kStart').value, $('kMonths').value);
+  };
+  v.querySelector('.kplans').onclick = e => { const b = e.target.closest('[data-kp]'); if (b) { plan = b.dataset.kp; upd(); } };
+  $('kStart').oninput = upd; $('kMonths').oninput = upd;
+  $('kCard').onchange = () => { if ($('kCard').value === '__add') addCard(n => { const o = document.createElement('option'); o.textContent = n; $('kCard').insertBefore(o, $('kCard').lastElementChild); $('kCard').value = n; }); };
+  $('kOk').onclick = () => {
+    const start = $('kStart').value.trim(), card = $('kCard').value === '__add' ? '' : $('kCard').value;
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(start)) { toast('Order date: use DD/MM/YYYY', true); $('kStart').focus(); return; }
+    $('fPay').value = 'Klarna ' + plan + (card ? ' (' + card + ')' : '');
+    if (state) state.klarna = { plan, card, start, months: plan === 'Financing' ? Number($('kMonths').value) || 6 : undefined };
+    v.remove(); payHelp();
+    if (plan !== 'Pay now') toast('Saved with the purchase. Klarna\'s emails will fill in the real dates');
+  };
+  upd();
+}
+// What's sent with the purchase: the plan picked here, or read from "Klarna Pay in 3 (Visa ••5778)" (the email said so)
+function klarnaFromPay(pay, date) {
+  if (!/klarna/i.test(pay || '')) return undefined;
+  const k = (state && state.klarna) || {};
+  const plan = k.plan || (KLARNA_PLANS.find(p => pay.toLowerCase().indexOf(p[0].toLowerCase()) > -1) || [''])[0];
+  return { plan: plan || '', card: k.card || (pay.match(/\(([^)]+)\)/) || [])[1] || '', start: k.start || date, months: k.months };
+}
+
 // Add a card you paid with: its type and last 4 digits only (never the whole number). Kept in your list for next time.
 function addCard(done) {
   const v = sheet(`<h3>Add a card</h3>
@@ -1202,6 +1258,7 @@ function addCard(done) {
 $('payAsk').addEventListener('click', e => {
   const b = e.target.closest('[data-pay],[data-split],[data-addcard]'); if (!b) return;
   if (b.dataset.split) return paySplit();
+  if (b.dataset.klarna || /^klarna$/i.test(b.dataset.pay || '')) return klarnaPick();
   if (b.dataset.addcard) {   // a card you haven't used before: on its own, or paying the rest after a gift card
     const r = b.dataset.rest ? b.dataset.rest.split('|') : null;
     return addCard(n => { $('fPay').value = r ? r[0] + ' + ' + n + ' ' + r[1] : n; payHelp(); });
@@ -1278,7 +1335,8 @@ async function saveToSheet(force) {
       rows: payload,
       queueId: queueId,
       force: !!force,
-      returnId: (job && job.returnId) || undefined
+      returnId: (job && job.returnId) || undefined,
+      klarna: klarnaFromPay(pay, date)   // Klarna: a plan on Paying off (Klarna.gs), unless it's Pay now
     }, job && jobId ? withLegacy(jobImages(job)) : {}));
 
     if (store && !CFG.stores.includes(store)) { CFG.stores.push(store); CFG.stores.sort(); }
@@ -1828,6 +1886,11 @@ function renderTodo(w) {
   else if (w.awaiting) rows.push(['💷', w.awaiting + ' sale' + s(w.awaiting) + ' awaiting payment', 'slAwaitWrap']);
   if (w.needs) rows.push(['⚠️', w.needs + ' sale' + s(w.needs) + ' need' + (w.needs === 1 ? 's' : '') + ' a check', 'slNeedsWrap']);
   if (w.tripsToLog) rows.push(['🚗', w.tripsToLog + ' trip' + s(w.tripsToLog) + ' to log in your mileage', 'trips']);
+  // Klarna: a payment just taken (until tapped), and anything due in the next 2 days or missed
+  const K = CFG.klarna || {}, now0 = new Date(); now0.setHours(0, 0, 0, 0);
+  (K.taken || []).filter(x => !seen[x.key]).forEach(x => rows.unshift(['✅', x.text, 'payoff', x.key]));
+  (K.due || []).filter(x => { const d = toDate(x.due); return d && (d - now0) <= 2 * 864e5; }).slice(0, 2).forEach(x => rows.unshift([x.overdue ? '🔴' : '⏰',
+    'Klarna ' + money(x.amount) + (x.overdue ? ' was due ' : ' due ') + dayName(x.due) + ' · ' + x.shop + (x.card ? ' (' + x.card + ')' : '') + (x.overdue ? '. Check the Klarna app' : '. Make sure the money is there'), 'payoff']));
   $('todo').classList.toggle('hide', !rows.length);
   $('todo').innerHTML = rows.slice(0, 5).map(r => `<button data-todo="${r[2]}"${r[3] ? ` data-seen="${esc(r[3])}"` : ''}><span>${r[0]}</span><span>${esc(r[1])}</span><span class="go">›</span></button>`).join('');
 }
@@ -1837,7 +1900,7 @@ function seenRefunds() { try { return JSON.parse(localStorage.getItem(LS_SEEN_RE
 // Tapping a to-do opens Sales at that section
 $('todo').onclick = e => { const b = e.target.closest('[data-todo]'); if (!b) return;
   if (b.dataset.seen) { const s = seenRefunds(); s[b.dataset.seen] = Date.now(); try { localStorage.setItem(LS_SEEN_REF, JSON.stringify(s)); } catch (err) {} }
-  if (b.dataset.todo === 'trips') openTrip(); else if (b.dataset.todo === 'pend') openPurchases(b.dataset.seen ? 'done' : 'pend'); else openSales(b.dataset.todo); };
+  if (b.dataset.todo === 'trips') openTrip(); else if (b.dataset.todo === 'payoff') openPurchases('payoff'); else if (b.dataset.todo === 'pend') openPurchases(b.dataset.seen ? 'done' : 'pend'); else openSales(b.dataset.todo); };
 function goTo(id) {
   const el = $(id);
   if (!el || el.classList.contains('hide')) return;
@@ -3281,6 +3344,8 @@ async function refreshConfig() {
     CFG.stores   = d.stores   || [];
     if (d.payments) CFG.payments = d.payments;          // how you've paid before, most used first (Purchases tab)
     if (d.payByStore) CFG.payByStore = d.payByStore;    // the last way you paid at each shop
+    if (d.klarna) CFG.klarna = d.klarna;                // Klarna: owed, due soon, payments just taken (Paying off)
+    if (d.calUrl) CFG.calUrl = d.calUrl;                // private calendar link for Klarna payments
     CFG.vat      = !!d.vat;
     CFG.business = d.business || '';
     CFG.platforms = d.platforms || [];
@@ -3290,7 +3355,7 @@ async function refreshConfig() {
     CFG.crm = !!d.crm; try { crmSync(); renderHomeMatch(); } catch (e) {}
     CFG.apps = d.apps || CFG.apps || {}; renderAppSwitch();
     CFG.newReturns = 'apps' in d;   // the Sheet's script has the Returns update (whatsnew.js)
-    setSalesCount(d.salesWaiting);
+    setSalesCount(d.salesWaiting);   // also draws the home to-dos, Klarna's included
     saveCache(); fillStores(); fillPayPicker();
     setEmailCount(d.emails || 0);
     $('homeStatus').textContent = 'Ready · ' + CFG.purposes.length + ' purposes';
@@ -5152,13 +5217,15 @@ $('tTodo').onclick = async e => {
 // refund email or receipt → Completed refunds.
 var PURCH = null, PU_FROM = '', PU_TAB = '';
 const PU_ICON = { 'Receipt photo': '📷', 'Email': '✉️', 'Typed in': '✍️', 'FlipCheck': '📊', 'ListMe': '🏷️' };
-const PU_TABS = [['', 'All'], ['toret', 'To return'], ['pend', 'Pending refunds'], ['done', 'Completed refunds']];
+const PU_TABS = [['', 'All'], ['toret', 'To return'], ['pend', 'Pending refunds'], ['done', 'Completed refunds'], ['payoff', 'Paying off']];
 const PU_HINT = { '': 'Newest first. Each card is one receipt, email or purchase, with where it was logged from.',
   toret: 'Returns you\'ve started, or said you\'ll return, and not handed back yet. Once it\'s picked up or dropped off it moves to Pending refunds.',
   pend: 'On their way back. When the refund email comes, each one moves to Completed refunds by itself.',
-  done: 'Refunds for things you bought and sent back. Refunds you gave buyers stay in Sales.' };
+  done: 'Refunds for things you bought and sent back. Refunds you gave buyers stay in Sales.',
+  payoff: 'Bought with Klarna: each payment, ticked off as Klarna\'s emails come in. The cost is in your records in full on the day you bought it.' };
 const PU_EMPTY = { toret: 'Nothing to return. Tap "I\'ll return it" on a reminder, or start a return from Sales, and it shows here.',
-  pend: 'Nothing on its way back right now.', done: 'No completed refunds yet.' };
+  pend: 'Nothing on its way back right now.', done: 'No completed refunds yet.',
+  payoff: 'Nothing on Klarna. Pick Klarna as the payment method on a purchase, or forward Klarna\'s emails, and it shows here.' };
 var PEND = null, PEND_TOP = [];
 const isRefundedRet = r => r.status === 'Completed' || r.status === 'Refunded';
 const isDoneRet = r => isRefundedRet(r) || r.status === 'Sorted';
@@ -5294,10 +5361,12 @@ function renderRetTab(L, q) {
 }
 function renderPurchases() {
   const d = PURCH || { items: [], counts: {} }, q = $('puSearch').value.trim().toLowerCase(), L = retLists();
-  const cnt = { '': PURCH ? (PURCH.total || d.items.length) : '·', toret: L.toret.length + L.waiting.length, pend: L.pend.length, done: L.done.length };
+  const cnt = { '': PURCH ? (PURCH.total || d.items.length) : '·', toret: L.toret.length + L.waiting.length, pend: L.pend.length, done: L.done.length,
+    payoff: KLARNA ? KLARNA.filter(p => !/Paid off|Refunded/.test(p.status)).length : '·' };
   $('puTabs').innerHTML = PU_TABS.map(([k, label]) => `<button role="tab" data-putab="${k}" class="${PU_TAB === k ? 'on' : ''}" aria-selected="${PU_TAB === k}"><b>${cnt[k]}</b><span>${label}</span></button>`).join('');
   $('puHint').textContent = PU_HINT[PU_TAB];
   $('puFrom').classList.toggle('hide', !!PU_TAB);
+  if (PU_TAB === 'payoff') return renderPayOff(q);
   if (PU_TAB) return renderRetTab(L, q);
   if (!PURCH) { $('puList').innerHTML = '<p class="sub">Loading…</p>'; return; }
   const froms = Object.keys(d.counts || {}).sort((a, b) => d.counts[b] - d.counts[a]);
@@ -5326,6 +5395,61 @@ function renderPurchases() {
   PU_SHOWN = list;
 }
 var PU_SHOWN = [];
+/* Paying off (Klarna): one card per order. Payments tick off as Klarna's emails arrive (Klarna.gs). */
+var KLARNA = null;
+async function loadKlarna() {
+  try { KLARNA = await api('klarna', {}); try { localStorage.setItem('rs_klarna', JSON.stringify(KLARNA)); } catch (e) {} } catch (e) { if (!KLARNA) KLARNA = []; }
+  if ($('vPurchases') && !$('vPurchases').classList.contains('hide')) renderPurchases();
+}
+const kDay = s => { const d = toDate(s); return d ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : (s || 'date to come'); };
+function kNext(p) { return (p.payments || []).filter(x => !x.paid && !x.cancelled).sort((a, b) => (toDate(a.due) || 9e15) - (toDate(b.due) || 9e15))[0]; }
+function payOffCardHtml(p) {
+  const pays = p.payments || [], live = pays.filter(x => !x.cancelled), nx = kNext(p), done = /Paid off|Refunded/.test(p.status);
+  const pct = p.total ? Math.min(100, Math.round(p.paid / p.total * 100)) : 0;
+  const line = x => `<li class="${x.paid ? 'kpaid' : x.cancelled ? 'kcan' : x === nx ? 'knext' : ''}"><span>${x.paid ? '✓' : x.cancelled ? '✕' : x === nx ? '⏳' : '○'} ${esc(kDay(x.due))}${x.extended ? ' <span class="tag">extended' + (x.was ? ' from ' + esc(kDay(x.was)) : '') + '</span>' : ''}${x.assumed ? ' <span class="sm">(taken, as planned)</span>' : ''}${x.cancelled ? ' <span class="sm">not needed now</span>' : ''}</span><b>${money(x.amount)}</b></li>`;
+  const retWarn = p.ret && nx && !done ? `<div class="kwarn">↩️ <b>You're returning ${esc(p.ret.item)}</b> (${esc(p.ret.status)}). Report the return in the Klarna app so the next ${money(nx.amount)} on ${esc(kDay(nx.due))} is paused until the shop refunds you.</div>` : '';
+  return `<div class="card kcard${done ? ' kdone' : ''}" data-kid="${esc(p.id)}">
+    <div class="puhead"><div><div class="st">${esc(p.shop || 'Klarna')}</div><div class="sm">${esc(p.plan || 'Klarna')}${p.orderDate ? ' · ordered ' + esc(p.orderDate) : ''}${p.card ? ' · from ' + esc(p.card) : ''}</div></div>
+      <div class="amt">${done ? (p.status === 'Refunded' ? 'Refunded' : '✅ Paid') : money(p.left) + '<small>left</small>'}</div></div>
+    ${p.items && p.items.length ? '<div class="sm">' + esc(p.items.join(' · ')) + '</div>' : ''}
+    <div class="kbar" aria-label="${pct}% paid"><span style="width:${pct}%"></span></div>
+    <div class="sm">${money(p.paid)} of ${money(p.total)} paid${p.status === 'Waiting for the shop' ? ' · waiting for the shop to send it: the due date comes then' : p.status === 'Paused' ? ' · paused by Klarna' : ''}</div>
+    ${live.length ? '<ul class="kpays">' + pays.map(line).join('') + '</ul>' : ''}
+    ${retWarn}
+    ${!p.linked ? '<div class="sm" style="margin-top:6px">Not matched to a purchase yet. It links by itself when the purchase is saved (same shop and total).</div>' : ''}
+    <div class="ouacts">${(p.emails || []).slice(-2).map((u, i, a) => `<a href="${esc(u)}" target="_blank" rel="noopener">Klarna email${a.length > 1 ? ' ' + (i + 1) : ''} ↗</a>`).join('')}
+      ${nx && /30 days/.test(p.plan || '') && !p.extended ? '<button data-kact="extend">I extended it in Klarna (+10 days)</button>' : ''}
+      ${nx ? '<button data-kact="paid">Mark the next one paid</button>' : ''}</div>
+  </div>`;
+}
+function renderPayOff(q) {
+  const list = (KLARNA || []).filter(p => !q || (p.shop + ' ' + (p.items || []).join(' ') + ' ' + p.plan).toLowerCase().includes(q));
+  const open = list.filter(p => !/Paid off|Refunded/.test(p.status)).sort((a, b) => ((kNext(a) && toDate(kNext(a).due)) || 9e15) - ((kNext(b) && toDate(kNext(b).due)) || 9e15));
+  const closed = list.filter(p => /Paid off|Refunded/.test(p.status));
+  const owed = r2(open.reduce((t, p) => t + (Number(p.left) || 0), 0)), nx = open.map(kNext).filter(Boolean)[0];
+  let subbed = false; try { subbed = !!localStorage.getItem('rs_cal_sub'); } catch (e) {}
+  const cal = CFG.calUrl ? `<div class="kcal${subbed ? ' small' : ''}">${subbed ? '' : '<b>📅 Put Klarna payments in your calendar</b><div class="sm">One tap. Every payment shows in your phone\'s calendar the day it\'s taken, with a reminder the evening before, and moves by itself if a date changes. On iPhone tap Subscribe, then turn off "Remove alerts" to get the reminders.</div>'}
+    <a class="${subbed ? 'link' : 'btn'}" data-kcal="1" href="${esc(CFG.calUrl.replace(/^https:/, 'webcal:'))}">${subbed ? 'Calendar link (already added)' : 'Add to my calendar'}</a></div>` : '';
+  const head = KLARNA && open.length ? `<p class="sub putot"><b>${money(owed)}</b> still to pay on Klarna${nx ? ' · next ' + money(nx.amount) + ' on ' + esc(kDay(nx.due)) : ''}</p>` : '';
+  $('puList').innerHTML = !KLARNA ? '<p class="sub">Loading…</p>' : (head + cal + (list.length ? open.map(payOffCardHtml).join('') + (closed.length ? '<h3 class="sech" style="margin-top:14px">Paid off</h3>' + closed.map(payOffCardHtml).join('') : '')
+    : '<p class="sub" style="padding:10px 0">' + (q ? 'Nothing matches.' : PU_EMPTY.payoff) + '</p>'));
+  $('puList').dataset.n = String(list.length);
+}
+function klarnaAction(e) {
+  if (e.target.closest('[data-kcal]')) { try { localStorage.setItem('rs_cal_sub', '1'); } catch (err) {} setTimeout(() => renderPurchases(), 500); return true; }
+  const b = e.target.closest('[data-kact]'); if (!b) return false;
+  const card = b.closest('[data-kid]'), p = (KLARNA || []).find(x => x.id === card.dataset.kid); if (!p) return true;
+  const what = b.dataset.kact, nx = kNext(p);
+  const go = () => { b.disabled = true;
+    api('klarnaSet', { id: p.id, what, n: nx && nx.n }).then(() => { toast(what === 'extend' ? 'Moved 10 days later. Klarna lets you do this once per order' : 'Marked as paid'); return loadKlarna(); })
+      .catch(err => { b.disabled = false; toast(err.message, true); }); };
+  if (what === 'paid' && nx) {   // Klarna's "payment received" email usually does this: ask first
+    const v = sheet(`<h3>Mark it paid?</h3><p class="sub">${esc(money(nx.amount) + ' to ' + p.shop + ', due ' + kDay(nx.due))}. Klarna's "payment received" email usually ticks it off by itself.</p>
+      <div class="duo"><button class="btn sec" data-close="1">Cancel</button><button class="btn" data-kyes="1">Yes, it's paid</button></div>`);
+    v.querySelector('[data-kyes]').onclick = () => { v.remove(); go(); };
+  } else go();
+  return true;
+}
 function puTab(k) {
   PU_TAB = k || ''; renderPurchases();
   const h = $('puAllH'); if (h && h.getBoundingClientRect().top < 0) h.scrollIntoView({ block: 'start' });
@@ -5357,7 +5481,7 @@ function retAction(e) {
 $('puPend').onclick = retAction;
 async function openPurchases(tab) {
   show('vPurchases');
-  PU_TAB = tab === true ? 'pend' : ['toret', 'pend', 'done'].indexOf(tab) > -1 ? tab : '';
+  PU_TAB = tab === true ? 'pend' : ['toret', 'pend', 'done', 'payoff'].indexOf(tab) > -1 ? tab : '';
   if (PU_TAB) $('puSearch').value = '';
   if (!PEND) { try { PEND = JSON.parse(localStorage.getItem('rs_pend')); } catch (e) {} }
   if (!PURCH) { try { PURCH = JSON.parse(localStorage.getItem('rs_purchases')); } catch (e) {} }
@@ -5365,6 +5489,8 @@ async function openPurchases(tab) {
   const toTabs = () => { if (PU_TAB && $('puAllH')) $('puAllH').scrollIntoView({ block: 'start' }); };
   toTabs();
   loadPend().then(toTabs);
+  if (!KLARNA) { try { KLARNA = JSON.parse(localStorage.getItem('rs_klarna')); } catch (e) {} }
+  loadKlarna();
   try { PURCH = await api('purchases', { limit: 200 }); try { localStorage.setItem('rs_purchases', JSON.stringify(PURCH)); } catch (e) {} renderPurchases(); }
   catch (err) { if (!PURCH && !PU_TAB) $('puList').innerHTML = '<p class="sub">' + esc(/Unknown action/.test(err.message) ? 'This page needs your Sheet\'s script update (due tomorrow morning). Your purchases are all safe in the Sheet.' : err.message) + '</p>'; }
 }
@@ -5373,6 +5499,7 @@ $('puTabs').onclick = e => { const b = e.target.closest('[data-putab]'); if (b) 
 $('puFrom').onclick = e => { const b = e.target.closest('[data-pf]'); if (!b) return; PU_FROM = b.dataset.pf; renderPurchases(); };
 $('puList').onclick = e => {
   if (retAction(e)) return;
+  if (klarnaAction(e)) return;
   const b = e.target.closest('[data-putrip]'); if (!b) return;
   const g = PU_SHOWN[Number(b.dataset.putrip)]; if (!g) return;
   openTrip({ journey: { date: g.date, stops: [g.trip.to].filter(Boolean), purchaseIds: [g.id], miles: g.trip.miles,
