@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v91';
+const APP_VERSION = 'v92';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -643,9 +643,17 @@ function buildReview(result, source) {
     const m = state.matches || { candidates: [], lines: [] };
     state.rows.forEach((r, i) => { const k = m.lines ? m.lines[i] : -1; if (k > -1) applyMatch(r, k); });
     const back = rows.reduce((t, r) => t + Math.abs(Number(r['total cost']) || 0), 0);
-    $('refBanner').innerHTML = '↩︎ <b>Refund — ' + money(back) + ' back.</b> ' + (m.candidates && m.candidates.length
+    // The order it refunds may still be waiting in Emailed receipts, unsaved: say so and offer it first
+    const ord = String((rows.find(r => r['order number']) || {})['order number'] || '').trim().toLowerCase();
+    const inSheet = (m.candidates || []).some(c => ord && String(c.order || '').trim().toLowerCase() === ord);
+    const pend = ord && !inSheet ? (queueItems || []).findIndex(q => q.id !== state.queueId && q.status === 'ready' && q.result && !(q.result.meta && q.result.meta.isRefund)
+      && (q.result.rows || []).some(r => String(r['order number'] || '').trim().toLowerCase() === ord)) : -1;
+    $('refBanner').innerHTML = '↩︎ <b>Refund — ' + money(back) + ' back.</b> ' + (pend > -1
+      ? '<br>📧 <b>The order email for this is still in Emailed receipts, not saved yet</b>, so the purchase isn\'t in your Sheet. Save it first: this refund then links to it. <button class="btn sec" id="btnPendOrder" style="margin-top:8px">Open the order email</button>'
+      : m.candidates && m.candidates.length
       ? 'Check which purchase each line refunds. That purchase is marked returned and refunded in your Sheet.'
       : 'No match found automatically. Search under each line to pick the purchase it refunds, or save it as refund lines only.');
+    if (pend > -1) $('btnPendOrder').onclick = () => reviewQueueItem(queueItems[pend]);
   }
   $('refBanner').classList.toggle('hide', !state.refund);
 
@@ -1440,7 +1448,7 @@ function renderQueue(d) {
     const sender = meta.orderEmail || q.from;
     const body = q.status === 'ready'
       ? `<div class="sum"><b>${esc(rows[0]?.store || 'Unknown store')}</b> · ${money(total)} · ${rows.length} item${rows.length === 1 ? '' : 's'}</div>
-         ${meta.possibleDuplicate ? `<div class="warn">⚠️ ${esc(meta.possibleDuplicate)}</div>` : ''}${meta.klarnaPlan ? `<div class="sub">💳 Paid with Klarna ${esc(meta.klarnaPlan.plan || '')}: matched to its Klarna email</div>` : ''}${meta.noItems ? '<div class="sub">📝 The email doesn\'t name the items</div>' : meta.splitEvenly ? '<div class="sub">📝 Items read from the email\'s pictures: prices spread evenly</div>' : ''}
+         ${meta.possibleDuplicate ? `<div class="warn">⚠️ ${esc(meta.possibleDuplicate)}</div>` : ''}${meta.isRefund && orderWaiting(q) ? '<div class="warn">📧 Its order email is also here, not saved yet: save that one first</div>' : ''}${meta.klarnaPlan ? `<div class="sub">💳 Paid with Klarna ${esc(meta.klarnaPlan.plan || '')}: matched to its Klarna email</div>` : ''}${meta.noItems ? '<div class="sub">📝 The email doesn\'t name the items</div>' : meta.splitEvenly ? '<div class="sub">📝 Items read from the email\'s pictures: prices spread evenly</div>' : ''}
          <div class="duo"><button class="btn" data-q="review" data-i="${i}">Review</button>
          <button class="btn sec" data-q="dismiss" data-i="${i}">Dismiss</button></div>`
       : `<div class="warn">${esc(emailError(q.error))}</div>
@@ -1515,23 +1523,29 @@ $('qSkipList').onclick = async e => {
   } catch (err) { e.target.disabled = false; toast(err.message, true); }
 };
 
+// A refund whose order email is waiting in the same list, unsaved
+function orderWaiting(q) {
+  const ord = String(((q.result && q.result.rows) || []).map(r => r['order number']).find(Boolean) || '').trim().toLowerCase();
+  return !!ord && (queueItems || []).some(x => x.id !== q.id && x.status === 'ready' && x.result && !(x.result.meta && x.result.meta.isRefund)
+    && (x.result.rows || []).some(r => String(r['order number'] || '').trim().toLowerCase() === ord));
+}
+function reviewQueueItem(q) {
+  job = null;
+  lastSource = 'email';
+  showReview(q.result, 'email');
+  if (state) {
+    state.queueId = q.id;
+    renderMailLinks(q);
+    const sender = q.result.meta?.orderEmail;
+    if (sender) toast('From ' + sender);
+  }
+}
 $('qList').onclick = async e => {
   const act = e.target.dataset.q;
   if (!act) return;
   const q = queueItems[e.target.dataset.i];
 
-  if (act === 'review') {
-    job = null;
-    lastSource = 'email';
-    showReview(q.result, 'email');
-    if (state) {
-      state.queueId = q.id;
-      renderMailLinks(q);
-      const sender = q.result.meta?.orderEmail;
-      if (sender) toast('From ' + sender);
-    }
-    return;
-  }
+  if (act === 'review') { reviewQueueItem(q); return; }
   if (act === 'dismiss' && !confirm('Dismiss this email? It won\'t be added to the Sheet.')) return;
   try {
     renderQueue(await api('queueSet', { id: q.id, queueAction: act }));
