@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v85';
+const APP_VERSION = 'v86';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1113,10 +1113,12 @@ function fillPayPicker() {
     grp('Your cards', c.cards) +
     grp(c.plat ? 'Ways to pay on ' + c.plat : 'Other ways to pay', c.ways) +
     grp('Other ways you\'ve paid', c.other) +
-    `<optgroup label="Paid in two parts"><option value="__split">${esc(c.parts[0])} + another way…</option></optgroup>`;
+    `<optgroup label="Paid in two parts"><option value="__split">${esc(c.parts[0])} + another way…</option></optgroup>` +
+    '<optgroup label="Not listed"><option value="__addcard">＋ Add a card…</option></optgroup>';
   sel.onchange = () => {
     const v = sel.value; sel.value = '';
     if (v === '__split') return paySplit();
+    if (v === '__addcard') return addCard(n => { $('fPay').value = n; payHelp(); });
     if (v) { $('fPay').value = v; payHelp(); }
   };
   payHelp();
@@ -1130,14 +1132,14 @@ function payHelp() {
   if (!pm) {
     const opts = [...new Set([c.last, ...c.cards.slice(0, 3), ...c.ways.slice(0, 4)].filter(Boolean))];
     html = `<div><b>How did you pay?</b> ${state.channel === 'Email' ? "The email doesn't say." : "The receipt doesn't say."} Tap one, or type it.</div>
-      <div class="paychips">${opts.map(p => chip(p, p)).join('')}${chip(c.parts[0] + ' + another way…', '', ' data-split="1"')}</div>`;
+      <div class="paychips">${opts.map(p => chip(p, p)).join('')}${chip('＋ Add a card', '', ' data-addcard="1"')}${chip(c.parts[0] + ' + another way…', '', ' data-split="1"')}</div>`;
   } else if (parts.length === 1 && isPartPay(parts[0].name) && total > 0) {
     const p = parts[0];
     const rest = p.amt != null ? r2(total - p.amt) : null;
     if (rest != null && rest > 0.01) {
       const opts = [...new Set([...c.cards, ...c.ways.filter(w => !isPartPay(w))].filter(Boolean))].slice(0, 7);
       html = `<div><b>${esc(p.name)} paid ${esc(money(p.amt))}.</b> How did you pay the other ${esc(money(rest))}?</div>
-        <div class="paychips">${opts.map(o => chip(o, p.name + ' ' + money(p.amt) + ' + ' + o + ' ' + money(rest))).join('')}${chip('Something else…', '', ' data-split="1"')}</div>`;
+        <div class="paychips">${opts.map(o => chip(o, p.name + ' ' + money(p.amt) + ' + ' + o + ' ' + money(rest))).join('')}${chip('＋ Add a card', '', ' data-addcard="1" data-rest="' + esc(p.name + ' ' + money(p.amt) + '|' + money(rest)) + '"')}${chip('Something else…', '', ' data-split="1"')}</div>`;
     } else if (p.amt == null) {
       html = `<div><b>Did the ${esc(p.name.replace(/^(\w)/, m => m.toLowerCase()))} pay all ${esc(money(total))}?</b></div>
         <div class="paychips">${chip('Yes, all of it', p.name + ' ' + money(total))}${chip('No, only part…', '', ' data-split="1"')}</div>`;
@@ -1176,9 +1178,34 @@ function paySplit() {
   };
   setTimeout(() => { if (!$('spAmt').value) $('spAmt').focus(); }, 50);
 }
+// Add a card you paid with: its type and last 4 digits only (never the whole number). Kept in your list for next time.
+function addCard(done) {
+  const v = sheet(`<h3>Add a card</h3>
+    <p class="sub">So it's in your list next time. Only the last 4 digits: never type the whole card number.</p>
+    <div class="spform"><label>Card type</label><select id="acType"><option>Visa</option><option>Mastercard</option><option>Amex</option><option>Maestro</option><option value="">Other</option></select>
+    <div id="acNameW" class="hide"><label>Card name</label><input id="acName" placeholder="e.g. Monzo, Revolut" autocomplete="off"></div>
+    <label>Last 4 digits</label><input id="acLast" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="1234" autocomplete="off"></div>
+    <div class="duo"><button class="btn sec" data-close="1">Cancel</button><button class="btn" id="acOk">Add card</button></div>`);
+  $('acType').onchange = () => $('acNameW').classList.toggle('hide', !!$('acType').value);
+  $('acLast').oninput = () => { $('acLast').value = $('acLast').value.replace(/\D/g, '').slice(0, 4); };
+  $('acOk').onclick = () => {
+    const type = $('acType').value || $('acName').value.trim(), last = $('acLast').value;
+    if (!type) { toast('Put in the card name', true); $('acName').focus(); return; }
+    if (!/^\d{4}$/.test(last)) { toast('Put in the last 4 digits', true); $('acLast').focus(); return; }
+    const name = payName(type + ' ••' + last);
+    CFG.payments = [name, ...(CFG.payments || []).filter(p => payName(p) !== name)]; saveCache();
+    v.remove(); done(name); fillPayPicker();
+    toast(name + ' added');
+  };
+  setTimeout(() => $('acLast').focus(), 50);
+}
 $('payAsk').addEventListener('click', e => {
-  const b = e.target.closest('[data-pay],[data-split]'); if (!b) return;
+  const b = e.target.closest('[data-pay],[data-split],[data-addcard]'); if (!b) return;
   if (b.dataset.split) return paySplit();
+  if (b.dataset.addcard) {   // a card you haven't used before: on its own, or paying the rest after a gift card
+    const r = b.dataset.rest ? b.dataset.rest.split('|') : null;
+    return addCard(n => { $('fPay').value = r ? r[0] + ' + ' + n + ' ' + r[1] : n; payHelp(); });
+  }
   $('fPay').value = b.dataset.pay; payHelp();
 });
 $('fPay').addEventListener('input', () => payHelp());
