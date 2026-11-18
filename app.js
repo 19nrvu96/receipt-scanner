@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v84';
+const APP_VERSION = 'v85';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1080,6 +1080,13 @@ const PAY_KNOWN = [...new Set(Object.values(PAY_WAYS).flat())].map(w => w.toLowe
 const payFits = (p, plat) => { const m = (p.match(/\b(ebay|vinted|amazon)\b/i) || [])[1];
   if (m) return m.toLowerCase() === plat.toLowerCase();
   return !plat || !PAY_KNOWN.includes(p.toLowerCase()) || PAY_WAYS[plat].some(w => w.toLowerCase() === p.toLowerCase()); };
+// One name per card however it was written ("Debit Mastercard ••••9546" = "Mastercard ••9546"), same as the Sheet side
+function payName(p) {
+  p = String(p || '').trim(); if (/^gift\s*card$/i.test(p)) return 'Gift card';
+  const brand = /visa/i.test(p) ? 'Visa' : /master\s*card/i.test(p) ? 'Mastercard' : /amex|american express/i.test(p) ? 'Amex' : /maestro/i.test(p) ? 'Maestro' : '';
+  const last4 = (p.match(/(\d{4})(?!.*\d{4})/) || [])[1];
+  return brand && !/gift/i.test(p) ? (last4 ? brand + ' ••' + last4 : brand) : p;
+}
 function payParts(pm) {   // "Amazon gift card £10.00 + Visa ••4521 £33.69" → [{name, amt}, …]
   return String(pm || '').split(/\s+\+\s+/).map(p => { const m = p.match(/^(.*?)\s*£\s*(\d[\d,]*(?:\.\d\d)?)\s*$/);
     return m ? { name: m[1].trim(), amt: Number(m[2].replace(/,/g, '')) } : { name: p.trim(), amt: null }; }).filter(x => x.name);
@@ -1090,7 +1097,7 @@ function payTotal() {
 }
 function payChoices() {
   const plat = payPlatform(), store = $('fStore').value.trim().toLowerCase();
-  const saved = (CFG.payments || []).filter(p => payFits(p, plat));
+  const saved = [...new Set((CFG.payments || []).map(payName))].filter(p => p && payFits(p, plat));
   const last = (CFG.payByStore || {})[store];
   return { plat, last: last && payParts(last).every(x => payFits(x.name, plat)) ? last : '',
     cards: saved.filter(isCard).slice(0, 8),
@@ -1248,7 +1255,7 @@ async function saveToSheet(force) {
     }, job && jobId ? withLegacy(jobImages(job)) : {}));
 
     if (store && !CFG.stores.includes(store)) { CFG.stores.push(store); CFG.stores.sort(); }
-    payParts(pay).forEach(x => { if (!CFG.payments.includes(x.name)) CFG.payments.push(x.name); });
+    payParts(pay).forEach(x => { const n = payName(x.name); if (n && !CFG.payments.includes(n)) CFG.payments.push(n); });
     if (pay && store) (CFG.payByStore = CFG.payByStore || {})[store.toLowerCase()] = pay;
     rememberEmail(store, email);
     saveCache(); fillStores(); fillPayPicker();
