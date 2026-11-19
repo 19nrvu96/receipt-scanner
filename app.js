@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v103';
+const APP_VERSION = 'v104';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1478,12 +1478,13 @@ async function saveToSheet(force) {
 }
 
 /* ---------- manual entry ---------- */
-function manualEntry() {
+function manualEntry(pre) {
+  pre = pre && pre.store !== undefined ? pre : {};   // from a sale: who you bought it from, and what
   buildReview({
     rows: [{
-      'purchase date': today(), 'item': '', 'buy price': 0, 'quantity': 1,
+      'purchase date': today(), 'item': pre.item || '', 'buy price': 0, 'quantity': 1,
       'total price': 0, 'additional cost': 0, 'total cost': 0,
-      'store': '', 'notes': '', 'purpose': '',
+      'store': pre.store || '', 'notes': '', 'purpose': '',
       'method': 'Collection', 'email or in person': 'In person',
       'shared cost?': 'No', 'order number': '', 'payment method': '',
       '_confidence': 'low'
@@ -3330,7 +3331,7 @@ function openSale(o, silent) {
   segSet('saStatus', o.status || (isNew ? 'Completed' : 'Sold'));
   $('saCounts').checked = o['counts in totals'] ? o['counts in totals'] === 'Yes' : !/^Amazon/.test(plat);
   $('saFind').value = ''; $('saFound').innerHTML = '';
-  $('saFindStore').innerHTML = '<option value="">Any shop</option>' + (CFG.stores || []).map(x => `<option>${esc(x)}</option>`).join('');
+  fillSellers(o);
   $('saLinked').classList.toggle('hide', !sale.linked);
   $('saLinked').textContent = sale.linked ? 'Linked: ' + sale.linked + (num(o['item cost']) !== null ? ' · cost ' + money(o['item cost']) : '') : '';
   sale.itemCost = num(o['item cost']);
@@ -3389,12 +3390,61 @@ function findPurchases() {
       const r = await api('purchaseSearch', { q: q.length >= 3 ? q : '', store });
       $('saFound').innerHTML = r.length ? (store && !q ? '<p class="sub">Most recent from ' + esc(store) + ' first</p>' : '') + r.map(x => `<button class="found" data-pr="${x.row}" data-cost="${x.cost}" data-item="${esc(x.item)}">
         <b>${esc(x.item)}</b><br><span class="sm">${esc(x.store)} · ${esc(x.date)} · ${money(x.cost)} each${x.left !== undefined ? ' · ' + x.left + ' left' : ''}</span></button>`).join('')
-        : '<p class="sub">' + (store ? 'Nothing from ' + esc(store) + (q ? ' matches that' : '') + '. Try another word or shop.' : 'No purchases match. Try another word, or pick the shop.') + '</p>';
+        : '<p class="sub">' + (store ? 'Nothing from ' + esc(store) + (q ? ' matches that' : '') + '. Try another word or shop.' : 'No purchases match. Try another word, or pick the shop.') + '</p>'
+          + (store && !q ? `<button class="btn sec" type="button" data-logbuy="${esc(store)}">＋ Log what you paid ${esc(store)}</button>` : '');
     } catch (err) { $('saFound').innerHTML = '<p class="sub">' + esc(err.message) + '</p>'; }
   }, 350);
 }
 $('saFind').oninput = findPurchases;
-$('saFindStore').onchange = findPurchases;
+$('saFindStore').onchange = () => { if ($('saFindStore').value === '__add') return addSeller(); findPurchases(); };
+
+/* ---- Where you bought it: shops, businesses and people in one list (Purchases + your shop list), and add one.
+   Filled in for you when the sale names one ("bought through Colm", a linked purchase's shop). ---- */
+let SELLERS = null;
+const SELLER_GROUPS = [['shop', 'Shops'], ['business', 'Businesses and online'], ['person', 'People']];
+function sellerOptions(sel) {
+  const list = SELLERS || (CFG.stores || []).map(n => ({ name: n, kind: 'shop' }));
+  return '<option value="">Any shop, business or person</option>' + SELLER_GROUPS.map(([k, label]) => {
+    const g = list.filter(x => x.kind === k); if (!g.length) return '';
+    return `<optgroup label="${label}">` + g.map(x => `<option value="${esc(x.name)}"${x.name === sel ? ' selected' : ''}>${esc(x.name)}</option>`).join('') + '</optgroup>';
+  }).join('') + '<option value="__add">＋ Add a shop, business or person…</option>';
+}
+async function fillSellers(o) {
+  const guess = sellerGuess(o);
+  $('saFindStore').innerHTML = sellerOptions(guess);
+  if (!SELLERS) { try { SELLERS = await api('sellers'); $('saFindStore').innerHTML = sellerOptions(sellerGuess(o) || $('saFindStore').value); } catch (e) {} }
+  if ($('saFindStore').value && !sale.linked) findPurchases();
+}
+// A name from the list that the sale mentions: its linked purchase's shop, or "Colm" in "bought through Colm"
+function sellerGuess(o) {
+  const list = SELLERS || (CFG.stores || []).map(n => ({ name: n }));
+  const text = [o.item, o.notes, o['linked purchase']].join(' ').toLowerCase();
+  const hit = list.filter(x => { const w = String(x.name).toLowerCase().replace(/^private seller \(|\)$/g, '').split(/\s+/)[0]; return w && w.length >= 4 && new RegExp('\\b' + w.replace(/[^a-z0-9]/g, '') + '\\b').test(text); });
+  return hit.length === 1 ? hit[0].name : '';
+}
+function addSeller() {
+  $('saFindStore').value = '';
+  const box = document.createElement('div'); box.className = 'card'; box.id = 'saAddSeller'; box.style.marginTop = '8px';
+  box.innerHTML = `<label>Name</label><input id="asName" autocomplete="off" placeholder="e.g. Argos Solihull, Mintside Cards, Colm Bradley">
+    <label>What are they?</label><div class="seg" id="asKind"><button data-v="shop" class="on">Shop</button><button data-v="business">Business / online</button><button data-v="person">Person</button></div>
+    <div class="duo" style="margin-top:8px"><button class="btn" id="asSave" type="button">Add</button><button class="btn sec" id="asCancel" type="button">Cancel</button></div>`;
+  const old = $('saAddSeller'); if (old) old.remove();
+  $('saFindHint').after(box); $('asName').focus();
+  box.querySelector('#asKind').onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; box.querySelectorAll('#asKind button').forEach(x => x.classList.toggle('on', x === b)); };
+  $('asCancel').onclick = () => box.remove();
+  $('asSave').onclick = async () => {
+    const name = $('asName').value.trim(); if (!name) return toast('Add a name', true);
+    const kind = (box.querySelector('#asKind .on') || {}).dataset ? box.querySelector('#asKind .on').dataset.v : 'shop';
+    try { SELLERS = await api('sellerAdd', { name, kind }); if (!CFG.stores.includes(name)) CFG.stores.push(name);
+      $('saFindStore').innerHTML = sellerOptions(name); box.remove(); findPurchases(); toast(name + ' added'); }
+    catch (err) { toast(err.message, true); }
+  };
+}
+// Nothing bought from them on record yet: log what you paid, then link it
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-logbuy]'); if (!b) return;
+  manualEntry({ store: b.dataset.logbuy, item: sale && $('saItem') ? $('saItem').value.replace(/\s*\(.*$/, '') : '' });
+});
 $('saFound').onclick = e => {
   const b = e.target.closest('[data-pr]');
   if (!b) return;
@@ -4602,7 +4652,8 @@ var BUYERS = (() => { try { return JSON.parse(localStorage.getItem(LS_BUYERS)) |
 var bpKey = null, bpFrom = 'vBuyers', BP = null;
 const bKey = s => String(s || '').trim().replace(/^@/, '').replace(/\s+/g, ' ').toLowerCase();
 const bName = b => b.name || b.username || b.key;
-const findBuyer = s => (BUYERS && BUYERS.buyers || []).find(b => b.key === bKey(s) || bKey(b.name) === bKey(s) || bKey(b.username) === bKey(s));
+// An empty box matches nobody (it used to match the first buyer with no name saved)
+const findBuyer = s => { const k = bKey(s); if (!k) return null; return (BUYERS && BUYERS.buyers || []).find(b => b.key === k || (b.name && bKey(b.name) === k) || (b.username && bKey(b.username) === k)) || null; };
 async function loadBuyers() {
   BUYERS = await api('buyers', {});
   try { localStorage.setItem(LS_BUYERS, JSON.stringify(BUYERS)); } catch (e) {}
@@ -4996,7 +5047,7 @@ function buyerSuggest() {
   box.classList.toggle('hide', !hits.length);
   const isNew = CFG.crm && q.length >= 2 && !findBuyer(q);
   if (isNew) box.classList.remove('hide');
-  box.innerHTML = (isNew ? `<button type="button" class="newbuyer" data-newb="1">＋ Add "${esc(q)}" as a new buyer</button>` : '') + hits.map(h => `<button type="button" data-pk=""${esc(h.b.key)}"><b>${esc(bName(h.b))}</b>${h.b.name && h.b.username ? ' <span class="sub">@' + esc(h.b.username) + '</span>' : ''}<span class="sm">${h.via ? 'Matched ' + esc(h.via) + ' · ' : ''}${esc(buyerLine(h.b)) || 'No sales yet'}</span></button>`).join('');
+  box.innerHTML = (isNew ? `<button type="button" class="newbuyer" data-newb="1">＋ Add "${esc(q)}" as a new buyer</button>` : '') + hits.map(h => `<button type="button" data-pk="${esc(h.b.key)}"><b>${esc(bName(h.b))}</b>${h.b.name && h.b.username ? ' <span class="sub">@' + esc(h.b.username) + '</span>' : ''}<span class="sm">${h.via ? 'Matched ' + esc(h.via) + ' · ' : ''}${esc(buyerLine(h.b)) || 'No sales yet'}</span></button>`).join('');
 }
 $('saBuyerSug').onclick = e => {
   if (e.target.closest('[data-newb]')) { $('saBuyerSug').classList.add('hide'); buyerHint(false); $('saContact').open = true; return; }
@@ -5017,8 +5068,21 @@ $('saPrice').addEventListener('input', () => { if (CFG.crm) listedHint(); });
   segSet(id, segGet(id) === b.dataset.v ? '' : b.dataset.v);   // tap again to clear
   if (id === 'saStyle') sale.styleSet = true;
 }));
+// "About the buyer" starts folded; the line under its heading says who, when the email gave their username
+function crmFold(open) {
+  $('saCrmBody').classList.toggle('hide', !open);
+  $('saCrmHead').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function crmSummary() {
+  const who = $('saBuyer').value.trim(), b = findBuyer(who);
+  $('saCrmSum').textContent = who ? (b ? bName(b) + ': ' + (buyerLine(b) || 'no sales yet') : who + ' (new buyer)') + (sale && sale.buyerFromEmail ? ' · from the email' : '') : 'Tap to add who bought it';
+}
+$('saCrmHead').onclick = () => crmFold($('saCrmBody').classList.contains('hide'));
+$('saBuyer').addEventListener('input', () => crmSummary());
 function crmFill(o) {
   crmSync();
+  if (typeof sale === 'object' && sale) sale.buyerFromEmail = !!(o.buyer && o['document link']);
+  crmFold(!!window.__crmOpen); setTimeout(crmSummary, 0);   // __crmOpen: tests that fill in the buyer fields
   $('saListed').value = num(o['listed at']) ?? '';
   segSet('saExp', o['buyer experience'] || ''); segSet('saAgain', o['sell again'] || ''); segSet('saStyle', o['buying style'] || ''); segSet('saTurn', o['turned up'] || '');
   sale.styleSet = !!o['buying style'];
@@ -5905,3 +5969,17 @@ async function dismissNeed(el) {
   catch (err) { SALES.needs.splice(Number(i), 0, o); renderSales(); toast(err.message, true); }
 }
 swipeAway($('slNeeds'), '.swipe', dismissNeed);
+
+
+// iOS home-screen app: after the keyboard closes the page can keep the shorter keyboard-open height, so the
+// sticky Save bar floats mid-screen. When the screen grows back, nudge the page to lay itself out again.
+if (window.visualViewport) {
+  let vh = visualViewport.height;
+  visualViewport.addEventListener('resize', () => {
+    const grew = visualViewport.height > vh + 80; vh = visualViewport.height;
+    if (!grew) return;
+    requestAnimationFrame(() => { const y = window.scrollY; document.body.style.minHeight = (window.innerHeight + 1) + 'px';
+      requestAnimationFrame(() => { document.body.style.minHeight = ''; window.scrollTo(window.scrollX, y); }); });
+  });
+}
+document.addEventListener('focusout', e => { if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) setTimeout(() => window.scrollTo(window.scrollX, window.scrollY), 60); });

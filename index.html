@@ -130,6 +130,9 @@ select.unset{border-color:#f5a623;color:#8a6d00;background:#fffdf7}
 .recon.warn{background:#ffebee;color:#b71c1c}
 
 /* ---------- Action bar ---------- */
+.crmhead{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;background:none;border:0;padding:2px 0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.crmhead b{font-size:19px}.crmhead .chev{font-size:26px;transition:transform .2s}.crmhead[aria-expanded="true"] .chev{transform:rotate(90deg)}
+#seCrmSlot .crmhead{display:none}#seCrmSlot #saCrmBody{display:block!important}
 .bar.review{position:static}   /* long receipts: the 4-button bar used to float over the lines */
 .minibar{position:sticky;bottom:0;padding:8px 0 12px;background:linear-gradient(rgba(243,244,247,0),#f3f4f7 40%)}
 .minibar .btn{padding:13px;font-size:16px;box-shadow:var(--shadow);margin:0}
@@ -344,7 +347,8 @@ body{background:var(--bg);color:var(--ink)}
 
 /* ---------- v25: background, tiles, settings ---------- */
 body{background:#f3f4f7}
-body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+/* height: the large viewport, so the colours don't stop short after the iOS keyboard closes */
+body::before{content:"";position:fixed;inset:0;bottom:auto;height:100vh;height:100lvh;z-index:-1;pointer-events:none;
   background:radial-gradient(70% 45% at 0% 0%,#d9e8ff 0,rgba(217,232,255,0) 70%),
              radial-gradient(55% 40% at 100% 8%,#e8e0ff 0,rgba(232,224,255,0) 70%),
              radial-gradient(70% 45% at 50% 105%,#dcf3ec 0,rgba(220,243,236,0) 70%),#f3f4f7}
@@ -1426,7 +1430,8 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
     <p class="hint" id="saFindHint">Can't remember what you called it? Pick the shop to see what you bought there.</p>
     <div id="saFound"></div>
     <div id="saCrm" class="card hide" style="margin-top:14px">
-      <h3 style="margin:0 0 4px">About the buyer <small class="sub">(optional)</small></h3>
+      <button type="button" id="saCrmHead" class="crmhead" aria-expanded="false" aria-controls="saCrmBody"><span><b>About the buyer</b> <small class="sub">(optional)</small><br><span id="saCrmSum" class="sub"></span></span><span class="chev" aria-hidden="true">›</span></button>
+      <div id="saCrmBody" class="hide">
       <label for="saBuyerC">Who bought it?</label>
       <div id="saBuyerSlot"></div>
       <div id="saBuyerSug" class="suggest hide"></div>
@@ -1460,6 +1465,7 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
         <label class="check"><input type="checkbox" id="saBOpt"> They're happy to hear about similar items</label>
         <p class="hint">Only message people about new items if they said yes. eBay and Amazon don't allow messaging their buyers about other items. You can, but it's at your own risk.</p>
       </details>
+      </div>
     </div>
     <label>Receipt photo (optional)</label>
     <button class="btn sec" id="btnSalePhoto">📷 Add a photo of the receipt</button>
@@ -1580,10 +1586,10 @@ setTimeout(function () {
   document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
 }, 6000);
 </script>
-<script src="qrcode.js?v=103"></script>
-<script src="help.js?v=103"></script>
-<script src="app.js?v=103"></script>
-<script src="tour-engine.js?v=103"></script>
-<script src="whatsnew.js?v=103"></script>
+<script src="qrcode.js?v=104"></script>
+<script src="help.js?v=104"></script>
+<script src="app.js?v=104"></script>
+<script src="tour-engine.js?v=104"></script>
+<script src="whatsnew.js?v=104"></script>
 </body>
 </html>
