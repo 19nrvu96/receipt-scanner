@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v102';
+const APP_VERSION = 'v103';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1984,8 +1984,9 @@ function renderTodo(w) {
   const s = n => n === 1 ? '' : 's', rows = [];
   const today = (w.postToday || 0) - (w.late || 0);
   if (w.late) rows.push(['🔴', w.late + ' parcel' + s(w.late) + ' late. Post now', 'slPostWrap']);
-  if (w.collectSoon) rows.push(['🔴', w.collectSoon + ' order' + s(w.collectSoon) + ' to collect: last day' + (w.collectSoon === 1 ? ' is' : 's are') + ' today or tomorrow', 'slCollWrap']);
-  else if (w.toCollect) rows.push(['🛍️', w.toCollect + ' order' + s(w.toCollect) + ' ready to collect', 'slCollWrap']);
+  if (w.collectPassed) rows.push(['⏰', w.collectPassed + ' order' + s(w.collectPassed) + ' not collected in time: cancelled, expect a refund email', 'slCollWrap']);
+  if (w.collectSoon) rows.push(['🔴', w.collectSoon + ' order' + s(w.collectSoon) + ' to collect: ' + (w.collectSoon === 1 ? 'last day ' + (w.collectSoonBy || 'today or tomorrow') : 'last days today or tomorrow'), 'slCollWrap']);
+  else if (w.toCollect > (w.collectPassed || 0)) rows.push(['🛍️', w.toCollect + ' order' + s(w.toCollect) + ' ready to collect', 'slCollWrap']);
   if (w.toPost) rows.push(['📦', w.toPost + ' parcel' + s(w.toPost) + ' to post' + (today > 0 ? ' (' + today + ' today)' : ''), 'slPostWrap']);
   if (w.pickupSoon) rows.push(['🚚', w.pickupSoon + ' return pick-up' + s(w.pickupSoon) + ' today or tomorrow: print the label and pack it', 'slToRetWrap']);
   const seen = seenRefunds();
@@ -2040,7 +2041,9 @@ function countsFrom(d) {
            onWay: ((d.returns && d.returns.open) || []).filter(r => r.status === 'Sent back').length,
            refundsDone: ((d.returns && d.returns.done) || []).filter(r => (r.status === 'Completed' || r.status === 'Refunded') && (x => x instanceof Date && (Date.now() - x) < 8 * 864e5)(toDate(r.refundedOn))).slice(0, 3)
              .map(r => ({ id: r.id, item: r.item, amount: r.refundAmount, to: r.refundTo, by: r.refundBy, on: r.refundedOn })),
-           toCollect: tc.length, collectSoon: tc.filter(c => c.daysLeft !== null && c.daysLeft <= 1).length,
+           toCollect: tc.length, collectSoon: tc.filter(c => c.daysLeft !== null && c.daysLeft >= 0 && c.daysLeft <= 1).length,
+           collectPassed: tc.filter(c => c.daysLeft !== null && c.daysLeft < 0).length,
+           collectSoonBy: (x => x ? (x.daysLeft === 0 ? 'today, ' : 'tomorrow, ') + dayShort(toDate(x.collectBy)) : '')(tc.filter(c => c.daysLeft !== null && c.daysLeft >= 0 && c.daysLeft <= 1).sort((a, b) => a.daysLeft - b.daysLeft)[0]),
            tripsToLog: TRIPS ? TRIPS.length : ((CFG.waiting || {}).tripsToLog || 0),
            awaiting: d.awaiting ? awaitingAll(d).length : ((CFG.waiting || {}).awaiting || 0),
            awaitingOld: d.awaiting ? awaitingAll(d).filter(x => x.hours >= 24).length : ((CFG.waiting || {}).awaitingOld || 0) };
@@ -2841,14 +2844,77 @@ function collectTitle(c) {
   const it = c.items || [];
   return it.length === 1 ? it[0].qty + ' × ' + it[0].name : it.length ? (c.qty || it.length) + ' items from ' + (c.retailer || c.store) : 'Order ' + (c.order || '') + (c.retailer ? ' from ' + c.retailer : '');
 }
+// "Fri 20 Nov"
+const dayShort = d => d ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
 function collectTag(c) {
   if (c.status === 'Collected') return '<span class="tag ok">Collected ' + esc(c.collectedOn || '') + '</span>';
   if (c.daysLeft === null || c.daysLeft === undefined) return c.collectBy ? '<span class="tag">collect by ' + esc(c.collectBy) + '</span>' : '';
-  if (c.daysLeft < 0) return '<span class="tag late">Collection date passed</span>';
-  if (c.daysLeft === 0) return '<span class="tag late">Last day: collect today</span>';
-  if (c.daysLeft === 1) return '<span class="tag late">Collect by tomorrow</span>';
-  const dd = toDate(c.collectBy);
-  return '<span class="tag ' + (c.daysLeft <= 3 ? 'soon' : '') + '">collect by ' + esc(dd ? dd.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : c.collectBy) + ' · ' + c.daysLeft + ' days</span>';
+  const dd = toDate(c.collectBy), day = esc(dd ? dayShort(dd) : c.collectBy);
+  if (c.daysLeft < 0) return '<span class="tag late">Not collected by ' + day + ': cancelled</span>';
+  const tag = c.daysLeft === 0 ? '<span class="tag late">Last day: today, ' + day + '</span>'
+    : c.daysLeft === 1 ? '<span class="tag late">Collect by tomorrow, ' + day + '</span>'
+    : '<span class="tag ' + (c.daysLeft <= 3 ? 'soon' : '') + '">collect by ' + day + ' · ' + c.daysLeft + ' days</span>';
+  return tag + ' ' + hoursOnTag(c, dd);
+}
+
+/* ---- Opening hours on the collect-by day. Bank holidays and Christmas / New Year have their own hours, so
+   those days say so and open a search for that shop's hours for that holiday. England & Wales dates. ---- */
+function easterSunday(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3),
+    h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  return new Date(y, Math.floor((h + l - 7 * m + 114) / 31) - 1, ((h + l - 7 * m + 114) % 31) + 1);
+}
+function ukHoliday(d) {
+  if (!(d instanceof Date)) return '';
+  const y = d.getFullYear(), mo = d.getMonth(), dt = d.getDate(), wd = d.getDay(), same = x => x.getFullYear() === y && x.getMonth() === mo && x.getDate() === dt;
+  const plus = (x, n) => new Date(x.getFullYear(), x.getMonth(), x.getDate() + n);
+  const nthMon = (m, n) => { const x = new Date(y, m, 1); while (x.getDay() !== 1) x.setDate(x.getDate() + 1); x.setDate(x.getDate() + 7 * (n - 1)); return x; };
+  const lastMon = m => { const x = new Date(y, m + 1, 0); while (x.getDay() !== 1) x.setDate(x.getDate() - 1); return x; };
+  const es = easterSunday(y);
+  if (mo === 11 && dt === 24) return 'Christmas Eve';
+  if (mo === 11 && dt === 25) return 'Christmas Day';
+  if (mo === 11 && dt === 26) return 'Boxing Day';
+  if (mo === 11 && dt === 31) return "New Year's Eve";
+  if (mo === 0 && dt === 1) return "New Year's Day";
+  // Substitute days when Christmas, Boxing Day or New Year's Day fall at a weekend
+  if (mo === 11 && (dt === 27 || dt === 28) && wd >= 1 && wd <= 2) return 'Christmas bank holiday';
+  if (mo === 0 && (dt === 2 || dt === 3) && wd === 1) return "New Year's bank holiday";
+  if (same(plus(es, -2))) return 'Good Friday';
+  if (same(es)) return 'Easter Sunday';
+  if (same(plus(es, 1))) return 'Easter Monday';
+  if (same(nthMon(4, 1))) return 'Early May bank holiday';
+  if (same(lastMon(4))) return 'Spring bank holiday';
+  if (same(lastMon(7))) return 'Summer bank holiday';
+  return '';
+}
+function hoursOn(c, d) {
+  if (!(d instanceof Date)) return null;
+  const hol = ukHoliday(d), shop = [c.store || c.retailer, c.address].filter(Boolean).join(' ');
+  if (hol) return { holiday: hol, link: 'https://www.google.com/search?q=' + encodeURIComponent(shop + ' ' + hol + ' ' + d.getFullYear() + ' opening times') };
+  const h = (c.hours || []).find(x => x.slice(0, 3) === DAYS3[d.getDay()]);
+  return h ? { text: h.slice(4).trim() } : null;
+}
+function hoursOnTag(c, d) {
+  const h = hoursOn(c, d);
+  if (!h) return '';
+  if (h.holiday) return '<a class="tag soon" href="' + h.link + '" target="_blank" rel="noopener">🎄 ' + esc(h.holiday) + ': check opening times ↗</a>';
+  return /closed/i.test(h.text) ? '<span class="tag late">Shop closed that day</span>' : '<span class="tag">Open ' + esc(h.text) + '</span>';
+}
+// Not collected in time, or close to the last day with an extension possible
+const ARGOS_ORDERS = 'https://www.argos.co.uk/webapp/wcs/stores/servlet/OrderSummary';
+function collectNote(c) {
+  if (c.status !== 'To collect' || c.daysLeft === null || c.daysLeft === undefined) return '';
+  const shop = c.retailer || 'The shop';
+  if (c.daysLeft < 0) return `<p class="hint late">Not collected by ${esc(dayShort(toDate(c.collectBy)) || c.collectBy)}, so ${esc(shop)} cancels the order and refunds you automatically. Expect a refund email shortly; the purchase will show as cancelled. Tap <b>Cancel collection</b> once the refund's in.</p>`;
+  if (c.daysLeft <= 3 && c.extendable) return `<div class="hint">Need longer? Argos lets you extend this once, by 7 days, free: Your orders → this order → extend collection.
+    <div class="duo" style="margin-top:6px"><a class="btn sec" href="${ARGOS_ORDERS}" target="_blank" rel="noopener">Extend on Argos ↗</a><button class="btn sec" data-cext="${esc(c.id)}">I've extended it</button></div></div>`;
+  if (c.daysLeft <= 3 && /argos/i.test(shop + ' ' + (c.store || '')) && /collection point/i.test(c.store || '')) return '<p class="hint">Sainsbury\'s collection points can\'t be extended (Argos rules).</p>';
+  if (c.daysLeft <= 3 && c.extendedOn) return '<p class="hint">Already extended on ' + esc(c.extendedOn) + '.</p>';
+  return '';
+}
+async function collectExtend(id) {
+  try { const r = await api('collectSet', { id: id, extend: true }); SALES.toCollect = r; try { localStorage.setItem(LS_SALES, JSON.stringify(SALES)); } catch (e) {} renderCollect(); toast('Collect-by date moved on 7 days'); }
+  catch (err) { toast(err.message, true); }
 }
 // Identical lines in one order are the same email read twice (e.g. forwarded twice): count them once
 function collectItems(c) {
@@ -2874,12 +2940,15 @@ function renderCollect() {
     <div class="sm">📍 ${esc([c.store || c.retailer, c.order ? '#' + c.order : ''].filter(Boolean).join(' · '))}</div>
     ${c.total ? `<div class="sm">${money(c.total)}${c.qty > 1 && c.items.length === 1 ? ' · ' + money(c.items[0].each) + ' each' : ''}${c.purpose ? ' · for ' + esc(c.purpose) : ''}</div>` : ''}
     <div class="tags">${collectTag(c)}${collectNth(c) ? ' <span class="tag">order ' + collectNth(c).n + ' of ' + collectNth(c).of + ' here · own barcode</span>' : ''}</div>
+    ${collectNote(c)}
     ${c.status === 'Collected' ? `<div class="duo" style="margin-top:8px">${c.mileage ? '<span class="sub">🚗 trip logged</span>' : `<button class="btn sec" data-ctrip="${i}">🚗 Log the trip</button>`}
       ${c.receipt ? '<span class="sub">🧾 receipt saved</span>' : `<button class="btn sec" data-crec="${i}">🧾 Add receipt</button>`}</div>`
     : `<div class="duo" style="margin-top:8px"><button class="btn" data-cview="${i}">Details &amp; code</button><button class="btn sec" data-cdone="${i}">✓ Collected</button></div>`}
   </div></div>`).join('');
 }
 $('slColl').onclick = e => {
+  if (e.target.closest('a[href]')) return;   // Extend on Argos, holiday hours: open the link, not the card
+  const x = e.target.closest('[data-cext]'); if (x) return collectExtend(x.dataset.cext);
   const t = e.target.closest('[data-cview],[data-cdone],[data-ctrip],[data-crec]'); if (!t) return;
   const L = SALES.toCollect, d = t.dataset;
   if (d.cdone !== undefined) return collectDone(L[+d.cdone]);
@@ -2913,7 +2982,7 @@ function collectSheetHtml(c) {
   return `<button class="close" data-close="1" aria-label="Close">✕</button>
     <h3>${esc(collectTitle(c))}</h3>
     ${c.qty ? `<div class="qtynote big">📦 Collect ${c.qty} item${c.qty === 1 ? '' : 's'}${c.items && c.items.length > 1 ? ' (' + c.items.length + ' products)' : ''}. Check you get them all.</div>` : ''}
-    <div class="tags" style="margin-bottom:8px">${collectTag(c)}</div>
+    <div class="tags" style="margin-bottom:8px">${collectTag(c)}</div>${collectNote(c)}
     ${(c.items || []).map(x => `<div class="crow"><b>${x.qty} × ${esc(x.name)}</b><br><span class="sub">${money(x.each)} each · ${money(x.total)}</span></div>`).join('')}
     <p class="sub">${c.total ? 'Total ' + money(c.total) : ''}${c.purpose ? ' · for ' + esc(c.purpose) : ''}${c.order ? ' · order ' + esc(c.order) : ''}</p>
     ${!c.inSheet && c.order ? '<p class="hint">This order isn\'t in your Sheet yet. Its email is waiting in Emailed receipts to check and save.</p>' : ''}
@@ -2991,6 +3060,7 @@ function showCollect(c) {
     if (d.cdone2) { v.remove(); collectDone(c); }
     else if (d.ccancel) { v.remove(); collectCancel(c); }
     else if (d.cal) collectReminder(c);
+    else if (d.cext) { v.remove(); collectExtend(d.cext); }
   });
 }
 function collectReminder(c) {
