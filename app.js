@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v101';
+const APP_VERSION = 'v102';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2056,7 +2056,10 @@ function postTag(l) {
 }
 function toDate(t) { const m = String(t || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? new Date(+m[3], m[2] - 1, +m[1]) : null; }
 
-const tagFor = st => st === 'Cancelled' || st === 'Refunded' ? 'no' : st === 'Completed' ? 'ok' : st === 'Part refunded' ? 'warn' : '';
+// The one rule (same in ListMe and FlipCheck): awaiting payment = Reserved (not taken from stock), paid = Sold, cancelled = back in stock
+const saleIsReserved = o => o.state === 'reserved' || (o['payment status'] === 'Awaiting payment' && !/^(Cancelled|Refunded)$/.test(o.status || ''));
+const resTxt = x => x && x.reserved ? ' · ' + x.reserved + ' reserved' : '';
+const tagFor = st => st === 'Reserved' ? 'warn' : st === 'Cancelled' || st === 'Refunded' ? 'no' : st === 'Completed' ? 'ok' : st === 'Part refunded' ? 'warn' : '';
 const num = v => v === '' || v === null || v === undefined || isNaN(Number(v)) ? null : Number(v);
 
 const LS_SALES = 'rs_sales';
@@ -2121,7 +2124,7 @@ function saleCard(o, i, list) {
   return `<div class="card scard${cx ? ' swipe' : ''}" data-${list}="${i}"${cx ? ' style="position:relative;padding-right:40px"' : ''}>${cx ? '<button class="pendx" data-needx="' + i + '" aria-label="Mark as read">✕</button>' : ''}<div class="sb">
     <div class="st">${esc(o.item || o['order number'] || 'Sale')}</div>
     <div class="sm">${bits}${o['order number'] ? ' · #' + esc(o['order number']) : ''}</div>
-    <div class="sm">${o._saving ? '<span class="tag saving">' + (navigator.onLine === false ? 'Waiting for signal' : 'Saving…') + '</span>' : ''}<span class="tag ${tagFor(o.status)}">${esc(o.status || 'Sold')}</span>${o['counts in totals'] === 'No' ? '<span class="tag">not in totals</span>' : ''}
+    <div class="sm">${o._saving ? '<span class="tag saving">' + (navigator.onLine === false ? 'Waiting for signal' : 'Saving…') + '</span>' : ''}<span class="tag ${tagFor(saleIsReserved(o) ? 'Reserved' : o.status)}">${esc(saleIsReserved(o) ? 'Reserved: awaiting payment' : (o.status || 'Sold'))}</span>${o['counts in totals'] === 'No' ? '<span class="tag">not in totals</span>' : ''}
       ${profit !== null ? '<span class="tag ok">profit ' + money(profit) + '</span>' : ''}${o.needs ? '<span class="tag warn">' + esc(/postage/.test(o.needs) ? 'add postage' : /match/.test(o.needs) ? 'pick the sale' : /check/.test(o.needs) ? 'check match' : o.needs) + '</span>' : ''}${returnTag(o)}</div>
     ${/postage/.test(o.needs || '') && /^ebay/i.test(o.platform || '') && !o._saving ? `<div class="ouacts"><a href="${esc(ebayOrderUrl(o['order number'], o.item))}" target="_blank" rel="noopener" data-ebaygo="${list}:${i}">${ebayOrderNo(o['order number']) ? 'Open order on eBay ↗' : 'Find in eBay orders ↗'}</a><span class="sub" style="align-self:center;font-size:13px">label price is under "What you earned"</span></div>` : ''}
   </div><div class="amt">${price !== null ? money(price) : net !== null ? money(net) : '—'}</div></div>`;
@@ -2643,7 +2646,7 @@ function renderStockPage() {
     : x.days >= 60 ? '<span class="tip">Over 2 months: a small price drop could get it moving</span>' : '';
   const row = x => `<div class="skrow2">
       <button class="skmain" data-sk="${x.row}">${thumbHtml(x.photo)}<span class="sktext"><b>${esc(x.item)}</b>
-        <span class="sm">${esc(paidListed(x))}${x.left > 1 ? ' · ' + x.left + ' left' : ''}${x.decision === 'return' || x.returning ? ' · returning' : ''}</span>
+        <span class="sm">${esc(paidListed(x))}${x.left > 1 ? ' · ' + x.left + ' left' : ''}${resTxt(x)}${x.decision === 'return' || x.returning ? ' · returning' : ''}</span>
         <span class="skage${x.days >= SELL_OLD ? ' old' : ''}">${x.days} day${x.days === 1 ? '' : 's'} old${x.store ? ' · ' + esc(x.store) : ''}</span>
         ${fcUrl() && !x.returning ? `<span class="mtag fctag" data-skfc="${x.row}">🔍 Worth it?</span>` : ''}${STOCK_MATCH[x.item] ? `<span class="mtag" data-skm="${esc(x.item)}">👥 ${STOCK_MATCH[x.item].buyers.length} interested</span>` : ''}${tip(x)}</span></button>
       ${x.decision === 'return' || x.returning ? '' : `<button class="sellthis" data-sell="${x.row}">Sell this</button>`}</div>`;
@@ -2652,7 +2655,7 @@ function renderStockPage() {
   $('skList').innerHTML = (list.length ? list.slice(0, 200).map(row).join('')
     : '<p class="sub" style="padding:10px 0">' + (q ? 'Nothing matches.' : 'No stock to sell. Things you buy with a resale purpose show here.') + '</p>') +
     (loose.length ? '<p class="sksub">In ListMe, with no purchase linked</p>' + loose.map(x => `<div class="skrow2">
-      <button class="skmain" data-sellk="${esc(x.lkey)}">${thumbHtml(x.photo)}<span class="sktext"><b>${esc(x.item)}</b><span class="sm">${esc(paidListed(x))}${x.left > 1 ? ' · ' + x.left + ' left' : ''}</span></span></button>
+      <button class="skmain" data-sellk="${esc(x.lkey)}">${thumbHtml(x.photo)}<span class="sktext"><b>${esc(x.item)}</b><span class="sm">${esc(paidListed(x))}${x.left > 1 ? ' · ' + x.left + ' left' : ''}${resTxt(x)}</span></span></button>
       <button class="sellthis" data-sellk="${esc(x.lkey)}">Sell this</button></div>`).join('') : '');
   fetchThumbs(list.slice(0, 40).concat(loose).map(x => x.photo));
 }
@@ -3872,7 +3875,7 @@ function renderSellFind() {
   const q = $('sfSearch').value.trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean);
   const all = allForSale(), list = all.filter(x => words.every(w => (x.item + ' ' + (x.store || '')).toLowerCase().includes(w))).slice(0, 60);
   $('sfList').innerHTML = list.length ? list.map((x, i) => `<div class="skrow2"><button class="skmain" data-sf="${all.indexOf(x)}">${thumbHtml(x.photo)}<span class="sktext"><b>${esc(x.item)}</b>
-      <span class="sm">${esc(paidListed(x))}${x.left > 1 ? ' · ' + x.left + ' left' : ''}</span></span></button><button class="sellthis" data-sf="${all.indexOf(x)}">Sell</button></div>`).join('')
+      <span class="sm">${esc(paidListed(x))}${x.left > 1 ? ' · ' + x.left + ' left' : ''}${resTxt(x)}</span></span></button><button class="sellthis" data-sf="${all.indexOf(x)}">Sell</button></div>`).join('')
     : '<p class="sub" style="padding:10px 0">' + (!stockCache() ? 'Loading your stock…' : q ? 'Nothing matches. Try another word.' : 'Nothing in stock. Things you buy to resell show here.') + '</p>';
   fetchThumbs(list.map(x => x.photo));
 }
@@ -3907,15 +3910,15 @@ function openSell(item, from, keep) {
   // Has the last one just sold online? Ask the Sheet (in the background; the screen works without it)
   if (item.row && navigator.onLine !== false) api('sellCheck', { row: item.row }).then(r => {
     if (!SELL || SELL.item !== item || !r || r.left === null || r.left === undefined) return;
-    item.left = r.left; stockLeft(item, r.left); sellMeta(); sellCalc();
+    item.left = r.left; item.reserved = r.reserved || 0; item.reservedFor = r.reservedFor || ''; stockLeft(item, r.left); sellMeta(); sellCalc();
   }).catch(() => {});
 }
 function sellMeta() {
   const it = SELL.item;
   $('seSub').textContent = [it.paid !== null ? 'Paid ' + gbp(it.paid) : 'No purchase linked', it.listed ? 'listed ' + gbp(it.listed) : '',
-    it.left > 1 ? it.left + ' left' : '', it.days !== null && it.days >= SELL_OLD ? it.days + ' days old' : ''].filter(Boolean).join(' · ');
+    it.left > 1 ? it.left + ' left' : '', it.reserved ? it.reserved + ' reserved' + (it.reservedFor ? ' (' + it.reservedFor + ')' : '') : '', it.days !== null && it.days >= SELL_OLD ? it.days + ' days old' : ''].filter(Boolean).join(' · ');
   $('seQtyWrap').classList.toggle('hide', it.left < 2);
-  $('seQty').textContent = SELL.qty; $('seMinus').disabled = SELL.qty <= 1; $('sePlus').disabled = SELL.qty >= it.left;
+  $('seQty').textContent = SELL.qty; $('seMinus').disabled = SELL.qty <= 1; $('sePlus').disabled = SELL.qty >= Math.max(1, it.left - (it.reserved || 0));   // a reserved copy isn't free to sell
   $('seLeft').textContent = it.left > 1 ? 'of ' + it.left : '';
   document.querySelector('label[for="sePrice"]').textContent = SELL.qty > 1 ? 'Price for ' + SELL.qty : 'Price';
   $('seWarn').classList.toggle('hide', it.left > 0);
@@ -4194,7 +4197,7 @@ $('btnPayPaid').onclick = () => {
   toast('Paid: ' + gbp(p.price) + ' for ' + p.item.slice(0, 30));
   payLeave(p.from);
 };
-$('btnPayLater').onclick = $('btnPayBack').onclick = () => { const p = PAY; if (!p) return; toast('Left as awaiting payment. It\'s under Sales'); payLeave(p.from); };
+$('btnPayLater').onclick = $('btnPayBack').onclick = () => { const p = PAY; if (!p) return; toast('Reserved, awaiting payment: not taken from stock until it\'s paid. It\'s under Sales'); payLeave(p.from); };
 $('btnPayNo').onclick = () => {
   const p = PAY; if (!p) return;
   if (!confirm('Cancel this sale? ' + p.item.slice(0, 40) + ' goes back in stock.')) return;

@@ -1347,7 +1347,7 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
     <div id="slWaitWrap" class="hide"><h3 class="sech">Waiting for a refund</h3>
       <p class="hint">Got your money back? Scan the refund receipt, or forward the refund email. We tick it off.</p>
       <div id="slWait"></div></div>
-    <div id="slAwaitWrap" class="hide"><h3 class="sech">Awaiting payment</h3><p class="hint">Sold in person, paying by bank. Tap Paid once it's in your bank app.</p><div id="slAwait"></div></div>
+    <div id="slAwaitWrap" class="hide"><h3 class="sech">Reserved: awaiting payment</h3><p class="hint">Reserved, not taken from stock until it's paid. "They didn't pay" puts it back on sale in ListMe too. Sold in person, paying by bank. Tap Paid once it's in your bank app.</p><div id="slAwait"></div></div>
     <div id="slNeedsWrap" class="hide"><h3 class="sech">Needs your input</h3><p class="hint">These need a quick check. Tap one to fix it.</p><div id="slNeeds"></div></div>
     <h3 class="sech">Recent sales</h3><div id="slRecent"><p class="sub">Loading…</p></div>
     <details class="more" id="slRep"><summary>📊 Sales sites and HMRC</summary>
@@ -1580,10 +1580,10 @@ setTimeout(function () {
   document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
 }, 6000);
 </script>
-<script src="qrcode.js?v=101"></script>
-<script src="help.js?v=101"></script>
-<script src="app.js?v=101"></script>
-<script src="tour-engine.js?v=101"></script>
-<script src="whatsnew.js?v=101"></script>
+<script src="qrcode.js?v=102"></script>
+<script src="help.js?v=102"></script>
+<script src="app.js?v=102"></script>
+<script src="tour-engine.js?v=102"></script>
+<script src="whatsnew.js?v=102"></script>
 </body>
 </html>
