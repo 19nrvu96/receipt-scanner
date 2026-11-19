@@ -288,6 +288,8 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 .todo button{display:flex;width:100%;align-items:center;gap:10px;border:0;background:none;padding:11px 0;font-size:16px;text-align:left;color:inherit;border-bottom:1px solid #eee}
 .todo button:last-child{border-bottom:0}
 .todo .go{margin-left:auto;color:#999}
+.pbtn{width:100%;text-align:left;padding:10px 12px;border:1px solid #d1d1d6;border-radius:10px;background:#fff;font:inherit;color:#1c1c1e;margin-top:6px}.pbtn.unset{color:#c00;border-color:#f0b4b4;background:#fff6f6}
+.warnbox{background:#fff7e6;border:1px solid #ffd591;border-radius:12px;padding:10px 12px;margin:8px 0;line-height:1.45}.warnbox>div+div{margin-top:8px}
 .dcode{background:#fff4e5;border:1px solid #ffd8a8;border-radius:12px;padding:10px 12px;margin-top:8px}.dcodev{font:700 30px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:5px;text-align:center;margin:6px 0 2px;color:#1c1c1e}.dcodev.big{font-size:44px}
 .mailpic{display:block;max-width:100%;margin:10px 0;border-radius:8px}
 #todo{overflow-x:clip}.todo .tdrow{display:flex;align-items:center;border-bottom:1px solid #eee;touch-action:pan-y}.todo .tdrow:last-child{border-bottom:0}.todo .tdrow>button[data-todo]{border-bottom:0;flex:1;min-width:0}
@@ -682,6 +684,9 @@ html.dark .tgl.on{border-color:#1a8cff;color:#ffffff}
 html.dark .todo{background:#242424}
 html.dark .todo button{border-bottom:1px solid #464646}
 html.dark .todo .go{color:#999999}
+html.dark .pbtn{border:1px solid #58585e;background:#242424;color:#e4e4e6}
+html.dark .pbtn.unset{color:#f47171;border-color:#7b3d3d;background:#361d1d}
+html.dark .warnbox{background:#4a3b1c;border:1px solid #967032}
 html.dark .dcode{background:#4a371c;border:1px solid #88602d}
 html.dark .dcodev{color:#e4e4e6}
 html.dark .todo .tdrow{border-bottom:1px solid #464646}
@@ -1004,6 +1009,12 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
       <div class="duo"><div><label for="stTap">Fixed fee per payment (p)</label><input id="stTap" type="number" step="0.1" inputmode="decimal" placeholder="e.g. 20"></div>
         <div><label for="stPct">Fee % of each sale</label><input id="stPct" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 1.69"></div></div>
       <p class="hint" id="stCardHint">Picking an app fills in its usual fee. Check it in the app: fees change.</p>
+    </div>
+    <div class="card scard2" id="stCardsCard">
+      <label>Your cards</label>
+      <p class="hint">One card can show different numbers: Apple Pay and Google Pay use their own (Monzo ••9546 on the phone is ••6630 on the plastic). List every number it shows as, so it's one card in your records. Last 4 digits only.</p>
+      <div id="stCards"></div>
+      <button type="button" class="btn sec" id="btnAddCard">＋ Add a card</button>
     </div>
     <div class="card scard2" id="stBankCard">
       <label>Get paid by bank</label>
@@ -1515,6 +1526,7 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
     <div id="dupBanner" class="banner dup hide"></div>
     <div id="recon" class="recon ok"></div>
     <div id="rvMail" class="rvmail hide"></div>
+    <div class="warnbox hide" id="priceChk"></div>
     <div id="items"></div>
 
     <div class="meta">
@@ -1528,6 +1540,7 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
       <label>Payment method</label>
       <div class="combo">
         <input id="fPay" placeholder="e.g. Visa ••4521">
+        <div class="sm hide" id="payCard" style="margin-top:4px"></div>
         <select id="payPick" aria-label="Ways to pay"></select>
       </div>
       <div id="payAsk" class="payask hide" role="status"></div>
@@ -1567,10 +1580,10 @@ setTimeout(function () {
   document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
 }, 6000);
 </script>
-<script src="qrcode.js?v=99"></script>
-<script src="help.js?v=99"></script>
-<script src="app.js?v=99"></script>
-<script src="tour-engine.js?v=99"></script>
-<script src="whatsnew.js?v=99"></script>
+<script src="qrcode.js?v=100"></script>
+<script src="help.js?v=100"></script>
+<script src="app.js?v=100"></script>
+<script src="tour-engine.js?v=100"></script>
+<script src="whatsnew.js?v=100"></script>
 </body>
 </html>

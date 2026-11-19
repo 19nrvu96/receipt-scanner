@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v99';
+const APP_VERSION = 'v100';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -607,7 +607,8 @@ function buildReview(result, source) {
     rows: rows.map((r, i) => Object.assign({ _sel: true, _shared: false, _pct: 50, _match: -1 }, r, vatSeed(r))),
     sharePct: 50,     // your % for the next line you share; follows the last % you typed
     meta,
-    channel: (source === 'lib' || source === 'email') ? 'Email' : (rows[0]?.['email or in person'] || 'In person'),
+    // A photo (camera or library) of a till receipt is in person: the read decides (Gemini.gs), only emails are always Email
+    channel: source === 'email' ? 'Email' : (rows[0]?.['email or in person'] || 'In person'),
     method:  rows[0]?.method || 'Collection',
     queueId: null,
     jobId: null,
@@ -619,7 +620,9 @@ function buildReview(result, source) {
   $('fDate').value  = rows[0]?.['purchase date'] || today();
   $('fOrder').value = rows[0]?.['order number'] || '';
   $('fPay').value   = rows[0]?.['payment method'] || '';
-  $('fNotes').value = '';   $('fFees').value = state.meta.feeTotal || '';
+  // The branch from the receipt header ("Asda" → Stratford-upon-Avon), so the town is the receipt's, not typed from memory
+  $('fNotes').value = meta.storeTown ? 'Branch: ' + meta.storeTown : '';   $('fFees').value = state.meta.feeTotal || '';
+  state.dateOk = false;
   $('fExtRet').checked = false; $('fRetBy').value = ''; $('fRetWrap').classList.add('hide');
   setTimeout(retLabel, 0);
   $('fEmail').value = meta.orderEmail || rememberedEmail(rows[0]?.store) || '';
@@ -665,13 +668,84 @@ function buildReview(result, source) {
       toast('Items add to £' + itemsSum.toFixed(2) + ' but receipt total is £' + expected.toFixed(2) + ' — check prices', true);
     }
   }
+  // Quantity x price checks (Gemini.gs): a price each worked out from the printed line total, or one line that makes the
+  // receipt add up ("15 x 15.00 = 225.00" read as 5.00 each). Shown with the fix to accept.
+  priceCheckBanner();
   // Read by a back-up AI model (the main ones were used up or busy): ask for a quick look.
   if (meta.backup) toast('Read by a back-up AI model today. Give the lines and prices a quick check.', true);
 
    
    renderItems();
   fillPayPicker();   // ways to pay that fit this shop, and "how did you pay?" when the email or receipt doesn't say
+  cardTag(); $('fPay').oninput = cardTag;
   show('vReview');
+}
+
+// Settings → Your cards: which card a "••9546" is, and whether it's the business's or yours
+function cardOf(pm) {
+  const l4 = (String(pm || '').match(/(\d{4})(?!.*\d{4})/) || [])[1];
+  return l4 ? (CFG.cards || []).find(c => c.nums.indexOf(l4) > -1) : null;
+}
+function cardTag() {
+  const el = $('payCard'); if (!el) return;
+  const pm = $('fPay').value, c = cardOf(pm);
+  el.innerHTML = c ? (c.business ? '🏢 ' + esc(c.name) + ': business card' + (c.nums.length > 1 ? ' (also shows as ••' + c.nums.slice(1).join(', ••') + ')' : '')
+    : '👤 ' + esc(c.name) + ': your own card. The business owes you this (director\'s loan).') : '';
+  el.classList.toggle('hide', !c);
+}
+function priceCheckBanner() {
+  const pc = (state.meta.priceChecks || []).filter(c => state.rows[c.i]);
+  const box = $('priceChk'); if (!box) return;
+  box.innerHTML = pc.map((c, n) => c.kind === 'each'
+    ? `<div>🔢 <b>${esc(state.rows[c.i].item)}</b>: ${c.qty} × ${money(c.was)} didn't match the line total ${money(c.line)}, so the price each is now ${money(c.now)}. <button type="button" class="link" data-pcu="${n}">Undo</button></div>`
+    : `<div>🔢 The lines add up to less than the receipt total. Is <b>${esc(state.rows[c.i].item)}</b> ${c.qty} × ${money(c.now)} = ${money(c.line)} (not ${money(c.was)} each)? <button type="button" class="btn sec sm2" data-pcy="${n}">Yes, use ${money(c.now)} each</button></div>`).join('');
+  box.classList.toggle('hide', !pc.length);
+  box.onclick = e => {
+    const y = e.target.dataset.pcy, u = e.target.dataset.pcu;
+    const c = pc[Number(y !== undefined ? y : u)]; if (!c) return;
+    const r = state.rows[c.i];
+    r['buy price'] = y !== undefined ? c.now : c.was;
+    state.meta.priceChecks = (state.meta.priceChecks || []).filter(x => x !== c);
+    recalc(); renderItems(); priceCheckBanner(); toast(y !== undefined ? 'Price each set to ' + money(c.now) : 'Back to ' + money(c.was) + ' each');
+  };
+}
+
+// A purchase date over 60 days ago or in the future is asked about once before saving (a misread year: 2023 for 2026).
+function dateCheck(date) {
+  if (state.dateOk) return null;
+  const [d, m, y] = date.split('/').map(Number), when = new Date(y, m - 1, d), t = new Date(); t.setHours(0, 0, 0, 0);
+  const ago = Math.round((t - when) / 864e5);
+  if (ago <= 60 && ago >= -1) return null;
+  let suggest = ''; [t.getFullYear(), t.getFullYear() - 1].some(yy => { const c = new Date(yy, m - 1, d), a = Math.round((t - c) / 864e5); if (a >= 0 && a <= 60) { suggest = String(d).padStart(2, '0') + '/' + String(m).padStart(2, '0') + '/' + yy; return true; } return false; });
+  return { ago, suggest };
+}
+function askDate(date, q) {
+  return new Promise(res => {
+    const v = sheet(`<h3>Is ${esc(date)} right?</h3>
+      <p class="sub">That's ${q.ago < 0 ? 'in the future' : q.ago > 730 ? 'over ' + Math.floor(q.ago / 365) + ' years ago' : q.ago + ' days ago'}. The year on a receipt is easy to misread.</p>
+      ${q.suggest ? `<button class="btn" data-dq="fix">Use ${esc(q.suggest)}</button>` : ''}
+      <button class="btn ${q.suggest ? 'sec' : ''}" data-dq="keep">Yes, ${esc(date)} is right</button>
+      <button class="btn ghost" data-dq="edit">Change the date</button>`);
+    v.onclick = e => { const k = e.target.dataset.dq; if (!k && e.target !== v) return; v.remove(); res(k || 'edit'); };
+  });
+}
+
+// Lines of one receipt with three or more different purposes: asked about once (purposes picked by mistake).
+function purposeMix() {
+  if (state.purposeOk || state.rows.length < 3) return null;
+  const n = {}; state.rows.forEach(r => { n[r.purpose] = (n[r.purpose] || 0) + 1; });
+  const keys = Object.keys(n); if (keys.length < 3) return null;
+  keys.sort((a, b) => n[b] - n[a]); return { n, keys };
+}
+function askPurposes(q) {
+  return new Promise(res => {
+    const v = sheet(`<h3>${q.keys.length} different purposes on one receipt</h3>
+      <p class="sub">${q.keys.map(k => esc(k) + ' (' + q.n[k] + ')').join(', ')}. Is that right?</p>
+      <button class="btn" data-pq="all">Make every line ${esc(q.keys[0])}</button>
+      <button class="btn sec" data-pq="keep">Yes, they're right</button>
+      <button class="btn ghost" data-pq="edit">Let me change them</button>`);
+    v.onclick = e => { const k = e.target.dataset.pq; if (!k && e.target !== v) return; v.remove(); res(k || 'edit'); };
+  });
 }
 
 function findDupes() {
@@ -729,11 +803,7 @@ function renderItems() {
       ${feeTotal || state.meta.discount ? `<div class="fee">${feeLabel(r)}</div>` : ''}
       ${CFG.vat ? `<div class="vat">VAT £<input type="number" step="0.01" inputmode="decimal" value="${r.VAT || 0}" data-k="VAT" data-i="${i}"></div>` : ''}
       ${state.refund ? matchSelect(r, i) : ''}
-      <select data-k="purpose" data-i="${i}" class="${r.purpose ? '' : 'unset'}">
-        <option value="">Select purpose…</option>
-        ${CFG.purposes.map(p =>
-          `<option ${p === r.purpose ? 'selected' : ''}>${esc(p)}</option>`).join('')}
-      </select>
+      <button type="button" class="pbtn${r.purpose ? '' : ' unset'}" data-pp="${i}">${r.purpose ? esc(r.purpose) : 'Select purpose…'}</button>
       <div class="splitrow"><button class="split${r._shared ? ' on' : ''}" data-share="${i}">${shareLabel(r)}</button>
       ${r._shared ? `<label class="pctwrap">you pay <input class="pct" type="number" inputmode="decimal" min="1" max="99"
         step="any" list="pctList" value="${pctOf(r)}" data-k="_pct" data-i="${i}"> %</label>` : ''}</div>`;
@@ -764,7 +834,15 @@ function renderItems() {
     if (e.target.dataset.k === '_pct') e.target.value = pctOf(state.rows[e.target.dataset.i]);
   };
 
-    box.onclick = e => {
+    box.onclick = async e => {
+    // Purpose: a tap opens the picker (a list you scroll past can't change it by accident, as the old drop-down could)
+    const pp = e.target.closest('[data-pp]');
+    if (pp) {
+      const row = state.rows[pp.dataset.pp];
+      const v = await pickPurpose('Purpose for ' + String(row.item || 'this line').slice(0, 40), row.purpose);
+      if (v) { row.purpose = v; renderItems(); }
+      return;
+    }
     const sh = e.target.dataset.share;
     if (sh !== undefined) {
       const row = state.rows[sh];
@@ -1291,6 +1369,22 @@ async function saveToSheet(force) {
   if (!store) { toast('Store name required', true); return; }
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
     toast('Date must be DD/MM/YYYY', true); return;
+  }
+  const dq = dateCheck(date);
+  if (dq) {
+    const a = await askDate(date, dq);
+    if (a === 'edit') { $('fDate').focus(); return; }
+    if (a === 'fix') { $('fDate').value = dq.suggest; }
+    state.dateOk = true;
+    return saveToSheet(force);
+  }
+  const pm = purposeMix();
+  if (pm) {
+    const a = await askPurposes(pm);
+    if (a === 'edit') return;
+    if (a === 'all') { state.rows.forEach(r => { r.purpose = pm.keys[0]; }); renderItems(); }
+    state.purposeOk = true;
+    return saveToSheet(force);
   }
 
   const pay   = $('fPay').value.trim();
@@ -3475,6 +3569,7 @@ async function refreshConfig() {
   try {
     const d = await api('bootstrap', {});
     CFG.purposes = d.purposes || [];
+    CFG.cards = d.cards || [];
     CFG.stores   = d.stores   || [];
     if (d.payments) CFG.payments = d.payments;          // how you've paid before, most used first (Purchases tab)
     if (d.payByStore) CFG.payByStore = d.payByStore;    // the last way you paid at each shop
@@ -4193,6 +4288,7 @@ async function openSettings() {
     segSet('stType', d.type || ''); $('stVat').checked = !!d.vat; $('stYe').value = String(d.yearEnd || 3); $('stInc').value = d.income || '';
     $('stTap').value = d.cardFee && d.cardFee.perTap ? d.cardFee.perTap : ''; $('stPct').value = d.cardFee && d.cardFee.pct ? d.cardFee.pct : '';
     $('stCardApp').value = d.cardApp || 'Other';
+    renderCards(d.cards || []);
     { const b = d.bank || {}; $('stBankName').value = b.name || ''; $('stBankSort').value = b.sort ? b.sort.replace(/(\d\d)(\d\d)(\d\d)/, '$1-$2-$3') : ''; $('stBankAcct').value = b.acct || ''; $('stPayLink').value = b.link || ''; }
     const a = d.account || {};
     SETTINGS.sheetUrl = a.sheetUrl || '';
@@ -4314,6 +4410,19 @@ $('btnCopyFwd').onclick = async () => {
   const t = $('stFwd').textContent;
   try { await navigator.clipboard.writeText(t); toast('Copied: ' + t); } catch (e) { prompt('Copy this address', t); }
 };
+// Settings → Your cards: name, every last-4 it shows as, business or personal
+function renderCards(list) {
+  $('stCards').innerHTML = list.map((c, i) => `<div class="cardrow" data-ci="${i}" style="border-top:1px solid #eee;padding-top:8px;margin-top:8px">
+    <div class="duo"><div><label>Name</label><input data-cf="name" value="${esc(c.name)}" placeholder="e.g. Monzo Business" maxlength="40"></div>
+      <div><label>Numbers it shows as</label><input data-cf="nums" value="${esc((c.nums || []).join(', '))}" inputmode="numeric" placeholder="6630, 9546"></div></div>
+    <label class="check"><input type="checkbox" data-cf="business" ${c.business ? 'checked' : ''}> Business card (paid by the business)</label>
+    <button type="button" class="link" data-cdel="${i}">Remove</button></div>`).join('') || '<p class="sub">No cards yet.</p>';
+}
+const cardRows = () => [...document.querySelectorAll('#stCards .cardrow')].map(r => ({ name: r.querySelector('[data-cf="name"]').value.trim(),
+  nums: r.querySelector('[data-cf="nums"]').value.split(/[^\d]+/).filter(n => /^\d{4}$/.test(n)), business: r.querySelector('[data-cf="business"]').checked }));
+const readCards = () => cardRows().filter(c => c.name && c.nums.length);
+$('btnAddCard').onclick = () => { const l = cardRows(); l.push({ name: '', nums: [], business: true }); renderCards(l); const q = document.querySelectorAll('#stCards [data-cf="name"]'); q[q.length - 1].focus(); };
+$('stCards').onclick = e => { const d = e.target.dataset.cdel; if (d === undefined) return; const l = cardRows(); l.splice(Number(d), 1); renderCards(l); };
 $('btnStSave').onclick = async () => {
   const d = SETTINGS || {}, type = segGet('stType');
   if (!type) { toast('Pick your business type', true); return; }
@@ -4321,6 +4430,7 @@ $('btnStSave').onclick = async () => {
                      cardFee: { perTap: Number($('stTap').value) || 0, pct: Number($('stPct').value) || 0 },
                      cardApp: $('stCardApp').value,
                      bank: { name: $('stBankName').value.trim(), sort: $('stBankSort').value, acct: $('stBankAcct').value, link: $('stPayLink').value.trim() },
+                     cards: readCards(),
                      emailSource: $('stSrc').value, orderEmail: $('stSrc').value === 'gmail' ? '' : $('stOrderEmail').value.trim(),
                      monthlyEmail: $('stMonthly').checked };
   if (d.type && (type !== d.type || settings.vat !== !!d.vat) &&
@@ -4331,7 +4441,7 @@ $('btnStSave').onclick = async () => {
   const b = $('btnStSave'); b.disabled = true; b.textContent = 'Saving…';
   try {
     SETTINGS = await api('settingsSet', { settings });
-    CFG.business = SETTINGS.type; CFG.vat = SETTINGS.vat; CFG.cardFee = SETTINGS.cardFee; CFG.cardApp = SETTINGS.cardApp || ''; CFG.bank = SETTINGS.bank || CFG.bank; saveCache();
+    CFG.business = SETTINGS.type; CFG.vat = SETTINGS.vat; CFG.cardFee = SETTINGS.cardFee; CFG.cardApp = SETTINGS.cardApp || ''; CFG.bank = SETTINGS.bank || CFG.bank; CFG.cards = SETTINGS.cards || []; saveCache();
     toast(SETTINGS.note || 'Settings saved');
     openSettings();
   } catch (err) { toast(err.message, true); }
