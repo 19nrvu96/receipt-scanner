@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v100';
+const APP_VERSION = 'v101';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2117,7 +2117,8 @@ document.addEventListener('visibilitychange', () => {
 function saleCard(o, i, list) {
   const price = num(o['sale price']), net = num(o['net received']), profit = num(o.profit);
   const bits = [esc(o.platform || ''), esc(o['sale date'] || '')].filter(Boolean).join(' · ');
-  return `<div class="card scard" data-${list}="${i}"><div class="sb">
+  const cx = list === 'need' && /^cancel/i.test(o.status || '');   // a cancelled sale's notice: ✕ or swipe it away
+  return `<div class="card scard${cx ? ' swipe' : ''}" data-${list}="${i}"${cx ? ' style="position:relative;padding-right:40px"' : ''}>${cx ? '<button class="pendx" data-needx="' + i + '" aria-label="Mark as read">✕</button>' : ''}<div class="sb">
     <div class="st">${esc(o.item || o['order number'] || 'Sale')}</div>
     <div class="sm">${bits}${o['order number'] ? ' · #' + esc(o['order number']) : ''}</div>
     <div class="sm">${o._saving ? '<span class="tag saving">' + (navigator.onLine === false ? 'Waiting for signal' : 'Saving…') + '</span>' : ''}<span class="tag ${tagFor(o.status)}">${esc(o.status || 'Sold')}</span>${o['counts in totals'] === 'No' ? '<span class="tag">not in totals</span>' : ''}
@@ -2163,7 +2164,7 @@ function renderSales() {
   $('slNeeds').innerHTML = d.needs.map((o, i) => saleCard(o, i, 'need')).join('');
   const waiting = saleOut.filter(o => o.req.sale).map(o => o.req.sale), editing = new Set(saleOut.map(o => o.row).filter(Boolean));
   const pend = waiting.map((o, i) => saleCard(Object.assign({}, o, { _saving: true }), i, 'pend')).join('');
-  const rec = d.recent.filter(o => !editing.has(o.row));
+  const rec = d.recent.filter(o => !editing.has(o.row) && !/^cancel/i.test(o.status || ''));   // cancelled sales don't clutter Recent (still in the Sales tab)
   $('slRecent').innerHTML = (rec.length || pend) ? pend + rec.map(o => saleCard(o, d.recent.indexOf(o), 'rec')).join('')
     : '<p class="sub">No sales yet. Forward a sale email, or tap ＋ Log a sale.</p>';
   renderAwaiting(d);
@@ -2736,6 +2737,7 @@ $('slEbay').addEventListener('click', () => setTimeout(async () => {
 
 $('vSales').addEventListener('click', async e => {
   const t = e.target, card = t.closest('[data-need],[data-rec]');
+  if (t.closest('[data-needx]')) return dismissNeed(t.closest('.scard'));
   if (t.dataset.lab !== undefined) return showLabel(SALES.toPost[Number(t.dataset.lab)]);
   const RO = (SALES && SALES.returns && SALES.returns.open) || [];
   if (t.dataset.rqr !== undefined) return showReturnCode(RO[Number(t.dataset.rqr)]);
@@ -5819,3 +5821,14 @@ $('puList').onclick = e => {
 $('btnPurchases').onclick = () => openPurchases();
 $('btnPuBack').onclick = () => show('vHome');
 
+
+
+// A cancelled sale's "pick the sale" notice: ✕ or swipe clears it (same as "keep it on its own": the row stays, not counted)
+async function dismissNeed(el) {
+  const i = el && el.dataset.need; if (i === undefined || !SALES) return;
+  const o = SALES.needs[Number(i)]; if (!o) return;
+  SALES.needs = SALES.needs.filter(x => x !== o); renderSales();
+  try { await api('saleSave', { sale: { needs: '' }, row: o.row, saleId: o._sale_id || undefined }); toast('Cleared. The sale is still in your Sales tab'); }
+  catch (err) { SALES.needs.splice(Number(i), 0, o); renderSales(); toast(err.message, true); }
+}
+swipeAway($('slNeeds'), '.swipe', dismissNeed);
