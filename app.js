@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v105';
+const APP_VERSION = 'v106';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -949,6 +949,11 @@ function recalc(keepVat) {
         '<div class="recwhy">' + esc(one ? 'We take it off the item, so your records show the ' + money(expected) + ' you really paid.'
           : 'We share it across the items by price, so your records show the ' + money(expected) + ' you really paid.') +
         ' If not, check the prices and quantities above.</div>' + esc(shareNote);
+    } else if (gap > 0 && !state.refund && expected > 0) {
+      // Too big to be a discount: usually a gift card or balance paid the rest
+      el.innerHTML = head + '<div class="recwhy">' + esc("That's " + money(gap) + ' less. Did a gift card, voucher balance or points pay ' + money(gap) + '?') + '</div>' +
+        `<button class="btn recbtn" data-split="1">${esc('Yes, ' + money(gap) + ' was a gift card or balance')}</button>` +
+        '<div class="recwhy">If not, check the prices and quantities above.</div>' + esc(shareNote);
     } else if (gap < 0 && !state.refund) {
       el.innerHTML = head + '<div class="recwhy">' + esc("That's " + money(-gap) + ' more. If it was delivery or a booking fee, put it in "Delivery / booking fees" below. If not, check the prices and quantities above.') + '</div>' + esc(shareNote);
     } else {
@@ -960,6 +965,7 @@ function recalc(keepVat) {
 }
 
 $('recon').addEventListener('click', e => {
+  if (e.target.closest('[data-split]')) return paySplit();
   const b = e.target.closest('[data-disc],[data-undisc]'); if (!b) return;
   state.meta.discount = b.dataset.disc ? r2((state.meta.discount || 0) + Number(b.dataset.disc)) : 0;
   recalc(); renderItems();
@@ -1181,6 +1187,12 @@ function payParts(pm) {   // "Amazon gift card £10.00 + Visa ••4521 £33.69
   return String(pm || '').split(/\s+\+\s+/).map(p => { const m = p.match(/^(.*?)\s*£\s*(\d[\d,]*(?:\.\d\d)?)\s*$/);
     return m ? { name: m[1].trim(), amt: Number(m[2].replace(/,/g, '')) } : { name: p.trim(), amt: null }; }).filter(x => x.name);
 }
+// Items cost more than the card was charged (e.g. £69.51 of items, £17.60 charged): a gift card or balance paid the gap
+function partGap() {
+  if (!state || state.refund || state.meta.receiptTotal == null) return 0;
+  const sum = r2(state.rows.reduce((t, r) => t + (Number(r['total cost']) || 0), 0)), paid = Number(state.meta.receiptTotal);
+  return sum - paid > 0.01 && paid > 0 ? r2(sum - paid) : 0;
+}
 function payTotal() {
   const sum = state ? r2(state.rows.reduce((t, r) => t + (Number(r['total cost']) || 0), 0)) : 0;
   return state && state.meta.receiptTotal != null ? Number(state.meta.receiptTotal) : sum;
@@ -1234,6 +1246,10 @@ function payHelp() {
       const opts = [...new Set([...c.cards, ...c.ways.filter(w => !isPartPay(w))].filter(Boolean))].slice(0, 7);
       html = `<div><b>${esc(p.name)} paid ${esc(money(p.amt))}.</b> How did you pay the other ${esc(money(rest))}?</div>
         <div class="paychips">${opts.map(o => chip(o, p.name + ' ' + money(p.amt) + ' + ' + o + ' ' + money(rest))).join('')}${chip('＋ Add a card', '', ' data-addcard="1" data-rest="' + esc(p.name + ' ' + money(p.amt) + '|' + money(rest)) + '"')}${chip('Something else…', '', ' data-split="1"')}</div>`;
+    } else if (p.amt == null && partGap()) {
+      const g = partGap();
+      html = `<div><b>The items come to ${esc(money(r2(total + g)))} and ${esc(money(total))} was charged. Did the ${esc(p.name.replace(/^(\w)/, m => m.toLowerCase()))} pay the other ${esc(money(g))}?</b></div>
+        <div class="paychips">${chip('Yes, ' + money(g) + '…', '', ' data-split="1"')}${chip('It paid all ' + money(total), p.name + ' ' + money(total))}</div>`;
     } else if (p.amt == null) {
       html = `<div><b>Did the ${esc(p.name.replace(/^(\w)/, m => m.toLowerCase()))} pay all ${esc(money(total))}?</b></div>
         <div class="paychips">${chip('Yes, all of it', p.name + ' ' + money(total))}${chip('No, only part…', '', ' data-split="1"')}</div>`;
@@ -1246,14 +1262,16 @@ function payHelp() {
 }
 // Paid in two parts: a gift card, balance or points first, then a card (or other way) for the rest
 function paySplit() {
-  const c = payChoices(), total = payTotal(), cur = payParts($('fPay').value);
+  const c = payChoices(), gap = partGap(), charged = payTotal(), total = r2(charged + gap), cur = payParts($('fPay').value);
   const firstOpts = [...new Set([...c.parts, ...c.ways.filter(isPartPay)])];
   const restOpts = [...new Set([...c.cards, ...c.ways.filter(w => !isPartPay(w)), ...c.other])];
   const f0 = cur[0] && isPartPay(cur[0].name) ? cur[0] : { name: firstOpts[0], amt: null };
+  if (f0.amt == null && gap) f0.amt = gap;   // total cost minus what the card was charged
   const r0 = cur[1] ? cur[1].name : (restOpts[0] || '');
   const o = (list, v) => list.map(p => `<option${p === v ? ' selected' : ''}>${esc(p)}</option>`).join('');
   const v = sheet(`<h3>Paid in two parts</h3>
-    <p class="sub">For example a gift card or your balance first, then a card for the rest. The order is ${esc(money(total))}.</p>
+    <p class="sub">${gap ? esc('The items come to ' + money(total) + ' and ' + money(charged) + ' was charged, so the first part paid ' + money(gap) + '.')
+      : 'For example a gift card or your balance first, then a card for the rest. The order is ' + esc(money(total)) + '.'}</p>
     <div class="spform"><label>First part</label><select id="spA">${o(firstOpts, f0.name)}</select>
     <label>Amount it paid</label><input id="spAmt" type="number" step="0.01" inputmode="decimal" placeholder="0.00" value="${f0.amt != null ? f0.amt.toFixed(2) : ''}">
     <label>The rest was paid by</label><input id="spB" list="spList" value="${esc(r0)}" placeholder="e.g. Visa ••4521"><datalist id="spList">${restOpts.map(p => `<option value="${esc(p)}">`).join('')}</datalist>
@@ -1268,7 +1286,8 @@ function paySplit() {
     if (a > total + 0.01) { toast('That is more than the order', true); return; }
     if (r > 0.01 && !rest) { toast('Say how you paid the rest', true); $('spB').focus(); return; }
     $('fPay').value = first + ' ' + money(a) + (r > 0.01 ? ' + ' + rest + ' ' + money(r) : '');
-    v.remove(); payHelp();
+    v.remove();
+    if (gap) { state.meta.receiptTotal = total; recalc(); } else payHelp();   // the order total now includes the gift card part
   };
   setTimeout(() => { if (!$('spAmt').value) $('spAmt').focus(); }, 50);
 }
