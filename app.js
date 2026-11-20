@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v109';
+const APP_VERSION = 'v110';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -3895,6 +3895,7 @@ function loadCache() {
 async function refreshConfig() {
   try {
     const d = await api('bootstrap', {});
+    CFG.demo = !!d.demo; demoBadge(CFG.demo);          // Demo.gs: a demo Sheet (sample data, no email)
     CFG.purposes = d.purposes || [];
     CFG.cards = d.cards || [];
     CFG.giftCards = d.giftCards || [];                  // Books.gs: gift cards with money left, for the review screen
@@ -4383,6 +4384,22 @@ $('btnSeMore').onclick = () => {   // the full sale form, filled in (postage, dr
 
 /* ListMe's link: #sell?u=<unit ids>&k=<key>&t=<title>&p=<listed>&r=<purchase row>&n=<left>&c=<cost each>&ph=<photo>&rx=<this Sheet's script address>
    Everything is after the #, so it never reaches any server. */
+/* Demo (Demo.gs): a DEMO pill and a one-line note on every screen, so nobody mistakes the sample data for real. */
+function demoBadge(on) {
+  let b = document.getElementById('demoPill');
+  if (!on) { if (b) b.remove(); const n = document.getElementById('demoNote'); if (n) n.remove(); return; }
+  if (b) return;
+  document.body.insertAdjacentHTML('afterbegin', '<div id="demoNote" style="position:sticky;top:0;z-index:50;background:#fff4d6;color:#5a4300;font:500 13px/1.4 -apple-system,system-ui,sans-serif;text-align:center;padding:calc(env(safe-area-inset-top) + 4px) 12px 4px">'
+    + '<span id="demoPill" style="display:inline-block;margin-right:8px;padding:1px 8px;border-radius:999px;background:#d64545;color:#fff;font-weight:700;letter-spacing:.06em">DEMO</span>Sample data (Sam Demo, made up). It resets every night.</div>');
+}
+/* A setup link for a demo phone: …/#connect?rx=<the demo Sheet's /exec address>. Only when this phone isn't connected yet. */
+function connectLink(hash) {
+  if (!/^#connect\b/.test(hash)) return;
+  const rx = new URLSearchParams(hash.replace(/^#connect\??/, '')).get('rx') || '';
+  history.replaceState(null, '', location.pathname);
+  if (localStorage.getItem(LS_URL)) return;
+  if (/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(rx)) { try { localStorage.setItem(LS_URL, rx); localStorage.setItem('rs_intro', '1'); } catch (e) {} }
+}
 function sellLinkConnect(hash) {
   if (!/^#sell\b/.test(hash) || localStorage.getItem(LS_URL)) return;
   const rx = new URLSearchParams(hash.replace(/^#sell\??/, '')).get('rx') || '';
@@ -4573,6 +4590,7 @@ setInterval(() => { if (!$('vHome').classList.contains('hide')) renderUsage(); }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && localStorage.getItem(LS_URL)) refreshConfig();
 });
+connectLink(location.hash);   // a demo setup link (#connect?rx=…)
 sellLinkConnect(location.hash);   // a ListMe link on a phone where this copy of the app isn't set up yet (Safari keeps its own storage)
 if (localStorage.getItem(LS_URL)) {
   show('vHome'); if (CFG.waiting) renderTodo(CFG.waiting); renderAppSwitch(); refreshConfig();
