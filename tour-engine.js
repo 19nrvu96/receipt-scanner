@@ -190,7 +190,7 @@
       const groups = [];
       T.cfg.chapters.forEach((c, k) => { let g = groups.find(x => x.d === (c.day || '')); if (!g) groups.push(g = { d: c.day || '', list: [] }); g.list.push([c, k]); });
       card.innerHTML = `<div class="ft-head"><span class="sp">${esc(T.cfg.name)} · guided tour</span><button class="ft-ib" data-ft="close" aria-label="Close">✕</button></div>
-        <h3>What changed, feature by feature</h3><p>Newest first. Pick one, or start at the top. Each one opens the screen, points at the real thing, tells you what to do, then shows what it changes in your other apps and the Sheet.</p>
+        <h3>${T.cfg.menuTitle || 'What changed, feature by feature'}</h3><p>${T.cfg.menuIntro || 'Newest first. Pick one, or start at the top. Each one opens the screen, points at the real thing, tells you what to do, then shows what it changes in your other apps and the Sheet.'}</p>
         ${groups.map((g, gi) => `${g.d ? `<div class="ft-day${gi === 0 && groups.length > 1 ? ' new' : ''}">${esc(g.d)}</div>` : ''}<div class="ft-menu">${g.list.map(([c, k]) => `<button data-ft="ch" data-k="${k}"><span style="font-size:22px">${c.icon}</span><span class="t"><b>${esc(c.title)}</b><small>${esc(c.summary || '')}</small></span><span>${done[c.id] ? '✓' : '›'}</span></button>`).join('')}</div>`).join('')}
         <div class="ft-nav"><button class="ft-btn" data-ft="close">Later</button><span class="ft-dots"></span><button class="ft-btn pri" data-ft="ch" data-k="0">Start ›</button></div>`;
       T.el = null; place(); return;

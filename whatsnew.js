@@ -342,7 +342,38 @@
     get theme() { const d = document.documentElement.classList.contains('dark');
       return d ? { accent: '#0a84ff', accentInk: '#fff', bg: '#1d2027', fg: '#e8e8ea', line: '#3a3d45', strong: '#fff' } : { accent: '#0a84ff', accentInk: '#fff', bg: '#fff', fg: '#111', line: '#d6d6db', strong: '#111' }; },
     when: () => !!localStorage.getItem('rs_url') };
-  window.whatsNew = () => window.FlipTour.start(cfg);
-  document.addEventListener('click', e => { if (e.target.closest('[data-whatsnew]')) { e.preventDefault(); window.FlipTour.start(cfg); } });
-  window.FlipTour.auto(cfg, 2500);
+  // Demo Sheets (Demo.gs): no "What's new"; a short tour of the key things using Sam Demo's made-up data.
+  const DEMO = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:demo1', menuTitle: 'Receipts in 2 minutes',
+    menuIntro: 'A quick look at what it does, using Sam Demo\'s made-up shopping and sales. Start at the top, or pick one. Each opens the real screen.',
+    get theme() { return cfg.theme; }, when: cfg.when,
+    chapters: [
+      { id: 'd-snap', icon: '📸', title: 'Snap a receipt', summary: 'It reads every line for you',
+        steps: [{ title: 'Snap it', go: go(() => show('vHome')), target: '#btnCam',
+          text: 'Take a photo of any receipt (even a long one in two photos). It reads the shop, every item and price, and adds them to the Sheet once you\'ve checked them. Try it on a real receipt: it reads a few a day in the demo.' }] },
+      { id: 'd-emails', icon: '✉️', title: 'Order emails', summary: 'Forward them, it reads them',
+        steps: [{ title: 'Emailed receipts', go: go(() => openQueue()),
+          text: 'Online orders (fakeAsda, fakeArgos, fakeTesco here) are forwarded to the app, read automatically and wait here for a quick check.' }] },
+      { id: 'd-sales', icon: '💷', title: 'Sales and profit', summary: 'Profit per item, days to sell',
+        steps: [{ title: 'Every sale', go: sales(), target: '#slRecent',
+          text: 'Every sale from eBay, Vinted, Facebook or in person, with the fees, postage and what it cost, so you see the real profit and how long it took to sell. One is a loss (the air fryer), one was cancelled, one refunded, one is waiting for a bank transfer.' }] },
+      { id: 'd-post', icon: '📦', title: 'Parcels to post', summary: 'The QR codes, in one place',
+        steps: [{ title: 'To post', go: sales('slPostWrap'), target: '#slPostWrap',
+          text: 'Every postage label and QR code in one wallet: show it at the shop, tap Posted. One is due today and one is late, so it shows first.' }] },
+      { id: 'd-collect', icon: '🏬', title: 'Click and collect', summary: 'Codes and collect-by dates',
+        steps: [{ title: 'To collect', go: sales('slCollWrap'), target: '#slCollWrap',
+          text: 'Orders waiting at the shop (fakeArgos here), with the collect-by date and that day\'s opening hours.' }] },
+      { id: 'd-return', icon: '↩️', title: 'Returns', summary: 'Never miss a return date',
+        steps: [{ title: 'To return', go: sales('slToRetWrap'), target: '#slToRetWrap',
+          text: 'The Pokémon box is unopened and its return date is in 3 days, so it warns you in time to get your money back.' }] },
+      { id: 'd-numbers', icon: '📊', title: 'Your numbers and tax', summary: 'Profit by month, a rough tax guide',
+        steps: [{ title: 'Your numbers', go: go(() => openNumbers()),
+          text: 'Money in, money out and profit by month, and a rough guide to the tax numbers for the year. All from the receipts and sales above, with nothing typed twice.' }] },
+      { id: 'd-apps', icon: '🔗', title: 'With FlipCheck and ListMe', summary: 'One flow: buy, list, sell, records',
+        steps: [{ title: 'All three together', go: go(() => show('vHome')),
+          text: 'FlipCheck decides what to buy, ListMe lists it and handles buyers, and Receipts keeps the records. A sale in one updates the others.' }] },
+    ] };
+  const tourNow = () => (typeof CFG !== 'undefined' && CFG.demo ? DEMO : cfg);
+  window.whatsNew = () => window.FlipTour.start(tourNow());
+  document.addEventListener('click', e => { if (e.target.closest('[data-whatsnew]')) { e.preventDefault(); window.FlipTour.start(tourNow()); } });
+  setTimeout(() => window.FlipTour.auto(tourNow(), 0), 3000);   // after the app has asked the Sheet whether it's a demo
 })();
