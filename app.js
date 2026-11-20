@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v107';
+const APP_VERSION = 'v108';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2193,6 +2193,15 @@ function renderSales() {
     <div class="duo" style="margin-top:8px"><button class="btn" data-lab="${i}">${l.files ? 'Show QR code' : 'Open label'}</button>
       <button class="btn sec" data-posted="${i}">✓ Posted</button></div></div></div>`).join('');
   if (d.toPost.length) setTimeout(() => prefetchLabels(d.toPost), 300);   // codes ready before you tap
+  const inv = d.invoicesToSend || [];
+  $('slInvWrap').classList.toggle('hide', !inv.length);
+  $('slInv').innerHTML = inv.map((x, i) => `<div class="card scard"><div class="sb">
+    <div class="st">${esc(x.item || 'Sale')}</div>
+    <div class="sm">${[x.platform, x.buyer, x.number].filter(Boolean).map(esc).join(' · ')}</div>
+    <div class="invrow">${x.png || x.pdf ? `<a class="btn sec" href="${esc(x.png || x.pdf)}" target="_blank" rel="noopener">Open invoice ↗</a>` : ''}
+      ${x.chat ? `<button class="btn sec" data-invchat="${i}">Copy message + open chat</button>` : ''}
+      ${x.email ? `<button class="btn sec" data-invmail="${i}">Email it to ${esc(x.name || 'the buyer')}</button>` : ''}
+      <button class="btn" data-invsent="${i}">✓ Sent</button></div></div></div>`).join('');
   renderCollect();
   $('slNeedsWrap').classList.toggle('hide', !d.needs.length);
   $('slNeeds').innerHTML = d.needs.map((o, i) => saleCard(o, i, 'need')).join('');
@@ -2773,6 +2782,8 @@ $('vSales').addEventListener('click', async e => {
   const t = e.target, card = t.closest('[data-need],[data-rec]');
   if (t.closest('[data-needx]')) return dismissNeed(t.closest('.scard'));
   if (t.dataset.lab !== undefined) return showLabel(SALES.toPost[Number(t.dataset.lab)]);
+  const ib = t.closest('[data-invchat],[data-invmail],[data-invsent]');
+  if (ib) return invAction(ib);
   const RO = (SALES && SALES.returns && SALES.returns.open) || [];
   if (t.dataset.rqr !== undefined) return showReturnCode(RO[Number(t.dataset.rqr)]);
   if (t.dataset.rscan !== undefined) { const r = RO[Number(t.dataset.rscan)]; return pickPhotoSource('Refund receipt', 'The shop\'s refund receipt for ' + r.item + '. For an online order the refund email does this for you.', () => { RETURN_FOR = r.id; PARCEL_FOR = null; }); }
@@ -3193,7 +3204,9 @@ function postWhere(l) {
   try { RET_OPEN().forEach(r => { const c = /amazon/i.test(r.store || r.retailer || '') ? 'Amazon return' : courierOf(r.courier || r.method); if (c) others[c] = (others[c] || 0) + 1; }); } catch (e) {}
   const all = [mine, ...Object.keys(others).filter(c => c !== mine)];
   const btn = (c, n) => `<a class="btn sec" href="${mapsQ(DROP_SEARCH[c])}" target="_blank" rel="noopener">📍 ${esc(DROP_SEARCH[c])}s near me${n ? ' (' + n + ' more ' + esc(c) + ')' : ''} ↗</a>`;
-  let h = '<div class="postwhere"><b>Where to post it</b><p class="sub">Opens Google Maps with the closest ones. Tap one to see its hours and pick the one open longest.</p>' +
+  let h = '<div class="postwhere"><b>Where to post it</b>' +
+    `<button class="btn" data-findpo="${esc(JSON.stringify(Object.keys(others).filter(c => c !== mine)))}">📍 Best Post Office near me</button><div class="polist" id="poList"></div>` +
+    '<p class="sub">Or search the map yourself:</p>' +
     btn(mine, others[mine] || 0) + all.slice(1).map(c => btn(c, others[c])).join('');
   if (all.length > 1) h += `<a class="btn sec" href="${mapsQ('InPost locker Post Office')}" target="_blank" rel="noopener">📍 Post Office with an InPost locker nearby ↗</a>` +
     `<p class="sub">You have ${all.length} kinds to drop off. Check each place's Google listing for the couriers it takes.</p>`;
@@ -3207,6 +3220,81 @@ function postWhere(l) {
   }
   return h + '</div>';
 }
+
+/* ---- Packing video (Videos.gs): optional evidence, shrunk on the phone, binned a day after the returns window ---- */
+function videoBox(l) {
+  return `<div class="vidbox"><b>📹 Packing video</b> <small class="sub">(optional)</small>
+    <p class="sub">Film yourself packing it, as proof of what went in the box. It's shrunk to save space, and deleted automatically a day after the buyer's returns window closes.</p>
+    ${l.video ? `<p><span class="tag ok">Saved</span> <a href="${esc(l.video)}" target="_blank" rel="noopener">Watch ↗</a></p>` : ''}
+    <label class="btn sec" style="display:block;text-align:center">${l.video ? 'Replace the video' : 'Record or choose a video'}<input type="file" accept="video/*" capture="environment" data-packvid="${esc(l.id)}" style="display:none"></label>
+    <div class="sub" data-vidmsg="${esc(l.id)}"></div></div>`;
+}
+// Re-encode at about 540p, 0.9 Mbit/s, no sound: roughly 7 MB a minute (a phone records 60-150 MB a minute)
+async function shrinkVideo(file, onp) {
+  const MR = window.MediaRecorder, c = document.createElement('canvas');
+  if (file.size <= 12e6 || !MR || !c.captureStream) return file;
+  const type = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(t => { try { return MR.isTypeSupported(t); } catch (e) { return false; } });
+  if (!type) return file;
+  const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.src = URL.createObjectURL(file);
+  try {
+    await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error('Could not read that video')); });
+    const k = Math.min(1, 540 / Math.max(1, Math.min(v.videoWidth, v.videoHeight)));
+    c.width = Math.max(2, Math.round(v.videoWidth * k / 2) * 2); c.height = Math.max(2, Math.round(v.videoHeight * k / 2) * 2);
+    const g = c.getContext('2d'), rec = new MR(c.captureStream(24), { mimeType: type, videoBitsPerSecond: 900000 }), chunks = [];
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    const stopped = new Promise(r => { rec.onstop = r; });
+    rec.start(1000);
+    await v.play();
+    await new Promise(res => {
+      v.onended = res;
+      const step = () => { if (v.ended) return res(); g.drawImage(v, 0, 0, c.width, c.height); if (onp && v.duration) onp(v.currentTime / v.duration);
+        v.requestVideoFrameCallback ? v.requestVideoFrameCallback(step) : requestAnimationFrame(step); };
+      step();
+    });
+    rec.stop(); await stopped;
+    const out = new Blob(chunks, { type: type.split(';')[0] });
+    return out.size && out.size < file.size ? out : file;
+  } finally { URL.revokeObjectURL(v.src); }
+}
+document.addEventListener('change', async e => {
+  const inp = e.target.closest('[data-packvid]'); if (!inp || !inp.files || !inp.files[0]) return;
+  const id = inp.dataset.packvid, msg = document.querySelector('[data-vidmsg="' + id + '"]'), say = t => { if (msg) msg.textContent = t; };
+  try {
+    const f = inp.files[0];
+    say('Shrinking the video… keep this screen open');
+    const small = await shrinkVideo(f, p => say('Shrinking the video… ' + Math.round(p * 100) + '% (keep this screen open)'));
+    if (small.size > 40e6) throw new Error('That video is still too big (' + Math.round(small.size / 1e6) + ' MB). Keep it under 2 minutes.');
+    say('Saving ' + (small.size / 1e6).toFixed(1) + ' MB to Drive…');
+    const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(new Error('Could not read the video')); r.readAsDataURL(small); });
+    const r = await api('packVideo', { id: id, base64: b64, mimeType: small.type || f.type || 'video/mp4' });
+    say('Saved (' + r.mb + ' MB, was ' + (f.size / 1e6).toFixed(0) + ' MB).' + (r.keepUntil ? ' Deleted after ' + r.keepUntil + '.' : ' Kept until a day after the returns window, counted from when you post it.'));
+    const lab = ((SALES && SALES.toPost) || []).find(x => x.id === id); if (lab) lab.video = r.url;
+  } catch (err) { say(''); toast(err.message, true); }
+  inp.value = '';
+});
+
+/* ---- Best Post Office near me (Places.gs): closest, open longest today, lockers next door ---- */
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-findpo]'); if (!b) return;
+  const box = document.getElementById('poList'); if (!box) return;
+  let couriers = []; try { couriers = JSON.parse(b.dataset.findpo || '[]'); } catch (x) {}
+  b.disabled = true; box.innerHTML = '<p class="sub">Finding where you are…</p>';
+  try {
+    const pos = await new Promise((res, rej) => navigator.geolocation ? navigator.geolocation.getCurrentPosition(res, () => rej(new Error('Allow location for the app to find the nearest ones')), { enableHighAccuracy: false, timeout: 12000, maximumAge: 600000 }) : rej(new Error('No location on this phone')));
+    box.innerHTML = '<p class="sub">Looking for Post Offices…</p>';
+    const r = await api('placesNear', { lat: pos.coords.latitude, lng: pos.coords.longitude, couriers: couriers });
+    if (!r.places.length) { box.innerHTML = '<p class="sub">No Post Offices found nearby. Use the map search below.</p>'; return; }
+    box.innerHTML = r.places.map(p => {
+      const h = p.hours, hrs = !h ? 'hours not listed' : h.closed ? 'closed today' : 'open ' + h.open + '–' + h.close + ' today';
+      const near = Object.keys(p.near || {}).map(c => '<span class="tag">📦 ' + esc(c) + ' ' + p.near[c].m + ' m</span>').join('');
+      return `<div class="po"><b>${esc(p.name)}</b> <span class="sub">${p.miles} mi</span><br>
+        <span class="tag ${h && !h.closed ? 'ok' : 'late'}">${esc(hrs)}</span>${p.latest ? '<span class="tag soon">open latest</span>' : ''}${h && h.special ? '<span class="tag soon">🎄 holiday hours</span>' : ''}${near}
+        ${p.maps ? `<div><a href="${esc(p.maps)}" target="_blank" rel="noopener">Directions and full hours ↗</a></div>` : ''}</div>`;
+    }).join('') + (couriers.length ? '<p class="sub">📦 = a ' + couriers.map(esc).join(' / ') + ' drop-off within 200 m, so one trip covers it.</p>' : '');
+  } catch (err) {
+    box.innerHTML = '<p class="sub">' + esc(err.code === 'NO_PLACES_KEY' ? 'Post Office search isn\'t switched on yet. Use the map search below.' : err.message) + '</p>';
+  } finally { b.disabled = false; }
+});
 
 async function showLabel(l) {
   const veil = document.createElement('div');
@@ -3225,12 +3313,60 @@ async function showLabel(l) {
       ${f.pdfs.map(p => `<a class="btn sec" href="${esc(p.url || p)}" target="_blank" rel="noopener">Open the label PDF</a>`).join('')}
       ${f.link ? `<a class="btn sec" href="${esc(f.link)}" target="_blank" rel="noopener">Open in ${esc(l.platform || 'the app')}</a>` : ''}
       ${!f.images.length && !f.pdfs.length && !f.link ? '<p class="sub">This email had no code or label link. Open it in your email app.</p>' : ''}
+      ${videoBox(l)}
       ${postWhere(l)}
       <button class="btn ghost" data-close="1">Close</button>`;
   } catch (err) {
     veil.querySelector('.sheet').innerHTML = '<p class="sub">' + esc(err.message) + '</p><button class="btn ghost" data-close="1">Close</button>';
   }
 }
+
+/* ---- Invoices (Invoices.gs): to send once posted; Dan approves every send ---- */
+async function invAction(b) {
+  const list = (SALES && SALES.invoicesToSend) || [], x = list[Number(b.dataset.invchat ?? b.dataset.invmail ?? b.dataset.invsent)];
+  if (!x) return;
+  if (b.dataset.invchat !== undefined) {
+    try { await navigator.clipboard.writeText(x.message); toast('Message copied. Paste it in the chat and attach the invoice picture'); } catch (e) { toast(x.message); }
+    window.open(x.chat, '_blank', 'noopener');
+    return;
+  }
+  if (b.dataset.invmail !== undefined) {
+    if (!confirm('Email invoice ' + x.number + ' to ' + x.email + '?\n\n"' + x.message + '"')) return;
+    b.disabled = true;
+    try { await api('invoiceEmail', { row: x.row, saleId: x.saleId }); toast('Invoice emailed to ' + x.name); SALES.invoicesToSend = list.filter(y => y !== x); renderSales(); }
+    catch (err) { b.disabled = false; toast(err.message, true); }
+    return;
+  }
+  const how = prompt('How did you send ' + x.number + '?', x.chat ? 'Vinted chat' : 'in the parcel');
+  if (how === null) return;
+  try { await api('invoiceSent', { row: x.row, saleId: x.saleId, how: how }); SALES.invoicesToSend = list.filter(y => y !== x); renderSales(); toast('Marked sent'); }
+  catch (err) { toast(err.message, true); }
+}
+// The sale form: the invoice for this sale (number, open, make one, credit note)
+function saleInvoiceBox(o) {
+  const box = $('saInv'); if (!box) return;
+  if (!o || !o.row) { box.classList.add('hide'); box.innerHTML = ''; return; }
+  const num = String(o['invoice number'] || ''), cn = String(o['credit note'] || ''), dead = /^(cancelled|refunded)$/i.test(o.status || '');
+  let h = '<b>Invoice</b> ';
+  if (num) h += `<span class="tag ok">${esc(num)}</span>${o['invoice sent'] ? '<span class="tag">sent ' + esc(o['invoice sent']) + '</span>' : ''}${cn ? '<span class="tag warn">credit note ' + esc(cn) + '</span>' : ''}
+    <div class="invrow">${o['invoice pdf'] ? `<a class="btn sec" href="${esc(o['invoice pdf'])}" target="_blank" rel="noopener">Open PDF ↗</a>` : ''}${o['invoice png'] ? `<a class="btn sec" href="${esc(o['invoice png'])}" target="_blank" rel="noopener">Picture ↗</a>` : ''}
+    ${dead && !cn ? '<button type="button" class="btn sec" data-invmake="credit">Make credit note</button>' : ''}</div>`;
+  else if (num === '' && !dead && num0(o['sale price']) > 0) h += `<span class="sub">none yet</span><div class="invrow"><button type="button" class="btn sec" data-invmake="invoice">Make invoice</button></div>`;
+  else { box.classList.add('hide'); return; }
+  box.innerHTML = h; box.classList.remove('hide');
+  box.onclick = async e => {
+    const m = e.target.closest('[data-invmake]'); if (!m) return;
+    const credit = m.dataset.invmake === 'credit';
+    if (!confirm(credit ? 'Make a credit note against ' + num + '?' : 'Make an invoice for this sale? It takes the next invoice number.')) return;
+    m.disabled = true;
+    try { const r = await api('invoiceMake', { row: o.row, saleId: o._sale_id, kind: credit ? 'credit' : 'invoice' });
+      toast((credit ? 'Credit note ' : 'Invoice ') + r.number + ' saved to Drive');
+      if (credit) o['credit note'] = r.number; else { o['invoice number'] = r.number; o['invoice pdf'] = r.pdf; o['invoice png'] = r.png; }
+      saleInvoiceBox(o); SALES = null; }
+    catch (err) { m.disabled = false; toast(err.message, true); }
+  };
+}
+const num0 = v => Number(String(v ?? '').replace(/[£,\s]/g, '')) || 0;
 
 function segSet(id, v) { document.querySelectorAll('#' + id + ' button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
 function segGet(id) { const b = document.querySelector('#' + id + ' button.on'); return b ? b.dataset.v : ''; }
@@ -3360,6 +3496,7 @@ function openSale(o, silent) {
            hand: o.handover || '', trip: o['delivery trip'] || '', units: o['listme units'] || '' };
   $('saHand').innerHTML = ''; $('saLogTrip').checked = true; $('saDropTo').value = '';
   $('saTitle').textContent = isNew ? 'Log a sale' : 'Sale';
+  try { saleInvoiceBox(Object.assign({}, o, { _sale_id: o._sale_id })); } catch (e) {}
   const plat = o.platform || (CFG.platforms && CFG.platforms.indexOf('In person') > -1 ? 'In person' : (CFG.platforms && CFG.platforms[0]) || 'In person');
   $('saPlatform').innerHTML = platformOptions(plat);
   $('saWhere').value = o.where || '';

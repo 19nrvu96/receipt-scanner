@@ -264,6 +264,7 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 .qtybadge{display:inline-block;background:#1a73e8;color:#fff;border-radius:8px;padding:1px 8px;font-weight:700}
 .qtynote{background:#fff4e5;color:#7a4a00;border-radius:10px;padding:7px 11px;font-size:14px;font-weight:600;margin-top:6px}
 .postwhere{margin:14px 0 6px;padding:12px;border-radius:12px;background:rgba(0,113,227,.06)}.postwhere .btn{margin-top:8px;display:block;text-align:center}.postwhere .tag{display:inline-block;margin-top:8px}
+.invrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.invrow .btn{flex:1 1 45%;min-width:130px}.vidbox{margin:14px 0 4px;padding:12px;border-radius:12px;background:rgba(0,0,0,.04)}.polist .po{padding:10px 0;border-bottom:1px solid rgba(0,0,0,.08)}.polist .po:last-child{border:0}
 .qtynote.big{font-size:17px;padding:11px 13px;margin:0 0 10px}
 .barcode{width:100%;height:110px;background:#fff;border-radius:10px;padding:10px 0;display:block}
 .ordbig{text-align:center;font-size:26px;font-weight:700;letter-spacing:2px;margin:6px 0}
@@ -670,6 +671,8 @@ html.dark .form select{border:1px solid #535353;background:#242424}
 html.dark .found{border:1px solid #4b4b52;background:#242424}
 html.dark .qtybadge{color:#ffffff}
 html.dark .qtynote{background:#4a371c;color:#f4c071}
+html.dark .vidbox{background:rgba(219,219,219,.04)}
+html.dark .polist .po{border-bottom:1px solid rgba(191,191,191,.08)}
 html.dark .barcode{background:#242424}
 html.dark .pcopt{border:1px solid #535353}
 html.dark .nextbox{background:#1a2e45}
@@ -1343,6 +1346,7 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
     <p class="hint" style="margin-top:10px">Forward your sale emails and postage labels. They file themselves here.</p>
     <div id="slCollWrap" class="hide"><h3 class="sech">To collect</h3><p class="hint">Click &amp; collect orders waiting at the shop. Tap one for the code, opening times and directions.</p><div id="slColl"></div></div>
     <div id="slPostWrap" class="hide"><h3 class="sech">To post</h3><p class="hint">Show the code at the shop. Then tap Posted.</p><div id="slPost"></div></div>
+    <div id="slInvWrap" class="hide"><h3 class="sech">Invoices to send</h3><p class="hint">Posted. Send the buyer their invoice (Vinted chat, email or in the parcel), then tap Sent.</p><div id="slInv"></div></div>
     <div id="slRetWrap" class="hide"><h3 class="sech">Last days to return</h3>
       <p class="hint">Not sold yet. Not going to sell it? Send it back in time. Online orders: 14 days. Shop receipts: often 28 or 30 days. Check the shop's own rules.</p>
       <div id="slRet"></div></div>
@@ -1430,6 +1434,7 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
     <select id="saFindStore" aria-label="Shop"><option value="">Any shop</option></select>
     <p class="hint" id="saFindHint">Can't remember what you called it? Pick the shop to see what you bought there.</p>
     <div id="saFound"></div>
+    <div id="saInv" class="card hide" style="margin-top:14px"></div>
     <div id="saCrm" class="card hide" style="margin-top:14px">
       <button type="button" id="saCrmHead" class="crmhead" aria-expanded="false" aria-controls="saCrmBody"><span><b>About the buyer</b> <small class="sub">(optional)</small><br><span id="saCrmSum" class="sub"></span></span><span class="chev" aria-hidden="true">›</span></button>
       <div id="saCrmBody" class="hide">
@@ -1587,10 +1592,10 @@ setTimeout(function () {
   document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
 }, 6000);
 </script>
-<script src="qrcode.js?v=107"></script>
-<script src="help.js?v=107"></script>
-<script src="app.js?v=107"></script>
-<script src="tour-engine.js?v=107"></script>
-<script src="whatsnew.js?v=107"></script>
+<script src="qrcode.js?v=108"></script>
+<script src="help.js?v=108"></script>
+<script src="app.js?v=108"></script>
+<script src="tour-engine.js?v=108"></script>
+<script src="whatsnew.js?v=108"></script>
 </body>
 </html>
