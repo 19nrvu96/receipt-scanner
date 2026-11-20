@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v106';
+const APP_VERSION = 'v107';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -946,6 +946,7 @@ function recalc(keepVat) {
       // Lines add up to more than was paid: almost always a discount, voucher or promo on the order (Amazon only shows it in the total)
       el.innerHTML = head + '<div class="recwhy">' + esc("That's " + money(gap) + ' less. Did you get money off, like a discount, voucher or promo code?') + '</div>' +
         `<button class="btn recbtn" data-disc="${gap}">${esc('Yes, I got ' + money(gap) + ' off')}</button>` +
+        `<button class="btn sec recbtn" data-split="1" data-gappart="1">${esc('No, a gift card or balance paid ' + money(gap))}</button>` +
         '<div class="recwhy">' + esc(one ? 'We take it off the item, so your records show the ' + money(expected) + ' you really paid.'
           : 'We share it across the items by price, so your records show the ' + money(expected) + ' you really paid.') +
         ' If not, check the prices and quantities above.</div>' + esc(shareNote);
@@ -965,7 +966,8 @@ function recalc(keepVat) {
 }
 
 $('recon').addEventListener('click', e => {
-  if (e.target.closest('[data-split]')) return paySplit();
+  const sp = e.target.closest('[data-split]');
+  if (sp) { if (sp.dataset.gappart) state.meta.gapIsPart = true; return paySplit(); }
   const b = e.target.closest('[data-disc],[data-undisc]'); if (!b) return;
   state.meta.discount = b.dataset.disc ? r2((state.meta.discount || 0) + Number(b.dataset.disc)) : 0;
   recalc(); renderItems();
@@ -1191,7 +1193,9 @@ function payParts(pm) {   // "Amazon gift card £10.00 + Visa ••4521 £33.69
 function partGap() {
   if (!state || state.refund || state.meta.receiptTotal == null) return 0;
   const sum = r2(state.rows.reduce((t, r) => t + (Number(r['total cost']) || 0), 0)), paid = Number(state.meta.receiptTotal);
-  return sum - paid > 0.01 && paid > 0 ? r2(sum - paid) : 0;
+  const gap = r2(sum - paid);
+  // A small gap is usually a discount (asked on the total); a big one, or one you said was a gift card, is a part payment
+  return gap > 0.01 && paid > 0 && (gap >= sum * 0.7 || state.meta.gapIsPart) ? gap : 0;
 }
 function payTotal() {
   const sum = state ? r2(state.rows.reduce((t, r) => t + (Number(r['total cost']) || 0), 0)) : 0;
@@ -3174,6 +3178,36 @@ async function prefetchLabels(list) {
   } finally { prefetching = false; }
 }
 
+/* ---- Where to post it: free Google Maps searches near you (Maps uses your location), one per courier you have waiting,
+   plus a holiday-hours search when Christmas / New Year / a bank holiday falls before the post-by date ---- */
+const DROP_SEARCH = { 'Royal Mail': 'Post Office', Parcelforce: 'Post Office', Evri: 'Evri ParcelShop', InPost: 'InPost locker', Yodel: 'Yodel Store',
+  DPD: 'DPD Pickup shop', DHL: 'DHL ServicePoint', UPS: 'UPS Access Point', 'Amazon return': 'Amazon returns drop off' };
+const mapsQ = q => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q + ' near me');
+const dmy = t => { const m = String(t || '').match(/(\d{1,2})[\/\-. ](\d{1,2})[\/\-. ](\d{2,4})/); return m ? new Date(+(m[3].length === 2 ? '20' + m[3] : m[3]), m[2] - 1, +m[1]) : null; };
+function courierOf(x) { const t = String(x || ''); return Object.keys(DROP_SEARCH).find(k => new RegExp(k.replace(' return', ''), 'i').test(t)) || ''; }
+function postWhere(l) {
+  const mine = courierOf(l.courier) || 'Royal Mail';
+  // Everything else waiting, so one trip can cover it all
+  const others = {};
+  ((SALES && SALES.toPost) || []).filter(x => x.id !== l.id).forEach(x => { const c = courierOf(x.courier); if (c) others[c] = (others[c] || 0) + 1; });
+  try { RET_OPEN().forEach(r => { const c = /amazon/i.test(r.store || r.retailer || '') ? 'Amazon return' : courierOf(r.courier || r.method); if (c) others[c] = (others[c] || 0) + 1; }); } catch (e) {}
+  const all = [mine, ...Object.keys(others).filter(c => c !== mine)];
+  const btn = (c, n) => `<a class="btn sec" href="${mapsQ(DROP_SEARCH[c])}" target="_blank" rel="noopener">📍 ${esc(DROP_SEARCH[c])}s near me${n ? ' (' + n + ' more ' + esc(c) + ')' : ''} ↗</a>`;
+  let h = '<div class="postwhere"><b>Where to post it</b><p class="sub">Opens Google Maps with the closest ones. Tap one to see its hours and pick the one open longest.</p>' +
+    btn(mine, others[mine] || 0) + all.slice(1).map(c => btn(c, others[c])).join('');
+  if (all.length > 1) h += `<a class="btn sec" href="${mapsQ('InPost locker Post Office')}" target="_blank" rel="noopener">📍 Post Office with an InPost locker nearby ↗</a>` +
+    `<p class="sub">You have ${all.length} kinds to drop off. Check each place's Google listing for the couriers it takes.</p>`;
+  if (mine === 'Royal Mail') h += `<a class="btn sec" href="https://www.postoffice.co.uk/branch-finder" target="_blank" rel="noopener">Post Office branch finder (hours and services) ↗</a>`;
+  // Holidays between today and the post-by date (or the next 7 days)
+  const end = dmy(l.postBy) || new Date(Date.now() + 7 * 864e5), seen = new Set();
+  for (let d = new Date(); d <= end && seen.size < 4; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+    const hol = ukHoliday(d);
+    if (hol && !seen.has(hol)) { seen.add(hol);
+      h += `<a class="tag soon" href="https://www.google.com/search?q=${encodeURIComponent(DROP_SEARCH[mine] + ' ' + hol + ' ' + d.getFullYear() + ' opening times')}" target="_blank" rel="noopener">🎄 ${esc(hol)} (${esc(dayShort(d))}): check opening times ↗</a> `; }
+  }
+  return h + '</div>';
+}
+
 async function showLabel(l) {
   const veil = document.createElement('div');
   veil.className = 'veil';
@@ -3191,6 +3225,7 @@ async function showLabel(l) {
       ${f.pdfs.map(p => `<a class="btn sec" href="${esc(p.url || p)}" target="_blank" rel="noopener">Open the label PDF</a>`).join('')}
       ${f.link ? `<a class="btn sec" href="${esc(f.link)}" target="_blank" rel="noopener">Open in ${esc(l.platform || 'the app')}</a>` : ''}
       ${!f.images.length && !f.pdfs.length && !f.link ? '<p class="sub">This email had no code or label link. Open it in your email app.</p>' : ''}
+      ${postWhere(l)}
       <button class="btn ghost" data-close="1">Close</button>`;
   } catch (err) {
     veil.querySelector('.sheet').innerHTML = '<p class="sub">' + esc(err.message) + '</p><button class="btn ghost" data-close="1">Close</button>';
