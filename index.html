@@ -1024,6 +1024,29 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
       <div id="stCards"></div>
       <button type="button" class="btn sec" id="btnAddCard">＋ Add a card</button>
     </div>
+    <div class="card scard2" id="stGiftCard">
+      <label>Gift cards</label>
+      <p class="hint">Bought a gift card to pay for stock, maybe at a discount? Add it here. Pick it when you save a receipt, and the app works out what the items really cost and what's left on the card.</p>
+      <div id="stGifts"><p class="sub">Loading…</p></div>
+      <button type="button" class="btn sec" id="btnAddGift">＋ Add a gift card</button>
+      <div id="giftForm" class="hide">
+        <label for="gName">Name</label><input id="gName" maxlength="60" placeholder="e.g. Currys £100">
+        <label for="gShop">Shop it's for (optional)</label><input id="gShop" maxlength="60" placeholder="e.g. Currys">
+        <div class="duo"><div><label for="gFace">Value on the card (£)</label><input id="gFace" type="number" step="0.01" inputmode="decimal" placeholder="100.00"></div>
+          <div><label for="gPaid">What you paid for it (£)</label><input id="gPaid" type="number" step="0.01" inputmode="decimal" placeholder="95.00"></div></div>
+        <label for="gEnds">Last 4 digits (optional)</label><input id="gEnds" inputmode="numeric" maxlength="4" placeholder="4259">
+        <div class="duo"><button type="button" class="btn" id="btnGiftSave">Save card</button><button type="button" class="btn sec" id="btnGiftCancel">Cancel</button></div>
+      </div>
+    </div>
+    <div class="card scard2" id="stBooksCard">
+      <label>Check my books</label>
+      <p class="hint">Looks through your Sheet and changes nothing. It shows what it could fill in for you, and you choose.</p>
+      <div id="stLoanWrap" class="hide"><label for="stLoan">Director's loan when this year started (£ the company owed you)</label>
+        <input id="stLoan" type="number" step="0.01" inputmode="decimal" placeholder="0.00">
+        <p class="hint">From last year's accounts. Leave it empty if you're not sure: your accountant has the figure. Saved with Save settings.</p></div>
+      <button type="button" class="btn sec" id="btnBooksCheck">Check now</button>
+      <div id="stBooks"></div>
+    </div>
     <div class="card scard2" id="stBankCard">
       <label>Get paid by bank</label>
       <p class="hint">For Bank transfer on the Sell screen. Buyers will see these details. They're kept in your own Google account.</p>
@@ -1556,6 +1579,20 @@ html.dark .payrow button{background:#242424;color:#71b2f4;border-color:#59595e}h
         <select id="payPick" aria-label="Ways to pay"></select>
       </div>
       <div id="payAsk" class="payask hide" role="status"></div>
+      <div id="gcWrap" class="hide">
+        <label for="fGift">Paid with a gift card?</label>
+        <select id="fGift"></select>
+        <div id="gcAmtWrap" class="hide"><label for="fGiftAmt">How much went on the card (£)</label>
+          <input id="fGiftAmt" type="number" step="0.01" inputmode="decimal" placeholder="0.00">
+          <p class="hint" id="gcHint"></p></div>
+      </div>
+      <div id="flagWrap">
+        <label class="check hide" id="fgPersLbl"><input type="checkbox" id="fgPers"> I paid with my own money (the company owes me)</label>
+        <details id="flagMore" style="margin-top:12px"><summary class="sm" style="cursor:pointer">No receipt, or bought before this year?</summary>
+          <label class="check"><input type="checkbox" id="fgEst"> The cost is an estimate (no receipt)</label>
+          <label class="check"><input type="checkbox" id="fgOpen"> Opening stock (bought before this year)</label>
+        </details>
+      </div>
       <label>Notes (applies to all lines)</label>
       <input id="fNotes" placeholder="Optional">
       <label class="check"><input type="checkbox" id="fExtRet"> <span id="fExtRetLbl">This shop gives longer than the usual 28 days to return</span></label>
@@ -1592,10 +1629,10 @@ setTimeout(function () {
   document.getElementById('bootRetry').onclick = function () { try { ['rs_card_wait', 'rs_drop_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (x) {} location.reload(); };
 }, 6000);
 </script>
-<script src="qrcode.js?v=108"></script>
-<script src="help.js?v=108"></script>
-<script src="app.js?v=108"></script>
-<script src="tour-engine.js?v=108"></script>
-<script src="whatsnew.js?v=108"></script>
+<script src="qrcode.js?v=109"></script>
+<script src="help.js?v=109"></script>
+<script src="app.js?v=109"></script>
+<script src="tour-engine.js?v=109"></script>
+<script src="whatsnew.js?v=109"></script>
 </body>
 </html>

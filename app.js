@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v108';
+const APP_VERSION = 'v109';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -677,7 +677,7 @@ function buildReview(result, source) {
    
    renderItems();
   fillPayPicker();   // ways to pay that fit this shop, and "how did you pay?" when the email or receipt doesn't say
-  cardTag(); $('fPay').oninput = cardTag;
+  cardTag(); booksFields(); $('fPay').oninput = () => { cardTag(); flagAuto(); };
   show('vReview');
 }
 
@@ -1464,6 +1464,7 @@ async function saveToSheet(force) {
       queueId: queueId,
       force: !!force,
       returnId: (job && job.returnId) || undefined,
+      giftCard: giftPick(), flags: flagPick(),   // Books.gs: part paid with a gift card; estimate / own money / opening stock
       klarna: klarnaFromPay(pay, date)   // Klarna: a plan on Paying off (Klarna.gs), unless it's Pay now
     }, job && jobId ? withLegacy(jobImages(job)) : {}));
 
@@ -1471,6 +1472,7 @@ async function saveToSheet(force) {
     payParts(pay).forEach(x => { const n = payName(x.name); if (n && !CFG.payments.includes(n)) CFG.payments.push(n); });
     if (pay && store) (CFG.payByStore = CFG.payByStore || {})[store.toLowerCase()] = pay;
     rememberEmail(store, email);
+    if (res.giftCard) (CFG.giftCards || []).forEach(c => { if (c.card === res.giftCard.card) c.left = res.giftCard.left; });
     saveCache(); fillStores(); fillPayPicker();
 
     if (jobId) await jobDel(jobId);
@@ -1479,7 +1481,7 @@ async function saveToSheet(force) {
     $('homeStatus').textContent =
       '✅ ' + res.rowsAdded + ' row' + (res.rowsAdded > 1 ? 's' : '') +
       ' saved · ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    toast(res.returnsDone ? 'Refund saved and attached to the return' : res.refundsMarked ? 'Refund saved · ' + res.refundsMarked + ' purchase' + (res.refundsMarked > 1 ? 's' : '') + ' marked returned' : 'Saved to sheet');
+    toast(res.giftCard ? 'Saved. ' + money(res.giftCard.left) + ' left on ' + res.giftCard.card + (res.giftCard.saved > 0 ? ' (' + money(res.giftCard.saved) + ' saved)' : '') : res.returnsDone ? 'Refund saved and attached to the return' : res.refundsMarked ? 'Refund saved · ' + res.refundsMarked + ' purchase' + (res.refundsMarked > 1 ? 's' : '') + ' marked returned' : 'Saved to sheet');
     if (res.returnsDone) SALES = null;
     worthItLink(payload);
     refreshJobs();
@@ -3834,9 +3836,14 @@ async function pdfToPng(base64) {
 /* ---------- paying back personal spending ---------- */
 function owedHtml(o) {
   if (o.owed != null) {
+    // Books.gs: business costs you paid yourself, and the director's loan (a guide: money the company paid you isn't in the app yet)
+    const loan = o.loan != null && (o.paidPersonally || o.loanOpening)
+      ? '<br><span class="usub">' + (o.paidPersonally ? 'You paid ' + money(o.paidPersonally) + ' of business costs yourself this year. ' : '') +
+        'Director\'s loan, as a guide: ' + (o.loan >= 0 ? 'the company owes you about ' + money(o.loan) : 'you owe the company about ' + money(-o.loan)) +
+        ', before anything the company has paid you.</span>' : '';
     return 'Still owed to the company this year<br><b>' + money(o.owed) + '</b><br>' +
       '<span class="usub">' + money(o.personal) + ' personal spending, less ' + money(o.repaid) + ' paid back' +
-      (o.mileage ? ' and ' + money(o.mileage) + ' mileage the company owes you' : '') + '.</span>';
+      (o.mileage ? ' and ' + money(o.mileage) + ' mileage the company owes you' : '') + '.</span>' + loan;
   }
   return 'Personal spending this year<br><b>' + money(o.personal) + '</b><br><span class="usub">' + money(o.repaid) +
     ' paid back into the business account. As a sole trader you don\'t have to pay this back: it just isn\'t claimed.</span>';
@@ -3890,6 +3897,7 @@ async function refreshConfig() {
     const d = await api('bootstrap', {});
     CFG.purposes = d.purposes || [];
     CFG.cards = d.cards || [];
+    CFG.giftCards = d.giftCards || [];                  // Books.gs: gift cards with money left, for the review screen
     CFG.stores   = d.stores   || [];
     if (d.payments) CFG.payments = d.payments;          // how you've paid before, most used first (Purchases tab)
     if (d.payByStore) CFG.payByStore = d.payByStore;    // the last way you paid at each shop
@@ -4609,6 +4617,8 @@ async function openSettings() {
     $('stTap').value = d.cardFee && d.cardFee.perTap ? d.cardFee.perTap : ''; $('stPct').value = d.cardFee && d.cardFee.pct ? d.cardFee.pct : '';
     $('stCardApp').value = d.cardApp || 'Other';
     renderCards(d.cards || []);
+    $('stLoan').value = d.loanOpening ? d.loanOpening : ''; $('stLoanWrap').classList.toggle('hide', d.type !== 'ltd');
+    $('stBooks').innerHTML = ''; $('giftForm').classList.add('hide'); $('btnAddGift').classList.remove('hide'); loadGifts();
     { const b = d.bank || {}; $('stBankName').value = b.name || ''; $('stBankSort').value = b.sort ? b.sort.replace(/(\d\d)(\d\d)(\d\d)/, '$1-$2-$3') : ''; $('stBankAcct').value = b.acct || ''; $('stPayLink').value = b.link || ''; }
     const a = d.account || {};
     SETTINGS.sheetUrl = a.sheetUrl || '';
@@ -4750,7 +4760,7 @@ $('btnStSave').onclick = async () => {
                      cardFee: { perTap: Number($('stTap').value) || 0, pct: Number($('stPct').value) || 0 },
                      cardApp: $('stCardApp').value,
                      bank: { name: $('stBankName').value.trim(), sort: $('stBankSort').value, acct: $('stBankAcct').value, link: $('stPayLink').value.trim() },
-                     cards: readCards(),
+                     cards: readCards(), loanOpening: Number($('stLoan').value) || 0,
                      emailSource: $('stSrc').value, orderEmail: $('stSrc').value === 'gmail' ? '' : $('stOrderEmail').value.trim(),
                      monthlyEmail: $('stMonthly').checked };
   if (d.type && (type !== d.type || settings.vat !== !!d.vat) &&
@@ -4766,6 +4776,133 @@ $('btnStSave').onclick = async () => {
     openSettings();
   } catch (err) { toast(err.message, true); }
   finally { b.disabled = false; b.textContent = 'Save settings'; }
+};
+
+/* ---------- Books: gift cards, flags, Check my books (Books.gs) ---------- */
+// Review screen. What the lines add up to as they'll be saved (your share of shared lines).
+function reviewTotal() {
+  return r2((state ? state.rows : []).reduce((t, r) => {
+    const s = r._shared, p = pctOf(r);
+    return t + (s ? sharePart(r['total price'], p) + sharePart(r['additional cost'], p) : (Number(r['total price']) || 0) + (Number(r['additional cost']) || 0));
+  }, 0));
+}
+function booksFields() {
+  const cards = (CFG.giftCards || []).filter(c => c.left > 0), refund = !!(state && state.refund);
+  $('gcWrap').classList.toggle('hide', refund || !cards.length);
+  $('flagWrap').classList.toggle('hide', refund);
+  $('fGift').innerHTML = '<option value="">No</option>' + cards.map(c => `<option value="${esc(c.id)}">${esc(c.card)} · ${money(c.left)} left</option>`).join('');
+  $('fGift').value = ''; $('fGiftAmt').value = ''; $('gcAmtWrap').classList.add('hide');
+  $('fgEst').checked = false; $('fgOpen').checked = false; $('flagMore').open = false;
+  $('fgPers').checked = false; $('fgPers').dataset.touched = '';
+  $('fgPersLbl').classList.toggle('hide', CFG.business !== 'ltd');   // a director's loan is a company thing
+  flagAuto();
+}
+// Paid on a card you've marked as your own: ticked for you, until you change it yourself
+function flagAuto() {
+  const el = $('fgPers');
+  if (!el || el.dataset.touched || CFG.business !== 'ltd') return;
+  const c = cardOf($('fPay').value);
+  el.checked = !!c && !c.business;
+}
+$('fgPers').onchange = () => { $('fgPers').dataset.touched = '1'; };
+function giftHint() {
+  const c = (CFG.giftCards || []).find(x => x.id === $('fGift').value);
+  $('gcAmtWrap').classList.toggle('hide', !c);
+  if (!c) return;
+  const total = reviewTotal();
+  // "Gift card £51.91 + Visa ••4521 £17.60" already in Payment method: that's how much went on the card
+  const part = payParts($('fPay').value).find(x => /gift/i.test(x.name) && x.amt > 0);
+  if (!$('fGiftAmt').value) $('fGiftAmt').value = Math.min(c.left, part ? part.amt : total).toFixed(2);
+  const a = Math.max(0, Math.min(Number($('fGiftAmt').value) || 0, total));
+  $('gcHint').textContent = a > c.left + 0.005 ? 'This card only has ' + money(c.left) + ' left.'
+    : (c.off > 0 ? 'You got this card at ' + c.off + '% off, so ' + money(a) + ' on it really cost you ' + money(a * (1 - c.off / 100)) + '. The saving comes off these items. ' : '') +
+      money(Math.max(0, c.left - a)) + ' will be left on the card.';
+}
+$('fGift').onchange = () => {
+  const c = (CFG.giftCards || []).find(x => x.id === $('fGift').value);
+  $('fGiftAmt').value = '';
+  if (c && !$('fPay').value.trim()) { $('fPay').value = c.card + (/gift/i.test(c.card) ? '' : ' gift card'); cardTag(); }
+  giftHint();
+};
+$('fGiftAmt').oninput = giftHint;
+const giftPick = () => { const id = $('fGift').value; return id && !(state && state.refund) ? { id: id, amount: Number($('fGiftAmt').value) || 0 } : undefined; };
+const flagPick = () => (state && state.refund) ? [] : [$('fgEst').checked && 'Estimate', $('fgOpen').checked && 'Opening stock',
+  CFG.business === 'ltd' && $('fgPers').checked && 'Paid personally'].filter(Boolean);
+
+// Settings → Gift cards
+let GIFTS = null, GIFT_EDIT = '';
+const needsUpdate = err => /Unknown action/.test(err.message) ? 'Your Sheet\'s script needs updating for this.' : err.message;
+const giftsForReview = g => g.cards.filter(c => c.left > 0).map(c => ({ id: c.id, card: c.card, shop: c.shop, left: c.left, off: c.off }));
+async function loadGifts() {
+  try {
+    GIFTS = await api('giftCards', {});
+    CFG.giftCards = giftsForReview(GIFTS); saveCache();
+    renderGifts();
+  } catch (err) { $('stGifts').innerHTML = '<p class="sub">' + esc(err.code === 'OFFLINE' ? 'No signal: can\'t load your gift cards right now.' : needsUpdate(err)) + '</p>'; }
+}
+function renderGifts() {
+  const g = GIFTS || { cards: [] };
+  $('stGifts').innerHTML = g.cards.length ? g.cards.map(c => `<div class="gcrow" style="border-top:1px solid rgba(128,128,128,.25);padding-top:8px;margin-top:8px">
+    <b>${esc(c.card)}</b>${c.endsIn ? ' <span class="sm">••' + esc(c.endsIn) + '</span>' : ''}
+    <div class="sm">${c.left > 0 ? money(c.left) + ' left of ' + money(c.face) : 'All ' + money(c.face) + ' used'}${c.off > 0 ? ' · you paid ' + money(c.paid) + ' (' + c.off + '% off)' : ''}${c.shop ? ' · ' + esc(c.shop) : ''}</div>
+    <button type="button" class="link" data-gedit="${esc(c.id)}">Change</button></div>`).join('') +
+    (g.cards.length > 1 ? `<p class="sub">${money(g.left)} left across your cards.</p>` : '') : '<p class="sub">No gift cards yet.</p>';
+}
+function giftFormOpen(c) {
+  GIFT_EDIT = c ? c.id : '';
+  $('gName').value = c ? c.card : ''; $('gShop').value = c ? c.shop : ''; $('gFace').value = c ? c.face : ''; $('gPaid').value = c ? c.paid : ''; $('gEnds').value = c ? c.endsIn : '';
+  $('giftForm').classList.remove('hide'); $('btnAddGift').classList.add('hide'); $('gName').focus();
+}
+function giftFormClose() { $('giftForm').classList.add('hide'); $('btnAddGift').classList.remove('hide'); }
+$('btnAddGift').onclick = () => giftFormOpen(null);
+$('btnGiftCancel').onclick = giftFormClose;
+$('stGifts').onclick = e => { const id = e.target.dataset.gedit; if (id) giftFormOpen(((GIFTS || {}).cards || []).find(c => c.id === id)); };
+$('btnGiftSave').onclick = async () => {
+  const face = Number($('gFace').value) || 0, paidTxt = $('gPaid').value.trim(), paid = paidTxt === '' ? face : Number(paidTxt) || 0;
+  if (!$('gName').value.trim()) { toast('Give the card a name', true); $('gName').focus(); return; }
+  if (!(face > 0)) { toast('Enter the value on the card', true); $('gFace').focus(); return; }
+  if (paid > face) { toast('What you paid can\'t be more than the card\'s value', true); $('gPaid').focus(); return; }
+  const b = $('btnGiftSave'); b.disabled = true; b.textContent = 'Saving…';
+  try {
+    GIFTS = await api('giftCardSave', { card: { id: GIFT_EDIT || undefined, card: $('gName').value.trim(), shop: $('gShop').value.trim(), face: face, paid: paid, endsIn: $('gEnds').value.trim() } });
+    CFG.giftCards = giftsForReview(GIFTS); saveCache();
+    renderGifts(); giftFormClose(); toast('Gift card saved');
+  } catch (err) { toast(err.code === 'OFFLINE' ? 'No signal: not saved. Try again when you have signal' : needsUpdate(err), true); }
+  finally { b.disabled = false; b.textContent = 'Save card'; }
+};
+
+// Settings → Check my books: a check that reads only, then the fills you choose
+function renderBooks(d) {
+  const L = d.links, F = d.flags, n = (x, one, many) => x + ' ' + (x === 1 ? one : many);
+  const eg = (list, more, fn) => list.length ? '<ul class="sm" style="margin:6px 0 0;padding-left:18px">' + list.slice(0, 5).map(x => '<li>' + fn(x) + '</li>').join('') +
+    (list.length + more > 5 ? '<li>and ' + (list.length + more - 5) + ' more</li>' : '') + '</ul>' : '';
+  let h = '<div class="sm" style="margin-top:10px">';
+  if (L.idsAdded !== undefined) h += '<p>✓ Done: ' + n(L.idsAdded, 'purchase line', 'purchase lines') + ' given an id, ' + n(L.linksSet, 'link', 'links') + ' secured.</p>';
+  if (F.flagsSet !== undefined) h += '<p>✓ Done: ' + n(F.flagsSet, 'line', 'lines') + ' noted.</p>';
+  h += '<p><b>Sales linked to what you paid</b><br>Linked to a purchase: ' + L.linked + ' of ' + n(L.sales, 'sale', 'sales') + '.<br>Secured, so they still work if rows move in your Sheet: ' + L.has + ' of ' + L.linked + '.</p>';
+  if (L.noId || L.ready) h += '<p>' + n(L.ready, 'link', 'links') + ' can be secured, and ' + n(L.noId, 'purchase line needs', 'purchase lines need') + ' an id. This fills two new hidden columns. Nothing you can see changes.</p>' +
+    '<button type="button" class="btn sec" data-books="links">Secure my links</button>';
+  if (L.differs.length) h += '<p style="margin-top:10px">⚠️ ' + n(L.differs.length + L.differsMore, 'link points', 'links point') + ' at a row that now holds something else. Left as they are: check them in your Sheet.</p>' +
+    eg(L.differs, L.differsMore, x => 'Sales row ' + x.row + ': ' + esc(x.item) + ' → ' + esc(x.link) + ' (that row is now ' + esc(x.now) + ')');
+  if (L.missing.length) h += '<p style="margin-top:10px">⚠️ ' + n(L.missing.length + L.missingMore, 'link points', 'links point') + ' at a row that isn\'t there.</p>' + eg(L.missing, L.missingMore, x => 'Sales row ' + x.row + ': ' + esc(x.item) + ' → ' + esc(x.link));
+  const kinds = [['Estimate', 'Estimates with no receipt'], ['Paid personally', 'Paid with your own money'], ['Opening stock', 'Opening stock']];
+  const found = kinds.filter(k => F[k[0]].n);
+  h += '<p style="margin-top:12px"><b>Notes for your books</b><br>' + (found.length ? 'Going by the words already on your purchases:' : F.flagged ? n(F.flagged, 'purchase is', 'purchases are') + ' noted. Nothing new to add.' : 'Nothing to add.') + '</p>';
+  found.forEach(k => { const x = F[k[0]]; h += '<p style="margin-top:8px">' + k[1] + ': ' + n(x.n, 'line', 'lines') + ' (' + money(x.value) + ')</p>' + eg(x.eg, x.n - x.eg.length, e => esc(e.date) + ' · ' + esc(e.item) + ' · ' + money(e.cost) + (e.pay ? ' · ' + esc(e.pay) : '')); });
+  if (found.length) h += '<button type="button" class="btn sec" data-books="flags" style="margin-top:8px">Note these on my purchases</button><p class="hint">Fills the new "flags" column for these lines only. You can change any of them in your Sheet.</p>';
+  $('stBooks').innerHTML = h + '</div>';
+}
+async function booksRun(action, req) {
+  const b = $('btnBooksCheck'); b.disabled = true; b.textContent = 'Checking…';
+  try { renderBooks(await api(action, req)); }
+  catch (err) { $('stBooks').innerHTML = '<p class="sub">' + esc(err.code === 'OFFLINE' ? 'No signal: try again when you have signal.' : needsUpdate(err)) + '</p>'; }
+  finally { b.disabled = false; b.textContent = 'Check again'; }
+}
+$('btnBooksCheck').onclick = () => booksRun('booksCheck', {});
+$('stBooks').onclick = e => {
+  const k = e.target.dataset.books;
+  if (k === 'links') booksRun('booksApply', { links: true });
+  if (k === 'flags') booksRun('booksApply', { flags: true });
 };
 
 $('fExtRet').onchange = () => { $('fRetWrap').classList.toggle('hide', !$('fExtRet').checked); if ($('fExtRet').checked) $('fRetBy').focus(); };
