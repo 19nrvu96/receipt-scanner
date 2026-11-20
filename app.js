@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v108';
+const APP_VERSION = 'v109';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -2059,6 +2059,31 @@ function goTo(id) {
   el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
 }
 
+/* ListMe's "Open in Receipts" on one return: #returns?id=<return id>&rx=<this Sheet's script address>.
+   Opens Sales → To return at that return (or, once it's been sent back, Purchases → Pending refunds). */
+function returnFromHash(hash) {
+  return new URLSearchParams(String(hash || '').replace(/^#returns\??/, '')).get('id') || '';
+}
+function goToReturn(id) {
+  const card = id && [...document.querySelectorAll('#slToRet [data-rid]')].find(c => c.dataset.rid === id);
+  if (!card) return false;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+  return true;
+}
+async function openReturnLink(hash) {
+  const id = returnFromHash(hash);
+  await openSales(id ? undefined : 'slToRetWrap');
+  if (!id) return;
+  const R = (SALES && SALES.returns) || { open: [] }, r = (R.open || []).find(x => String(x.id) === id);
+  if (r && r.status === 'Sent back' && typeof openPurchases === 'function') {   // on its way back: Purchases → Pending refunds, at that return
+    await openPurchases('pend');
+    setTimeout(() => { const c = [...document.querySelectorAll('#vPurchases [data-rid]')].find(x => x.dataset.rid === id && x.offsetParent !== null); if (c) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); } }, 300);
+    return;
+  }
+  setTimeout(() => { if (!goToReturn(id)) { goTo('slToRetWrap'); if (!r) toast('That return is done or no longer in your Sheet'); } }, 80);
+}
+
 // Counts from a loaded Sales screen, so home stays right after changes
 function countsFrom(d) {
   const tp = d.toPost || [], tc = (d.toCollect || []).filter(c => c.status === 'To collect');
@@ -2231,7 +2256,7 @@ function renderToReturn(d) {
     : '<span class="tag ' + (r.daysLeft <= 2 ? 'late' : r.daysLeft <= 7 ? 'soon' : '') + '">' + (r.daysLeft === 0 ? 'Last day today' : 'Last day ' + esc(dayName(r.returnBy))) + '</span>';
   const onWay = open.filter(r => r.status === 'Sent back');
   $('slToRet').innerHTML = (onWay.length ? `<button class="card scard pendlink" data-gopend="1"><span>🚚 <b>${onWay.length} on ${onWay.length === 1 ? 'its' : 'their'} way back</b>, waiting for the refund</span><span class="sub">In Purchases → Pending refunds ›</span></button>` : '')
-    + open.map((r, i) => r.status === 'Sent back' ? '' : `<div class="card scard"><div class="sb">
+    + open.map((r, i) => r.status === 'Sent back' ? '' : `<div class="card scard" data-rid="${esc(String(r.id || ''))}"><div class="sb">
     <div class="st">${esc(r.item)}${r.qty > 1 ? ' <span class="sm">×' + r.qty + '</span>' : ''}</div>
     <div class="sm">${[esc(r.store), r.bought ? 'bought ' + esc(r.bought) : '', r.amount ? money(r.amount) : '', r.order ? '#' + esc(r.order) : '', r.from && r.from !== 'Receipts' ? 'from ' + esc(r.from) : ''].filter(Boolean).join(' · ')}</div>
     ${bundleLines(r)}
@@ -4376,8 +4401,8 @@ $('btnSeMore').onclick = () => {   // the full sale form, filled in (postage, dr
 /* ListMe's link: #sell?u=<unit ids>&k=<key>&t=<title>&p=<listed>&r=<purchase row>&n=<left>&c=<cost each>&ph=<photo>&rx=<this Sheet's script address>
    Everything is after the #, so it never reaches any server. */
 function sellLinkConnect(hash) {
-  if (!/^#sell\b/.test(hash) || localStorage.getItem(LS_URL)) return;
-  const rx = new URLSearchParams(hash.replace(/^#sell\??/, '')).get('rx') || '';
+  if (!/^#(sell|returns)\b/.test(hash) || localStorage.getItem(LS_URL)) return;   // ListMe's Sell in person and Open in Receipts links
+  const rx = new URLSearchParams(hash.replace(/^#(sell|returns)\??/, '')).get('rx') || '';
   if (/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(rx)) { try { localStorage.setItem(LS_URL, rx); localStorage.setItem('rs_intro', '1'); } catch (e) {} }
 }
 function sellFromLink(hash) {
@@ -4573,7 +4598,7 @@ if (localStorage.getItem(LS_URL)) {
   setTimeout(() => {
     try {
       if (/^#sell\b/.test(location.hash)) { const h = location.hash; history.replaceState(null, '', location.pathname); openSellLink(h); }   // ListMe: Sold → In person
-      else if (location.hash === '#returns') { history.replaceState(null, '', location.pathname); openSales('slToRetWrap'); }   // from FlipList / FlipCheck
+      else if (/^#returns\b/.test(location.hash)) { const h = location.hash; history.replaceState(null, '', location.pathname); openReturnLink(h); }   // from ListMe / FlipCheck: #returns, or #returns?id=… for one return
       else if (location.hash === '#purchases') { history.replaceState(null, '', location.pathname); openPurchases(); }   // from FlipCheck's Bought it box
       else resumeCardWait();
     } catch (e) { console.warn('Start: ' + e.message); try { localStorage.removeItem(LS_CARD_WAIT); } catch (x) {} show('vHome'); }
