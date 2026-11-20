@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Demo setup: FlipCheck, ListMe and Receipts</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f5f5f7; --card:#fff; --ink:#1d1d1f; --muted:#6e6e73; --blue:#0071e3; --line:rgba(0,0,0,.1); }
+  @media (prefers-color-scheme: dark) { :root { --bg:#000; --card:#1c1c1e; --ink:#f5f5f7; --muted:#a1a1a6; --blue:#2997ff; --line:rgba(255,255,255,.14); } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.45 -apple-system, system-ui, Roboto, sans-serif; padding:calc(env(safe-area-inset-top) + 16px) 16px 40px; }
+  main { max-width:560px; margin:0 auto; }
+  h1 { font-size:28px; margin:8px 0 4px; }
+  h2 { font-size:20px; margin:28px 0 8px; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:999px; background:#d64545; color:#fff; font-weight:700; font-size:13px; letter-spacing:.06em; }
+  .sub { color:var(--muted); font-size:15px; }
+  .card { background:var(--card); border-radius:16px; padding:16px; margin:12px 0; border:1px solid var(--line); }
+  .btn { display:block; text-align:center; background:var(--blue); color:#fff; text-decoration:none; font-weight:600; font-size:18px; padding:14px; border-radius:12px; min-height:52px; }
+  .qr { display:flex; justify-content:center; margin:12px 0 4px; }
+  .qr svg { width:150px; height:150px; background:#fff; padding:8px; border-radius:8px; }
+  ol, ul { padding-left:22px; margin:8px 0; }
+  li { margin:6px 0; }
+  .num { display:inline-flex; width:28px; height:28px; border-radius:50%; background:var(--blue); color:#fff; align-items:center; justify-content:center; font-weight:700; margin-right:8px; }
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  td { padding:8px 4px; border-top:1px solid var(--line); vertical-align:top; }
+  td:first-child { font-weight:600; width:38%; }
+</style>
+</head>
+<body>
+<main>
+  <span class="pill">DEMO</span>
+  <h1>Set up the three apps</h1>
+  <p class="sub">About 5 minutes. Everything inside is made-up sample data for "Sam Demo", a part-time reseller in Leicester (fakeTesco, fakeAsda, fakePokemonCentre…). It goes back to how it started every night at 3am, so let people tap anything.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0"><span class="num">1</span>FlipCheck</h2>
+    <p class="sub">Is this deal worth buying? Profit after fees and postage, and what to offer.</p>
+    <a class="btn" href="https://flipcheck.nexrevu.com/">Open FlipCheck</a>
+    <div class="qr" data-qr="https://flipcheck.nexrevu.com/"></div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0"><span class="num">2</span>ListMe</h2>
+    <p class="sub">Listings for eBay, Vinted and Facebook, buyer replies, and what to do today.</p>
+    <a class="btn" href="https://listme.nexrevu.com/">Open ListMe</a>
+    <div class="qr" data-qr="https://listme.nexrevu.com/"></div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0"><span class="num">3</span>Receipts</h2>
+    <p class="sub">Snap a receipt, track sales, parcels to post, returns and profit. Already connected to the demo: nothing to paste.</p>
+    <a class="btn" id="rx" href="#">Open Receipts</a>
+    <div class="qr" id="rxqr"></div>
+  </div>
+
+  <h2>Signing in (FlipCheck and ListMe)</h2>
+  <ol>
+    <li>Tap <b>Open FlipCheck</b>. Type your email and tap <b>Send me a code</b>.</li>
+    <li>Open the email from Cloudflare, copy the 6-digit code, paste it in. You stay signed in for weeks.</li>
+    <li>ListMe uses the same email and code.</li>
+  </ol>
+
+  <h2>Put each one on your home screen (Android, Chrome)</h2>
+  <ol>
+    <li>With the app open in <b>Chrome</b>, tap <b>⋮</b> (three dots, top right).</li>
+    <li>Tap <b>Add to Home screen</b> (or <b>Install app</b>), then <b>Install</b> / <b>Add</b>.</li>
+    <li>Do the same for all three. Open them from the home screen icons from then on.</li>
+  </ol>
+  <p class="sub">If Chrome opens a different browser's page, copy the link and paste it into Chrome.</p>
+
+  <h2>Show it in 60 seconds</h2>
+  <p class="sub">Ask what bugs them most, then open:</p>
+  <table>
+    <tr><td>"Is it worth buying?"</td><td>FlipCheck → the LEGO car-boot deal (a clear Buy) and the shiny-but-slow one (Walk).</td></tr>
+    <tr><td>"How much profit did I make?"</td><td>Receipts → Sales: profit per item, days to sell, one sold at a loss.</td></tr>
+    <tr><td>"Listing takes ages"</td><td>ListMe → an item → listings written for eBay, Vinted and Facebook in one go.</td></tr>
+    <tr><td>"Buyers messaging"</td><td>ListMe → buyer chats: the lowballer, "still available?", the PayPal Friends and Family scam.</td></tr>
+    <tr><td>"Receipts and tax"</td><td>Receipts → snap any receipt (it reads it), then Your numbers and the tax summary.</td></tr>
+    <tr><td>"Parcels and returns"</td><td>Receipts → To post (QR wallet, one late), the fakeArgos collection, and the Pokémon box return due in 3 days.</td></tr>
+  </table>
+  <p class="sub" style="margin-top:20px">Photos and messages you add are read for real (a few a day). Nothing here is anyone's real data.</p>
+</main>
+<script src="qrcode.js?v=110"></script>
+<script>
+  // The demo Sheet's address (Receipts DEMO – Sam Demo). The app connects to it the first time it opens from this link.
+  var RX = 'https://script.google.com/macros/s/AKfycbyN5rbS1BNBoV4n1bPxoBK9C9r2kUaIuOOP0RcX9YxA_mc7E_fhotgU6UmcjOB8e7xGew/exec';
+  var link = 'https://19nrvu96.github.io/receipt-scanner/#connect?rx=' + encodeURIComponent(RX);
+  document.getElementById('rx').href = link;
+  document.getElementById('rxqr').setAttribute('data-qr', link);
+  document.querySelectorAll('[data-qr]').forEach(function (el) {
+    try { var q = qrcode(0, 'M'); q.addData(el.getAttribute('data-qr')); q.make(); el.innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); } catch (e) {}
+  });
+</script>
+</body>
+</html>
