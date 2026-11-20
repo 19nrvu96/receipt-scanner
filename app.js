@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v104';
+const APP_VERSION = 'v105';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1517,8 +1517,11 @@ async function openQueue() {
   }
 }
 
+// A reply that isn't the email list (no items) never replaces the list: it would show "Nothing to check" with emails waiting
+const isQueue = d => !!d && Array.isArray(d.items);
 function renderQueue(d) {
-  queueItems = d.items || [];
+  if (!isQueue(d)) throw new Error('The email list didn\'t load. Tap Check inbox now to try again.');
+  queueItems = d.items;
   setEmailCount(queueItems.length);
   const waiting = d.processing ? d.processing + ' more being read now. ' : '';
   $('qSub').textContent = (queueItems.length ? 'These came from your emails. Check each one, then tap Save. ' : 'Nothing to check yet. ')
@@ -1577,7 +1580,8 @@ async function checkInboxNow(tries = 0, auto = false) {
     else { toast(err.message, true); }
   }
   b.disabled = false; b.textContent = '↻ Check inbox now';
-  if (!d) return;
+  if (d && !isQueue(d)) d = await api('queue', {}).catch(() => null);   // odd reply: load the list itself
+  if (!isQueue(d)) { if (!auto) toast('Couldn\'t load the email list. Try again in a moment.', true); return; }
   renderQueue(d);
   if (d.found) { toast('Found ' + d.found + ' new email' + (d.found === 1 ? '' : 's')); return; }
   const hd = (d.handled || []).filter(q => !queueSeen.has(q.id));
