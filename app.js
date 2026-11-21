@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v112';
+const APP_VERSION = 'v113';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -1596,6 +1596,7 @@ const queueSeen = new Set();   // "done for you" items already mentioned this se
 async function checkInboxNow(tries = 0, auto = false) {
   clearTimeout(qTimer);
   const b = $('btnQRefresh');
+  if (CFG.demo) { if (!auto) toast('Demo: in the full app this looks in your inbox for new order emails straight away.'); return; }   // Demo.gs: no email in a demo
   b.disabled = true; b.textContent = tries ? 'Looking again…' : 'Looking in your inbox…';
   if (auto) tries = 4;   // a look when the screen opens: no follow-ups
   let d;

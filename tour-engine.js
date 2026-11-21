@@ -207,8 +207,16 @@
       await sleep(40);
       const c = T.card.getBoundingClientRect();
       // In a pop-up sheet (ListMe's buyer messages): lift the sheet above the card, then scroll inside it
-      const sh = el.closest('.sheet'), shc = sh && sh.firstElementChild;
-      if (shc) { sh.style.alignItems = 'start'; shc.style.maxHeight = Math.max(200, c.top - 14) + 'px'; shc.style.borderRadius = '0 0 16px 16px'; const sf = (getComputedStyle(document.documentElement).getPropertyValue('--surface') || '').trim(); shc.style.background = sf ? `linear-gradient(${sf}, ${sf}), ${T_BASE}` : T_BASE; await sleep(30); }
+      // The pop-up is the nearest fixed-position box round the target (ListMe's .sheet, Receipts' .veil); its card is the child holding the target
+      let sh = null;
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) if (getComputedStyle(p).position === 'fixed') { sh = p; break; }
+      let shc = null; if (sh) for (let p = el; p && p !== sh; p = p.parentElement) shc = p;
+      if (sh && shc) {
+        sh.style.alignItems = 'flex-start'; shc.style.maxHeight = Math.max(200, c.top - 14) + 'px'; shc.style.overflowY = 'auto'; shc.style.borderRadius = '0 0 16px 16px';
+        const bg = getComputedStyle(shc).backgroundColor;
+        if (!bg || /rgba\(.*,\s*0(\.\d+)?\)$|transparent/.test(bg)) { const sf = (getComputedStyle(document.documentElement).getPropertyValue('--surface') || '').trim(); shc.style.background = sf ? `linear-gradient(${sf}, ${sf}), ${T_BASE}` : T_BASE; }
+        await sleep(30);
+      }
       let sc = null;
       for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) { const o = getComputedStyle(p).overflowY; if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight + 2) { sc = p; break; } }
       const r = el.getBoundingClientRect();

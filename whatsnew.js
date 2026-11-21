@@ -342,55 +342,144 @@
     get theme() { const d = document.documentElement.classList.contains('dark');
       return d ? { accent: '#0a84ff', accentInk: '#fff', bg: '#1d2027', fg: '#e8e8ea', line: '#3a3d45', strong: '#fff' } : { accent: '#0a84ff', accentInk: '#fff', bg: '#fff', fg: '#111', line: '#d6d6db', strong: '#111' }; },
     when: () => !!localStorage.getItem('rs_url') };
-  // Demo Sheets (Demo.gs): no "What's new"; a short tour of the key things using Sam Demo's made-up data.
-  const DEMO = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:demo1', menuTitle: 'Receipts in 2 minutes',
-    menuIntro: 'A quick look at what it does, using Sam Demo\'s made-up shopping and sales. Start at the top, or pick one. Each opens the real screen.',
+  // ---------- Demo Sheets (Demo.gs): five welcome questions, then a hands-on tour of Sam Demo's made-up data ----------
+  // Each feature: point at it, say what it does and why it matters, ask them to tap the real button, then show what changed.
+  const $q = s => document.querySelector(s), $$q = s => Array.from(document.querySelectorAll(s));
+  const vis = id => { const v = document.getElementById(id); return !!v && !v.classList.contains('hide'); };
+  const btn = (sel, re) => () => $$q(sel).find(b => re.test(b.textContent) && b.getClientRects().length && !b.disabled);
+  const inCard = (sel, re, cardRe) => () => $$q(sel).find(b => re.test(b.textContent) && cardRe.test((b.closest('.card,.scard') || b.parentElement).textContent) && b.getClientRects().length);
+  const cardOf = (wrap, re) => () => $$q('#' + wrap + ' .card').find(c => re.test(c.textContent));
+  const closeVeils = () => document.querySelectorAll('.veil').forEach(v => v.remove());
+  const gv = fn => go(async () => { closeVeils(); await fn(); });
+  const home = gv(() => show('vHome'));
+  const salesAt = t => go(async () => { document.querySelectorAll('.veil').forEach(v => v.remove()); if (!vis('vSales')) await openSales(t); else { const el = document.getElementById(t); if (el) el.scrollIntoView(); } });
+  const sheetUp = re => () => $$q('.veil .sheet').find(x => !re || re.test(x.textContent));
+  const DEMO = { app: 'receipts', name: 'Receipts', key: 'tour:receipts:demo3', menuTitle: 'Receipts, hands on',
+    menuIntro: 'Sam Demo\'s made-up shopping and sales. Each one opens the real screen, shows you what it does, and you tap the button to see it work.',
     get theme() { return cfg.theme; }, when: cfg.when,
     chapters: [
-      { id: 'd-snap', icon: '📸', title: 'Snap a receipt', summary: 'It reads every line for you',
-        steps: [{ title: 'Snap it', go: go(() => show('vHome')), target: '#btnCam',
-          text: 'Take a photo of any receipt (even a long one in two photos). It reads the shop, every item and price, and adds them to the Sheet once you\'ve checked them. Try it on a real receipt: it reads a few a day in the demo.' }] },
-      { id: 'd-emails', icon: '✉️', title: 'Order emails', summary: 'Forward them, it reads them',
-        steps: [{ title: 'Emailed receipts', go: go(() => openQueue()),
-          text: 'Online orders (fakeAsda, fakeArgos, fakeTesco here) are forwarded to the app, read automatically and wait here for a quick check.' }] },
-      { id: 'd-sales', icon: '💷', title: 'Sales and profit', summary: 'Profit per item, days to sell',
-        steps: [{ title: 'Every sale', go: sales(), target: '#slRecent',
-          text: 'Every sale from eBay, Vinted, Facebook or in person, with the fees, postage and what it cost, so you see the real profit and how long it took to sell. One is a loss (the air fryer), one was cancelled, one refunded, one is waiting for a bank transfer.' }] },
-      { id: 'd-post', icon: '📦', title: 'Parcels to post', summary: 'The QR codes, in one place',
-        steps: [{ title: 'To post', go: sales('slPostWrap'), target: '#slPostWrap',
-          text: 'Every postage label and QR code in one wallet: show it at the shop, tap Posted. One is due today and one is late, so it shows first.' }] },
-      { id: 'd-collect', icon: '🏬', title: 'Click and collect', summary: 'Codes and collect-by dates',
-        steps: [{ title: 'To collect', go: sales('slCollWrap'), target: '#slCollWrap',
-          text: 'Orders waiting at the shop (fakeArgos here), with the collect-by date and that day\'s opening hours.' }] },
-      { id: 'd-return', icon: '↩️', title: 'Returns', summary: 'Never miss a return date',
-        steps: [{ title: 'To return', go: sales('slToRetWrap'), target: '#slToRetWrap',
-          text: 'The Pokémon box is unopened and its return date is in 3 days, so it warns you in time to get your money back.' }] },
-      { id: 'd-numbers', icon: '📊', title: 'Your numbers and tax', summary: 'Profit by month, a rough tax guide',
-        steps: [{ title: 'Your numbers', go: go(() => openNumbers()),
-          text: 'Money in, money out and profit by month, and a rough guide to the tax numbers for the year. All from the receipts and sales above, with nothing typed twice.' }] },
-      { id: 'd-apps', icon: '🔗', title: 'With FlipCheck and ListMe', summary: 'One flow: buy, list, sell, records',
-        steps: [{ title: 'All three together', go: go(() => show('vHome')),
-          text: 'FlipCheck decides what to buy, ListMe lists it and handles buyers, and Receipts keeps the records. A sale in one updates the others.' }] },
+      { id: 'd-todo', icon: '👋', title: 'What needs doing today', summary: 'One list, most urgent first',
+        steps: [
+          { title: 'Your to-do list', go: home, target: '#todo',
+            text: 'Everything with a deadline, in one list, most urgent first: a parcel that\'s late, an order waiting at the shop, a return with days left. <b>Why it matters:</b> missed deadlines are where resellers lose money (late posting hurts your seller rating, missed returns mean you keep stock you can\'t sell).' },
+          { title: 'Tap the top one', go: home, tap: btn('#todo button[data-todo]', /late/), until: () => vis('vSales'), tapText: 'Tap <b>1 parcel late. Post now</b>',
+            text: 'Each line takes you straight to the thing that needs doing.' },
+          { title: 'Straight to it', target: cardOf('slPost', /Late/),
+            text: 'It opened Sales on the late parcel. No hunting through emails for the label.' }] },
+      { id: 'd-post', icon: '📦', title: 'Parcels to post', summary: 'Every label in one place',
+        steps: [
+          { title: 'Your postage labels', go: salesAt('slPostWrap'), target: '#slPostWrap',
+            text: 'Forward the postage email from eBay, Vinted or the courier and the label or QR code lands here, with the post-by date. <b>Why it matters:</b> at the counter you open one app, not five inboxes, and nothing gets posted late.' },
+          { title: 'Posted it? Tick it off', go: salesAt('slPostWrap'), tap: inCard('#slPost button', /Posted/, /Late/), until: () => !cardOf('slPost', /Late/)(),
+            tapText: 'Tap <b>✓ Posted</b> on the late one', text: 'In real life you\'d show the QR code at the counter first, then tick it.' },
+          { title: 'Ticked off, and the trip', target: () => sheetUp(/trip/i)() || $q('#vSales'),
+            text: 'It\'s off the list and the count on the home screen drops. Driving to post a sale counts as business miles, so it asks where you dropped it off and offers to log the trip.' },
+          { title: 'Log it later', tap: () => $$q('.veil button').find(b => /later/i.test(b.textContent)), until: () => !sheetUp(/trip/i)(), tapText: 'Tap <b>Save it for later</b>',
+            text: 'Saved trips wait in Mileage, so you can log a whole day of drop-offs in one go.', missing: 'Already saved.' }] },
+      { id: 'd-emails', icon: '✉️', title: 'Order emails, read for you', summary: 'Forward it, check it, save it',
+        steps: [
+          { title: 'Emailed receipts', go: gv(() => openQueue()), target: () => $q('#qList .card') || $q('#vQueue'),
+            text: 'Forward any order confirmation (fakeAsda, fakeArgos, fakeTesco here) and it\'s read for you: shop, every item, price, quantity and order number. <b>Why it matters:</b> online orders are half a reseller\'s stock and the emails are scattered everywhere. Here they wait for a quick check.' },
+          { title: 'Open one', tap: btn('#vQueue button[data-q="review"]', /Review/), until: () => vis('vReview'), tapText: 'Tap <b>Review</b> on the fakeAsda order' },
+          { title: 'Everything filled in', target: () => $q('#vReview .card') || $q('#vReview'),
+            text: 'Shop, date, items, prices and the order number are already in. Change anything you like (the purpose, the price) before it goes in your books.' },
+          { title: 'What\'s it for?', tap: () => $q('#vReview [data-pp].unset') || $q('#vReview [data-pp]'), until: sheetUp(/Resale Stock/), tapText: 'Tap <b>Select purpose…</b>',
+            text: 'Each line gets a purpose: stock to resell, packaging, fuel, or personal. <b>Why it matters:</b> only business spending comes off your tax, and personal shopping on the same receipt stays out of your books.' },
+          { title: 'Stock to resell', tap: () => $$q('.veil button').find(b => /^\s*Resale Stock/.test(b.textContent)), until: () => !$q('#vReview [data-pp].unset') && !sheetUp(/Resale Stock/)(), tapText: 'Tap <b>Resale Stock</b>' },
+          { title: 'Save it', tap: '#btnSave', until: () => !vis('vReview'), tapText: 'Tap <b>Save to Sheet</b>', pause: 1500 },
+          { title: 'In your purchases', go: gv(() => openPurchases()), target: () => $q('#vPurchases .card') || $q('#vPurchases'),
+            text: 'It\'s now a purchase in your Google Sheet, with its order number, ready to link to the sale when it sells. Nothing typed.' }] },
+      { id: 'd-snap', icon: '📸', title: 'Snap a shop receipt', summary: 'Every line read from a photo',
+        steps: [
+          { title: 'Add a receipt', go: home, target: '#addBox',
+            text: 'In the shop, the paper receipt goes in your pocket and gets lost. Here you photograph it at the till and it reads <b>every line</b>: shop, items, prices, how you paid. A long receipt can go in as several photos.' },
+          { title: 'Try it', go: home, prep: async () => { const a = $q('#btnAdd'); if (a && a.getAttribute('aria-expanded') !== 'true') { a.click(); await new Promise(r => setTimeout(r, 300)); } },
+            tap: '#btnCam', until: () => vis('vWork') || vis('vReview') || vis('vPages'), tapText: 'Got a receipt on you? Tap <b>Take a photo</b>',
+            tapNote: 'It uses one of the demo\'s daily reads. No receipt? Tap Skip.' },
+          { title: 'Check it, then save', target: () => (vis('vReview') && ($q('#vReview .card') || $q('#vReview'))) || (vis('vPages') && $q('#vPages')) || null,
+            missing: 'When you take one, it reads it in a few seconds and shows every line here to check, like the order email.',
+            text: 'Every line is read for you. Check the prices, pick what each thing is for (stock, packaging, personal), then Save to Sheet.' }] },
+      { id: 'd-collect', icon: '🛍️', title: 'Click and collect', summary: 'The code and the last day',
+        steps: [
+          { title: 'Waiting at the shop', go: salesAt('slCollWrap'), target: '#slCollWrap',
+            text: 'From the "ready to collect" email: which shop, the order number and the <b>collect-by date</b>. <b>Why it matters:</b> miss it and the order is cancelled, and your stock is gone.' },
+          { title: 'See the details', go: salesAt('slCollWrap'), tap: inCard('#slColl button', /Details/, /DEMO-0042/), until: sheetUp(), tapText: 'Tap <b>Details &amp; code</b>' },
+          { title: 'Everything for the counter', target: sheetUp(), text: 'The collection code, opening hours and directions, ready to show at the desk.' },
+          { title: 'Picked it up?', go: salesAt('slCollWrap'), tap: inCard('#slColl button', /Collected/, /DEMO-0042/), until: () => !inCard('#slColl button', /Collected/, /DEMO-0042/)(), tapText: 'Tap <b>✓ Collected</b>',
+            text: 'Tick it once it\'s in your hands.' },
+          { title: 'Collected', target: () => $q('#vSales'), text: 'Off the to-collect list. The purchase is already in your books from the email, so the stock count is right.' }] },
+      { id: 'd-return', icon: '↩️', title: 'Returns, never missed', summary: 'The Pokémon box: 3 days left',
+        steps: [
+          { title: 'The last day to return', go: salesAt('slRetWrap'), target: cardOf('slRet', /Pok/),
+            text: 'The Pokémon box hasn\'t sold, and it\'s an online order, so the 14 days are counted for you: <b>3 days left</b>. <b>Why it matters:</b> stock that won\'t sell at a profit can go back for a full refund, if you remember in time.' },
+          { title: 'Sending it back', go: salesAt('slToRetWrap'), tap: inCard('#slToRet button', /Returned it|Picked up/, /Pok/), until: sheetUp(/proof|Dropped off|Picked up/), tapText: 'Tap <b>✓ Returned it</b>' },
+          { title: 'Keep proof it went back', target: sheetUp(), tap: () => $q('.veil [data-ho="none"]'), until: () => !$q('.veil [data-ho="none"]'), tapText: 'Tap <b>I didn\'t get a receipt…</b> (in real life, photograph the drop-off receipt)',
+            text: 'The drop-off receipt is your evidence if the refund doesn\'t come.' },
+          { title: 'Waiting for the refund', target: () => $q('.veil .sheet') || $q('#slToRetWrap') || $q('#vSales'),
+            text: 'It\'s now <b>on its way back</b>. When the refund email arrives it\'s matched to this return, and the money shows in your books.' }] },
+      { id: 'd-paid', icon: '💷', title: 'Buyers who haven\'t paid', summary: 'Reserved until the money lands',
+        steps: [
+          { title: 'Awaiting payment', go: salesAt('slAwaitWrap'), target: '#slAwaitWrap',
+            text: 'Jess on Facebook is paying by bank transfer. The Fire TV Stick is <b>reserved</b>: not sold until the money is there. <b>Why it matters:</b> no counting money you haven\'t got, and no selling the same stick twice.' },
+          { title: 'The money\'s arrived', go: salesAt('slAwaitWrap'), tap: btn('#slAwait button', /in my bank/), until: () => !btn('#slAwait button', /in my bank/)(), tapText: 'Tap <b>It\'s in my bank</b>', pause: 1500 },
+          { title: 'Now it\'s a sale', go: salesAt('slRecent'), target: () => $$q('#slRecent .card').find(c => /Fire TV/.test(c.textContent) && /Facebook/.test(c.textContent)) || $q('#slRecent'),
+            text: 'It\'s now Sold, counted in your totals, and taken out of stock. If they never pay, <b>They didn\'t pay</b> puts it back on sale instead.' }] },
+      { id: 'd-sell', icon: '🏷️', title: 'Sell from your stock', summary: 'Profit shown before you take the money',
+        steps: [
+          { title: 'Your stock', go: gv(() => openStock()), target: () => $q('#vStock .card') || $q('#vStock'),
+            text: 'Everything bought and not yet sold, oldest first, with what you paid and how long it\'s been sitting. <b>Why it matters:</b> old stock is cash stuck on a shelf.' },
+          { title: 'Someone wants one', go: gv(() => openStock()), tap: () => $$q('#vStock [data-sell]').find(b => /Booster/.test(b.parentElement.textContent)) || $q('#vStock [data-sell]'),
+            until: () => vis('vSell') || vis('vSale'), tapText: 'Tap <b>Sell this</b> on the Pokémon Booster Bundle' },
+          { title: 'Profit before you take the money', prep: async () => { const p = await window.FlipTour.waitFor('#sePrice', 3000); if (p && !p.value) await window.FlipTour.typeInto(p, '40', 400); },
+            target: () => $q('#seProfit') && $q('#seProfit').textContent.trim() ? $q('#sePrice').closest('div,label').parentElement : $q('#sePrice'),
+            text: 'Sam\'s buyer offered £40 (typed in for you). It already knows Sam paid £26.99, so the <b>profit shows before you say yes</b>. No guessing on the doorstep.' },
+          { title: 'They paid cash', tap: '#btnSeCash', until: () => !vis('vSell'), pause: 1500, tapText: 'Tap <b>Cash</b>',
+            text: 'Tap how they paid. Bank transfer shows your details to copy; card opens your card reader app.' },
+          { title: 'Logged, and stock updated', go: salesAt('slRecent'), target: () => $q('#slRecent .card') || $q('#slRecent'),
+            text: 'The sale is in your Sheet with its profit, linked to the purchase, and the stock count went down by one. One tap, no spreadsheet.' }] },
+      { id: 'd-numbers', icon: '📊', title: 'Your numbers and tax', summary: 'Profit, tax pot, stock',
+        steps: [
+          { title: 'Your numbers', go: home, tap: '#btnNumbers', until: () => vis('vNumbers'), tapText: 'Tap <b>Your numbers</b>' },
+          { title: 'Profit so far', target: () => $q('#numBody > div'),
+            text: 'Money in, money out, and profit for the tax year, from everything above. Nothing typed twice. <b>Why it matters:</b> you know whether you\'re actually making money, not just turning it over.' },
+          { title: 'The tax pot', target: () => $$q('#numBody > div')[1],
+            text: 'Roughly what to put aside for tax, so January isn\'t a shock. Your accountant gets the Sheet, already sorted.' }] },
+      { id: 'd-trip', icon: '🚗', title: 'Mileage', summary: 'Stock runs are tax deductible',
+        steps: [
+          { title: 'Log a trip', go: home, tap: '#btnTrip', until: () => vis('vTrip'), tapText: 'Tap <b>Log a trip</b>' },
+          { title: 'Claimed at 45p a mile', target: () => ($q('#tTodo') && !$q('#tTodo').classList.contains('hide') && $q('#tTodo').textContent.trim()) ? $q('#tTodo') : $q('#tSub') && $q('#tSub').parentElement,
+            text: 'Stock runs, collections and drop-offs (like that post office trip you saved): pick the places and it works out the miles at HMRC\'s 45p a mile. <b>Why it matters:</b> most resellers forget this, and it\'s often worth hundreds a year.' }] },
+      { id: 'd-buyers', icon: '👥', title: 'Remember your buyers', summary: 'Good ones, and ones to avoid',
+        steps: [
+          { title: 'Every buyer, remembered', go: gv(() => openBuyers()), prep: async () => { const q = await window.FlipTour.waitFor('#byQ', 4000); if (q && !q.value) await window.FlipTour.typeInto(q, 'quick', 500); },
+            tap: () => $q('#byList [data-bk]'), until: () => vis('vBuyer'), tapText: 'Tap <b>Quick buyer</b>',
+            text: 'Every sale saves the buyer. Searching "quick" finds the one who cancelled.' },
+          { title: 'Don\'t sell to them again', target: () => $q('#bpView'),
+            text: 'Cancelled after 2 days and didn\'t turn up once before: <b>Sell again: No</b>. Next time they message, ListMe warns you. Good buyers (Kay wants the next Pokémon box) get a message when you have stock.' }] },
+      { id: 'd-apps', icon: '🔗', title: 'With FlipCheck and ListMe', summary: 'Buy, list, sell, records',
+        steps: [{ title: 'All three together', go: home,
+          text: 'FlipCheck decides what to buy, ListMe lists it everywhere and handles buyers, and Receipts keeps the records. A sale in one updates the others.' }] },
     ] };
-  // Demo: five welcome questions first (Customising your experience, a tick), then the tour with their parts first.
+  // The welcome questions: reseller paperwork, in their words. Their answers put the matching parts first.
   const QS = [
-    { q: 'How do you keep receipts now?', opts: [['🗃️', 'Shoebox or paper'], ['📱', 'Photos on my phone'], ['📊', 'A spreadsheet'], ['🤷', "I don't really"]] },
+    { q: 'Where do you buy your stock?', multi: true, opts: [['🏬', 'Shops and clearance aisles'], ['📦', 'Online orders'], ['🛍️', 'Click and collect'], ['📘', 'Facebook and Vinted sellers'], ['🏭', 'Wholesale']] },
+    { q: 'Which paperwork is the worst?', multi: true, opts: [['🧾', 'Keeping hold of receipts'], ['✉️', 'Order emails everywhere'], ['💷', 'Knowing my real profit'], ['🧮', 'Tax return time'], ['🚗', 'Logging mileage']] },
+    { q: 'Where do you lose money?', multi: true, opts: [['↩️', 'Missing return dates'], ['📮', 'Posting parcels late'], ['🙅', 'Buyers who don\'t pay'], ['🐢', 'Stock that won\'t sell'], ['🤔', 'Forgetting what I paid']] },
     { q: 'How do you sell?', opts: [['🏢', 'Limited company'], ['🧾', 'Sole trader'], ['🌙', 'Side hustle'], ['🌱', 'Not sure yet']] },
-    { q: 'What paperwork gets on top of you?', multi: true, opts: [['🧾', 'Losing receipts'], ['✉️', 'Online order emails'], ['💷', 'Knowing my real profit'], ['↩️', 'Missing return dates'], ['📦', 'Posting parcels on time']] },
-    { q: 'How many things do you buy a month?', opts: [['🌱', 'Under 20'], ['📦', '20 to 100'], ['🏭', 'Over 100'], ['🔀', 'It varies']] },
     { q: 'Who does your accounts?', opts: [['🙋', 'Me'], ['👔', 'An accountant'], ['👪', 'Family'], ['❓', 'Nobody yet']] }];
-  const FIRSTQ = { 'Shoebox or paper': ['d-snap'], "I don't really": ['d-snap'], 'Losing receipts': ['d-snap'], 'Online order emails': ['d-emails'],
-    'Knowing my real profit': ['d-sales', 'd-numbers'], 'Missing return dates': ['d-return'], 'Posting parcels on time': ['d-post'],
-    'An accountant': ['d-numbers'], 'Me': ['d-numbers'], 'Nobody yet': ['d-numbers'] };
-  const LINESQ = { 'Shoebox or paper': 'Starting with snapping receipts', 'Losing receipts': 'Starting with snapping receipts', 'Online order emails': 'Putting order emails first',
-    'Knowing my real profit': 'Putting profit first', 'Missing return dates': 'Adding return reminders', 'Posting parcels on time': 'Adding the parcels wallet',
-    'Limited company': 'Setting up for a company', 'Sole trader': 'Setting up for a sole trader', 'An accountant': 'Getting the numbers ready for your accountant' };
+  const FIRSTQ = { 'Online orders': ['d-emails'], 'Order emails everywhere': ['d-emails'], 'Click and collect': ['d-collect'], 'Shops and clearance aisles': ['d-snap'], 'Keeping hold of receipts': ['d-snap'],
+    'Knowing my real profit': ['d-numbers', 'd-sell'], 'Forgetting what I paid': ['d-sell'], 'Tax return time': ['d-numbers'], 'Logging mileage': ['d-trip'], 'Missing return dates': ['d-return'],
+    'Posting parcels late': ['d-post'], 'Buyers who don\'t pay': ['d-paid', 'd-buyers'], 'Stock that won\'t sell': ['d-sell', 'd-return'], 'An accountant': ['d-numbers'], 'Nobody yet': ['d-numbers'] };
+  const LINESQ = { 'Online orders': 'Putting order emails first', 'Order emails everywhere': 'Putting order emails first', 'Click and collect': 'Adding click and collect',
+    'Keeping hold of receipts': 'Starting with snapping receipts', 'Knowing my real profit': 'Putting profit first', 'Tax return time': 'Getting your tax numbers ready',
+    'Logging mileage': 'Adding mileage', 'Missing return dates': 'Adding return reminders', 'Posting parcels late': 'Putting parcels first', 'Buyers who don\'t pay': 'Adding payment checks',
+    'Stock that won\'t sell': 'Showing your old stock', 'Limited company': 'Setting up for a company', 'Sole trader': 'Setting up for a sole trader', 'An accountant': 'Getting it ready for your accountant' };
   const flatA = a => Object.keys(a || {}).reduce((o, k) => o.concat(a[k]), []);
   const AKEY = 'demo:answers:receipts:1';
   const answers = () => { try { return JSON.parse(localStorage.getItem(AKEY) || 'null'); } catch (e) { return null; } };
   const demoFor = a => { const want = flatA(a).reduce((o, x) => o.concat(FIRSTQ[x] || []), []).filter((x, i, l) => l.indexOf(x) === i);
-    const picked = want.map(id => DEMO.chapters.find(c => c.id === id)).filter(Boolean);
-    return Object.assign({}, DEMO, { key: 'tour:receipts:demo2', theme: cfg.theme, chapters: picked.concat(DEMO.chapters.filter(c => picked.indexOf(c) < 0)) }); };
+    const first = DEMO.chapters[0], picked = want.map(id => DEMO.chapters.find(c => c.id === id)).filter(c => c && c !== first);
+    return Object.assign({}, DEMO, { theme: cfg.theme, chapters: [first].concat(picked, DEMO.chapters.filter(c => c !== first && picked.indexOf(c) < 0)) }); };
   const tourNow = () => (typeof CFG !== 'undefined' && CFG.demo ? demoFor(answers()) : cfg);
   window.whatsNew = () => window.FlipTour.start(tourNow());
   document.addEventListener('click', e => { if (e.target.closest('[data-whatsnew]')) { e.preventDefault(); window.FlipTour.start(tourNow()); } });
@@ -398,7 +487,7 @@
     const demo = typeof CFG !== 'undefined' && CFG.demo;
     if (!demo || answers() || !cfg.when()) { window.FlipTour.auto(tourNow(), 0); return; }
     const got = await window.FlipTour.interview({ theme: cfg.theme, title: 'Welcome to Receipts', ready: "Here's your tour", questions: QS,
-      intro: 'Five quick questions about your paperwork, so we can show you the parts that matter to you first. About 20 seconds.',
+      intro: 'Five quick questions about how you buy and sell, so we can show you the parts that matter to you first. About 20 seconds.',
       lines: a => flatA(a).map(x => LINESQ[x]).filter(Boolean).filter((x, i, l) => l.indexOf(x) === i).slice(0, 3) });
     try { localStorage.setItem(AKEY, JSON.stringify(got || {})); } catch (e) {}
     if (got && typeof api === 'function') api('demoAnswers', { answers: got }).catch(() => {});
