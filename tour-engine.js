@@ -211,6 +211,12 @@
       let sh = null;
       for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) if (getComputedStyle(p).position === 'fixed') { sh = p; break; }
       let shc = null; if (sh) for (let p = el; p && p !== sh; p = p.parentElement) shc = p;
+      // A small fixed bar (FlipCheck's bottom dock): leave it alone and put the card at the top instead
+      if (sh && sh.getBoundingClientRect().height < innerHeight * 0.4) {
+        const br = sh.getBoundingClientRect();
+        if (br.top > innerHeight / 2) { T.side = 'top'; render(false); }
+        sh = null; shc = null; T.fixedBar = true;
+      } else T.fixedBar = false;
       if (sh && shc) {
         sh.style.alignItems = 'flex-start'; shc.style.maxHeight = Math.max(200, c.top - 14) + 'px'; shc.style.overflowY = 'auto'; shc.style.borderRadius = '0 0 16px 16px';
         const bg = getComputedStyle(shc).backgroundColor;
@@ -224,7 +230,7 @@
       if (sc) { const b = sc.getBoundingClientRect(); top0 = b.top + 8; bot0 = Math.min(b.bottom, c.top) - 8; }
       else { const hd = document.querySelector('header'), hb = hd ? hd.getBoundingClientRect().bottom : 0; top0 = Math.min(160, Math.max(0, hb)) + 10; bot0 = c.top - 12; }
       const want = r.height > bot0 - top0 ? r.top - top0 : (r.top + r.height / 2) - (top0 + bot0) / 2;
-      if (Math.abs(want) > 4) (sc || window).scrollBy({ top: want, behavior: 'smooth' });
+      if (Math.abs(want) > 4 && !T.fixedBar) (sc || window).scrollBy({ top: want, behavior: 'smooth' });
     }
     // Mark the chapter done on its last step
     if (st.si === st.n - 1) { const d = store.get(T.cfg.key); d.done = Object.assign({}, d.done, { [ch.id]: 1 }); store.set(T.cfg.key, d); }

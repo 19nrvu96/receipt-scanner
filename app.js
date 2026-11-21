@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v114';
+const APP_VERSION = 'v115';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -4398,7 +4398,9 @@ function demoBadge(on) {
 function connectLink(hash) {
   if (!/^#connect\b/.test(hash)) return;
   const rx = new URLSearchParams(hash.replace(/^#connect\??/, '')).get('rx') || '';
-  history.replaceState(null, '', location.pathname);
+  // Keep the demo's address in the page address (?demo=…), so a refresh reconnects even if the browser lost its storage (Safari private tabs, 21 Nov)
+  const ok = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(rx);
+  history.replaceState(null, '', location.pathname + (ok ? '?demo=' + encodeURIComponent(rx) : ''));
   if (localStorage.getItem(LS_URL)) return;
   if (/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(rx)) { try { localStorage.setItem(LS_URL, rx); localStorage.setItem('rs_intro', '1'); } catch (e) {} }
 }
@@ -4593,6 +4595,12 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && localStorage.getItem(LS_URL)) refreshConfig();
 });
 connectLink(location.hash);   // a demo setup link (#connect?rx=…)
+(function demoQuery() {   // refreshed after a demo setup link: reconnect from ?demo=… if this tab forgot it
+  try {
+    const rx = new URLSearchParams(location.search).get('demo') || '';
+    if (!localStorage.getItem(LS_URL) && /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(rx)) { localStorage.setItem(LS_URL, rx); localStorage.setItem('rs_intro', '1'); }
+  } catch (e) {}
+})();
 sellLinkConnect(location.hash);   // a ListMe link on a phone where this copy of the app isn't set up yet (Safari keeps its own storage)
 if (localStorage.getItem(LS_URL)) {
   show('vHome'); if (CFG.waiting) renderTodo(CFG.waiting); renderAppSwitch(); refreshConfig();
