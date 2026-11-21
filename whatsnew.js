@@ -483,7 +483,12 @@
   const tourNow = () => (typeof CFG !== 'undefined' && CFG.demo ? demoFor(answers()) : cfg);
   window.whatsNew = () => window.FlipTour.start(tourNow());
   document.addEventListener('click', e => { if (e.target.closest('[data-whatsnew]')) { e.preventDefault(); window.FlipTour.start(tourNow()); } });
-  setTimeout(async () => {   // after the app has asked the Sheet whether it's a demo
+  // Wait until the Sheet has said whether it's a demo (a cold Apps Script start can take 10 seconds or more), then choose the tour.
+  (async () => {
+    const t0 = Date.now();
+    await new Promise(r => setTimeout(r, 1500));
+    while (Date.now() - t0 < 45000 && !(typeof CFG !== 'undefined' && (CFG.booted || CFG.demo))) await new Promise(r => setTimeout(r, 300));
+    if (!(typeof CFG !== 'undefined' && (CFG.booted || CFG.demo))) return;   // never heard back: no tour rather than the wrong one
     const demo = typeof CFG !== 'undefined' && CFG.demo;
     if (!demo || answers() || !cfg.when()) { window.FlipTour.auto(tourNow(), 0); return; }
     const got = await window.FlipTour.interview({ theme: cfg.theme, title: 'Welcome to Receipts', ready: "Here's your tour", questions: QS,
@@ -492,5 +497,5 @@
     try { localStorage.setItem(AKEY, JSON.stringify(got || {})); } catch (e) {}
     if (got && typeof api === 'function') api('demoAnswers', { answers: got }).catch(() => {});
     window.FlipTour.start(demoFor(got), { chapter: 0 });
-  }, 3000);
+  })();
 })();

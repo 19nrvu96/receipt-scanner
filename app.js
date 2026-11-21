@@ -17,7 +17,7 @@ let lastResult = null;
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const views = ['vSetup','vHome','vWork','vError','vReview','vQueue','vPages','vJobs','vTrip','vRepay','vSales','vSale','vSettings','vHelp','vReport','vPerks','vNumbers','vIntro','vStock','vBuyers','vBuyer','vMatch','vOutreach','vPurchases','vSell','vSellFind','vPay'];
-const APP_VERSION = 'v113';
+const APP_VERSION = 'v114';
 
 function show(v) {
   views.forEach(x => $(x).classList.toggle('hide', x !== v));
@@ -3897,6 +3897,7 @@ async function refreshConfig() {
   try {
     const d = await api('bootstrap', {});
     CFG.demo = !!d.demo; demoBadge(CFG.demo);          // Demo.gs: a demo Sheet (sample data, no email)
+    CFG.booted = true;                                   // whatsnew.js waits for this before choosing the demo or the normal tour
     CFG.purposes = d.purposes || [];
     CFG.cards = d.cards || [];
     CFG.giftCards = d.giftCards || [];                  // Books.gs: gift cards with money left, for the review screen
