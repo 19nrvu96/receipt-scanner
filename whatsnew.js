@@ -372,8 +372,36 @@
         steps: [{ title: 'All three together', go: go(() => show('vHome')),
           text: 'FlipCheck decides what to buy, ListMe lists it and handles buyers, and Receipts keeps the records. A sale in one updates the others.' }] },
     ] };
-  const tourNow = () => (typeof CFG !== 'undefined' && CFG.demo ? DEMO : cfg);
+  // Demo: five welcome questions first (Customising your experience, a tick), then the tour with their parts first.
+  const QS = [
+    { q: 'How do you keep receipts now?', opts: [['🗃️', 'Shoebox or paper'], ['📱', 'Photos on my phone'], ['📊', 'A spreadsheet'], ['🤷', "I don't really"]] },
+    { q: 'How do you sell?', opts: [['🏢', 'Limited company'], ['🧾', 'Sole trader'], ['🌙', 'Side hustle'], ['🌱', 'Not sure yet']] },
+    { q: 'What paperwork gets on top of you?', multi: true, opts: [['🧾', 'Losing receipts'], ['✉️', 'Online order emails'], ['💷', 'Knowing my real profit'], ['↩️', 'Missing return dates'], ['📦', 'Posting parcels on time']] },
+    { q: 'How many things do you buy a month?', opts: [['🌱', 'Under 20'], ['📦', '20 to 100'], ['🏭', 'Over 100'], ['🔀', 'It varies']] },
+    { q: 'Who does your accounts?', opts: [['🙋', 'Me'], ['👔', 'An accountant'], ['👪', 'Family'], ['❓', 'Nobody yet']] }];
+  const FIRSTQ = { 'Shoebox or paper': ['d-snap'], "I don't really": ['d-snap'], 'Losing receipts': ['d-snap'], 'Online order emails': ['d-emails'],
+    'Knowing my real profit': ['d-sales', 'd-numbers'], 'Missing return dates': ['d-return'], 'Posting parcels on time': ['d-post'],
+    'An accountant': ['d-numbers'], 'Me': ['d-numbers'], 'Nobody yet': ['d-numbers'] };
+  const LINESQ = { 'Shoebox or paper': 'Starting with snapping receipts', 'Losing receipts': 'Starting with snapping receipts', 'Online order emails': 'Putting order emails first',
+    'Knowing my real profit': 'Putting profit first', 'Missing return dates': 'Adding return reminders', 'Posting parcels on time': 'Adding the parcels wallet',
+    'Limited company': 'Setting up for a company', 'Sole trader': 'Setting up for a sole trader', 'An accountant': 'Getting the numbers ready for your accountant' };
+  const flatA = a => Object.keys(a || {}).reduce((o, k) => o.concat(a[k]), []);
+  const AKEY = 'demo:answers:receipts:1';
+  const answers = () => { try { return JSON.parse(localStorage.getItem(AKEY) || 'null'); } catch (e) { return null; } };
+  const demoFor = a => { const want = flatA(a).reduce((o, x) => o.concat(FIRSTQ[x] || []), []).filter((x, i, l) => l.indexOf(x) === i);
+    const picked = want.map(id => DEMO.chapters.find(c => c.id === id)).filter(Boolean);
+    return Object.assign({}, DEMO, { key: 'tour:receipts:demo2', theme: cfg.theme, chapters: picked.concat(DEMO.chapters.filter(c => picked.indexOf(c) < 0)) }); };
+  const tourNow = () => (typeof CFG !== 'undefined' && CFG.demo ? demoFor(answers()) : cfg);
   window.whatsNew = () => window.FlipTour.start(tourNow());
   document.addEventListener('click', e => { if (e.target.closest('[data-whatsnew]')) { e.preventDefault(); window.FlipTour.start(tourNow()); } });
-  setTimeout(() => window.FlipTour.auto(tourNow(), 0), 3000);   // after the app has asked the Sheet whether it's a demo
+  setTimeout(async () => {   // after the app has asked the Sheet whether it's a demo
+    const demo = typeof CFG !== 'undefined' && CFG.demo;
+    if (!demo || answers() || !cfg.when()) { window.FlipTour.auto(tourNow(), 0); return; }
+    const got = await window.FlipTour.interview({ theme: cfg.theme, title: 'Welcome to Receipts', ready: "Here's your tour", questions: QS,
+      intro: 'Five quick questions about your paperwork, so we can show you the parts that matter to you first. About 20 seconds.',
+      lines: a => flatA(a).map(x => LINESQ[x]).filter(Boolean).filter((x, i, l) => l.indexOf(x) === i).slice(0, 3) });
+    try { localStorage.setItem(AKEY, JSON.stringify(got || {})); } catch (e) {}
+    if (got && typeof api === 'function') api('demoAnswers', { answers: got }).catch(() => {});
+    window.FlipTour.start(demoFor(got), { chapter: 0 });
+  }, 3000);
 })();

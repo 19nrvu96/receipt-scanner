@@ -10,6 +10,33 @@
 (function () {
   if (window.FlipTour) return;
   const css = `
+.ft-ring.tap{animation:ftpulse 1.3s ease-in-out infinite}
+@keyframes ftpulse{0%,100%{border-width:3px}50%{border-width:6px}}
+.ft-tap{margin:8px 0;padding:10px 12px;border-radius:10px;background:var(--ft-accent);color:var(--ft-accent-ink);font-weight:600}
+.ft-tap small{display:block;font-weight:400;opacity:.85;margin-top:2px}
+.ft-iv{position:fixed;inset:0;z-index:10000;background:var(--ft-bg);color:var(--ft-fg);display:flex;flex-direction:column;
+  font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:calc(18px + env(safe-area-inset-top,0px)) 20px calc(18px + env(safe-area-inset-bottom,0px));transition:opacity .35s ease}
+.ft-iv .bar{height:4px;border-radius:4px;background:rgba(127,127,127,.2);overflow:hidden}.ft-iv .bar i{display:block;height:100%;background:var(--ft-accent);transition:width .35s ease}
+.ft-iv .ivtop{display:flex;justify-content:space-between;align-items:center;font-size:13px;opacity:.75;margin:10px 0 0}
+.ft-iv .ivtop button{background:none;border:0;color:inherit;font:inherit;padding:6px;cursor:pointer}
+.ft-iv .q{flex:1;display:flex;flex-direction:column;justify-content:center;max-width:520px;width:100%;margin:0 auto;animation:ftin .35s ease}
+@keyframes ftin{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.ft-iv h2{font-size:24px;line-height:1.25;margin:0 0 6px}.ft-iv .sub{opacity:.75;margin:0 0 18px;font-size:15px}
+.ft-iv .opts{display:grid;gap:10px}
+.ft-iv .opt{display:flex;align-items:center;gap:12px;text-align:left;font:inherit;font-size:17px;padding:15px 16px;border-radius:14px;border:1.5px solid var(--ft-line);background:transparent;color:inherit;cursor:pointer;transition:transform .12s ease,background .2s,border-color .2s}
+.ft-iv .opt:active{transform:scale(.98)}.ft-iv .opt .e{font-size:22px;width:28px;text-align:center}
+.ft-iv .opt.on{border-color:var(--ft-accent);background:color-mix(in srgb,var(--ft-accent) 14%,transparent)}
+.ft-iv .go{margin-top:16px;width:100%;display:block;text-align:center;font:inherit;font-weight:700;font-size:17px;padding:14px;border-radius:14px;border:0;background:var(--ft-accent);color:var(--ft-accent-ink);cursor:pointer}
+.ft-iv .go:disabled{opacity:.35}
+.ft-iv .done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:18px}
+.ft-iv .spin{width:64px;height:64px;border-radius:50%;border:5px solid rgba(127,127,127,.2);border-top-color:var(--ft-accent);animation:ftspin .8s linear infinite}
+@keyframes ftspin{to{transform:rotate(360deg)}}
+.ft-iv .line{min-height:22px;opacity:.75;font-size:15px;transition:opacity .3s}
+.ft-iv svg.tick{width:84px;height:84px;animation:ftpop .45s cubic-bezier(.2,1.6,.4,1) both}
+.ft-iv svg.tick circle{fill:none;stroke:var(--ft-accent);stroke-width:5;stroke-dasharray:252;stroke-dashoffset:252;animation:ftdraw .5s ease-out forwards}
+.ft-iv svg.tick path{fill:none;stroke:var(--ft-accent);stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:ftdraw .35s .45s ease-out forwards}
+@keyframes ftdraw{to{stroke-dashoffset:0}}@keyframes ftpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){.ft-iv *,.ft-ring.tap{animation-duration:.01s!important}}
 .ft-ring{position:fixed;z-index:9998;pointer-events:none;border:3px solid var(--ft-accent);border-radius:12px;box-shadow:0 0 0 4000px rgba(0,0,0,.55);transition:all .25s ease;display:none}
 .ft-dim{position:fixed;inset:0;z-index:9997;background:rgba(0,0,0,.55);pointer-events:none;display:none}
 .ft-card{position:fixed;left:50%;transform:translateX(-50%);z-index:9999;width:min(540px,calc(100vw - 20px));max-height:min(64vh,640px);overflow:auto;
@@ -95,6 +122,9 @@
   };
 
   let T = null;   // the running tour
+  let T_BASE = '#ffffff';   // solid colour under the card
+  const light = c => { const m = String(c || '').match(/\d+/g); if (/rgb/.test(c) && m && m.length >= 3) return +m[0] + +m[1] + +m[2] > 380; const h = String(c || '').replace('#', ''); return h.length >= 6 && parseInt(h.slice(0, 2), 16) + parseInt(h.slice(2, 4), 16) + parseInt(h.slice(4, 6), 16) > 380; };
+  const solidBase = th => (light(th.fg) ? '#12141f' : '#ffffff');   // light text means a dark app
 
   function flat(cfg) {   // every step in order, each chapter ending with its "across your apps" step
     const out = [];
@@ -127,7 +157,7 @@
     if (!T) return;
     // The page redrew under the tour (fresh data came in): find the same thing again
     if (T.el && !document.contains(T.el) && !T.menu) {
-      const t = T.steps[T.i] && T.steps[T.i].s.target; let n = null;
+      const t = T.steps[T.i] && (T.steps[T.i].s.target || T.steps[T.i].s.tap); let n = null;
       try { n = typeof t === 'function' ? t() : t ? document.querySelector(t) : null; } catch (e) {}
       if (n) T.el = n;
     }
@@ -135,13 +165,10 @@
     if (!el || !document.contains(el)) { ring.style.display = 'none'; dim.style.display = T.min ? 'none' : 'block'; card.className = 'ft-card ft-at-bottom' + (T.min ? ' min' : ''); return; }
     const r = el.getBoundingClientRect(), pad = 6;
     dim.style.display = 'none';
-    ring.style.display = T.min ? 'none' : 'block';
+    ring.style.display = T.min ? 'none' : 'block'; ring.classList.toggle('tap', !!(T.steps[T.i] && T.steps[T.i].s.tap && T.waiting));
     Object.assign(ring.style, { left: (r.left - pad) + 'px', top: (r.top - pad) + 'px', width: (r.width + pad * 2) + 'px', height: (r.height + pad * 2) + 'px' });
     // Put the card where it covers least of the target (top or bottom of the screen)
-    const ch = card.offsetHeight || 300, gap = 12;
-    const underBottom = Math.max(0, r.bottom - (innerHeight - ch - gap)), underTop = Math.max(0, ch + gap - r.top);
-    const top = underBottom > underTop || (underBottom === underTop && r.top + r.height / 2 > innerHeight * 0.55);
-    if (T.side !== (top ? 'top' : 'bottom')) T.side = top ? 'top' : 'bottom';
+    if (!T.side) T.side = 'bottom';   // show() scrolls the page so the target sits above the card
     card.className = 'ft-card ft-at-' + T.side + (T.min ? ' min' : '');
   }
 
@@ -149,7 +176,8 @@
     if (!T) return;
     T.i = Math.max(0, Math.min(T.steps.length - 1, idx));
     const st = T.steps[T.i], ch = T.cfg.chapters[st.ci], s = st.s;
-    T.el = null; T.menu = false; T.min = false; T.missing = false; T.side = null;
+    T.el = null; T.menu = false; T.min = false; T.missing = false; T.side = null; T.waiting = false;
+    clearInterval(T.untilTick);
     render(true);
     T.card.scrollTop = 0;
     try {
@@ -157,21 +185,38 @@
       else if (typeof s.go === 'string' && location.hash !== s.go) location.hash = s.go;
     } catch (e) {}
     if (T.steps[T.i] !== st) return;   // moved on meanwhile
-    const el = await findTarget(s.target, s.wait_ms);
+    // prep: put the example in place (paste the message, open the chat) so they only have to tap
+    if (s.prep) { try { await s.prep(); } catch (e) {} if (!T || T.steps[T.i] !== st) return; }
+    const el = await findTarget(s.tap || s.target, s.wait_ms);
     if (!T || T.steps[T.i] !== st) return;
-    T.el = el; T.missing = !!s.target && !el;
-    if (el) {
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      await sleep(400);
+    T.el = el; T.missing = !!(s.target || s.tap) && !el;
+    // until: they tap the real button; when what it does shows up, move on by itself
+    if (s.until) {
+      T.waiting = true;
+      T.untilTick = setInterval(() => {
+        if (!T || T.steps[T.i] !== st) return;
+        let ok = false; try { ok = !!s.until(); } catch (e) {}
+        if (ok) { clearInterval(T.untilTick); T.waiting = false; setTimeout(() => { if (T && T.steps[T.i] === st) show(T.i + 1); }, s.pause || 700); }
+      }, 300);
     }
+    // The card sits at the bottom; scroll the page so the thing to look at (or tap) is in the space above it.
+    T.side = 'bottom';
     render(false);
     T.card.scrollTop = 0;
-    // Still covered? Scroll the page so the target sits in the space the card leaves free
     if (el && T) {
-      await sleep(60);
-      const r = el.getBoundingClientRect(), c = T.card.getBoundingClientRect();
-      if (T.side === 'bottom' && r.bottom > c.top - 8) window.scrollBy({ top: Math.min(r.top - 70, r.bottom - c.top + 24), behavior: 'smooth' });
-      else if (T.side === 'top' && r.top < c.bottom + 8) window.scrollBy({ top: -(c.bottom - r.top + 24), behavior: 'smooth' });
+      await sleep(40);
+      const c = T.card.getBoundingClientRect();
+      // In a pop-up sheet (ListMe's buyer messages): lift the sheet above the card, then scroll inside it
+      const sh = el.closest('.sheet'), shc = sh && sh.firstElementChild;
+      if (shc) { sh.style.alignItems = 'start'; shc.style.maxHeight = Math.max(200, c.top - 14) + 'px'; shc.style.borderRadius = '0 0 16px 16px'; const sf = (getComputedStyle(document.documentElement).getPropertyValue('--surface') || '').trim(); shc.style.background = sf ? `linear-gradient(${sf}, ${sf}), ${T_BASE}` : T_BASE; await sleep(30); }
+      let sc = null;
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) { const o = getComputedStyle(p).overflowY; if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight + 2) { sc = p; break; } }
+      const r = el.getBoundingClientRect();
+      let top0, bot0;
+      if (sc) { const b = sc.getBoundingClientRect(); top0 = b.top + 8; bot0 = Math.min(b.bottom, c.top) - 8; }
+      else { const hd = document.querySelector('header'), hb = hd ? hd.getBoundingClientRect().bottom : 0; top0 = Math.min(160, Math.max(0, hb)) + 10; bot0 = c.top - 12; }
+      const want = r.height > bot0 - top0 ? r.top - top0 : (r.top + r.height / 2) - (top0 + bot0) / 2;
+      if (Math.abs(want) > 4) (sc || window).scrollBy({ top: want, behavior: 'smooth' });
     }
     // Mark the chapter done on its last step
     if (st.si === st.n - 1) { const d = store.get(T.cfg.key); d.done = Object.assign({}, d.done, { [ch.id]: 1 }); store.set(T.cfg.key, d); }
@@ -203,21 +248,22 @@
       ${loading && s.target ? '<p class="ft-miss">Opening it…</p>' : ''}
       ${s.text ? `<p>${s.text}</p>` : ''}
       ${T.missing ? `<p class="ft-miss">${s.missing || (s.mock ? 'Not on your screen right now, so here is what it looks like.' : 'Not on your screen right now.')}</p>` : ''}
+      ${s.tap && T.waiting && !T.missing ? `<div class="ft-tap">👆 ${s.tapText || 'Tap the highlighted button'}${s.tapNote ? `<small>${s.tapNote}</small>` : ''}</div>` : ''}
       ${s.todo && s.todo.length ? `<div class="ft-lab">What to do</div><ol class="ft-todo">${s.todo.map(x => `<li>${x}</li>`).join('')}</ol>` : ''}
       ${s.mock && (T.missing || !s.target || s.mockAlways) ? `<div class="ft-lab">${T.missing || !s.target ? 'What it looks like' : 'What you get'}</div>${s.mock}` : ''}
       ${effect}
       ${wait ? '<p class="ft-wait">Starts working once Receipts has today\'s update.</p>' : ''}
       <div class="ft-nav"><button class="ft-btn" data-ft="back" ${T.i === 0 ? 'disabled' : ''}>‹ Back</button>
         <span class="ft-dots" aria-hidden="true">${Array.from({ length: st.n }, (_, k) => `<i class="${k === st.si ? 'on' : ''}"></i>`).join('')}</span>
-        <button class="ft-btn pri" data-ft="${T.i === T.steps.length - 1 ? 'close' : 'next'}">${T.i === T.steps.length - 1 ? 'Done' : st.si === st.n - 1 ? 'Next feature ›' : 'Next ›'}</button></div>`;
+        <button class="ft-btn ${T.waiting ? '' : 'pri'}" data-ft="${T.i === T.steps.length - 1 ? 'close' : 'next'}">${T.i === T.steps.length - 1 ? 'Done' : T.waiting ? 'Skip ›' : st.si === st.n - 1 ? 'Next feature ›' : 'Next ›'}</button></div>`;
     place();
   }
 
   function close() {
     if (!T) return;
     const d = store.get(T.cfg.key); d.opened = 1; store.set(T.cfg.key, d);
-    clearInterval(T.tick); removeEventListener('keydown', T.key);
-    [T.ring, T.dim, T.card].forEach(x => x.remove());
+    clearInterval(T.tick); clearInterval(T.untilTick); removeEventListener('keydown', T.key);
+    [T.ring, T.dim, T.card, T.spacer].forEach(x => x && x.remove());
     T = null;
   }
 
@@ -228,9 +274,13 @@
     const dim = document.createElement('div'); dim.className = 'ft-dim';
     const card = document.createElement('div'); card.className = 'ft-card ft-at-bottom'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-label', cfg.name + ' guided tour');
     const th = cfg.theme || {};
+    // An opaque card even when the app's surface colour is see-through (ListMe's glass cards)
+    T_BASE = solidBase(th);
+    card.style.background = `linear-gradient(var(--ft-bg), var(--ft-bg)), ${T_BASE}`;
     [ring, dim, card].forEach(x => { x.style.setProperty('--ft-accent', th.accent || '#0a84ff'); x.style.setProperty('--ft-accent-ink', th.accentInk || '#fff'); x.style.setProperty('--ft-bg', th.bg || '#fff'); x.style.setProperty('--ft-fg', th.fg || '#111'); x.style.setProperty('--ft-line', th.line || 'rgba(127,127,127,.35)'); x.style.setProperty('--ft-strong', th.strong || 'inherit'); });
     document.body.append(dim, ring, card);
-    T = { cfg, steps: flat(cfg), i: 0, ring, dim, card, el: null, menu: true, min: false, ready: null };
+    const spacer = document.createElement('div'); spacer.className = 'ft-spacer'; spacer.style.height = '75vh'; document.body.append(spacer);
+    T = { cfg, steps: flat(cfg), i: 0, ring, dim, card, spacer, el: null, menu: true, min: false, ready: null };
     T.key = e => { if (!T) return; if (e.key === 'Escape') close(); else if (e.key === 'ArrowRight' && !T.menu) show(T.i + 1); else if (e.key === 'ArrowLeft' && !T.menu) show(T.i - 1); };
     addEventListener('keydown', T.key);
     T.tick = setInterval(place, 250);
@@ -254,5 +304,76 @@
     setTimeout(() => { if (!store.get(cfg.key).opened && (!cfg.when || cfg.when())) start(cfg); }, delay || 1500);
   }
 
-  window.FlipTour = { start, auto, mock, close: () => close() };
+  // Types an example into a box, a few letters at a time, so they see it go in (then the app's own input handlers run).
+  async function typeInto(el, text, ms) {
+    if (!el) return;
+    el.focus({ preventScroll: true }); el.value = '';
+    const n = Math.max(1, Math.ceil(text.length / 24)), wait = (ms || 700) / 24;
+    for (let i = 0; i < text.length; i += n) { el.value = text.slice(0, i + n); el.dispatchEvent(new Event('input', { bubbles: true })); await sleep(wait); }
+    el.value = text; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); el.blur();
+  }
+  async function waitFor(t, ms) {
+    const end = Date.now() + (ms || 6000);
+    while (Date.now() < end) { let el = null; try { el = typeof t === 'function' ? t() : document.querySelector(t); } catch (e) {} if (el) return el; await sleep(150); }
+    return null;
+  }
+
+  // The welcome questions before the tour: one question a screen, tap an answer (or several, then Next),
+  // then "Customising your experience" and a tick. Resolves with { question: answer } (null if they skip).
+  // cfg = { title, intro, questions: [{ q, sub?, multi?, opts: [[emoji, label], …] }], lines?: (answers) => [text], theme }
+  function interview(cfg) {
+    return new Promise(resolve => {
+      if (!document.getElementById('ft-css')) { const st = document.createElement('style'); st.id = 'ft-css'; st.textContent = css; document.head.appendChild(st); }
+      const th = cfg.theme || {}, box = document.createElement('div');
+      box.className = 'ft-iv'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', cfg.title || 'A few questions');
+      [['--ft-accent', th.accent || '#0a84ff'], ['--ft-accent-ink', th.accentInk || '#fff'], ['--ft-bg', th.bg || '#fff'], ['--ft-fg', th.fg || '#111'], ['--ft-line', th.line || 'rgba(127,127,127,.35)']].forEach(([k, v]) => box.style.setProperty(k, v));
+      box.style.background = `linear-gradient(var(--ft-bg), var(--ft-bg)), ${solidBase(th)}`;
+      document.body.appendChild(box);
+      const Q = cfg.questions, ans = {};
+      let i = -1;
+      const finish = async skipped => {
+        if (skipped) { box.style.opacity = '0'; setTimeout(() => box.remove(), 350); resolve(null); return; }
+        const lines = (cfg.lines ? cfg.lines(ans) : []).concat(['Picking the best examples for you', 'Nearly there']);
+        box.innerHTML = `<div class="done"><div class="spin" aria-hidden="true"></div><h2>Customising your experience</h2><div class="line" aria-live="polite">${esc(lines[0])}</div></div>`;
+        const ln = box.querySelector('.line');
+        for (let k = 1; k < Math.min(lines.length, 4); k++) { await sleep(850); ln.style.opacity = '0'; await sleep(250); ln.textContent = lines[k]; ln.style.opacity = '.75'; }
+        await sleep(700);
+        box.querySelector('.done').innerHTML = `<svg class="tick" viewBox="0 0 90 90" aria-hidden="true"><circle cx="45" cy="45" r="40"/><path d="M27 46 l12 12 l24 -26"/></svg><h2>All set</h2><div class="line">${esc(cfg.ready || 'Here’s your tour')}</div>`;
+        try { navigator.vibrate && navigator.vibrate(12); } catch (e) {}
+        await sleep(1500);
+        box.style.opacity = '0'; await sleep(350); box.remove(); resolve(ans);
+      };
+      const draw = () => {
+        if (i === -1) {
+          box.innerHTML = `<div class="q"><h2>${esc(cfg.title || 'Before we start')}</h2><p class="sub">${cfg.intro || ''}</p>
+            <button class="go" data-iv="start">Let’s go</button><div class="ivtop" style="justify-content:center"><button data-iv="skip">Skip, show me the app</button></div></div>`;
+          return;
+        }
+        const q = Q[i], cur = ans[q.q], sel = new Set(Array.isArray(cur) ? cur : cur ? [cur] : []);
+        box.innerHTML = `<div class="bar"><i style="width:${(i / Q.length) * 100}%"></i></div>
+          <div class="ivtop"><button data-iv="back" aria-label="Back">‹ Back</button><span>${i + 1} of ${Q.length}</span><button data-iv="skip">Skip</button></div>
+          <div class="q"><h2>${esc(q.q)}</h2><p class="sub">${esc(q.sub || (q.multi ? 'Pick all that fit.' : 'Pick one.'))}</p>
+          <div class="opts">${q.opts.map(([e, l]) => `<button class="opt ${sel.has(l) ? 'on' : ''}" data-opt="${esc(l)}" aria-pressed="${sel.has(l)}"><span class="e" aria-hidden="true">${e}</span><span>${esc(l)}</span></button>`).join('')}</div>
+          ${q.multi ? `<button class="go" data-iv="next" ${sel.size ? '' : 'disabled'}>${i === Q.length - 1 ? 'Done' : 'Next'}</button>` : ''}</div>`;
+        requestAnimationFrame(() => { const b = box.querySelector('.bar i'); if (b) b.style.width = `${((i + (sel.size ? 1 : 0)) / Q.length) * 100}%`; });
+      };
+      const next = () => { if (i >= Q.length - 1) { const b = box.querySelector('.bar i'); if (b) b.style.width = '100%'; finish(false); } else { i++; draw(); } };
+      box.addEventListener('click', e => {
+        const o = e.target.closest('[data-opt]'), a = e.target.closest('[data-iv]');
+        if (o) {
+          const q = Q[i], l = o.dataset.opt;
+          if (q.multi) { const s2 = new Set(ans[q.q] || []); s2.has(l) ? s2.delete(l) : s2.add(l); ans[q.q] = [...s2]; o.classList.toggle('on'); o.setAttribute('aria-pressed', String(s2.has(l))); const g = box.querySelector('.go'); if (g) g.disabled = !s2.size; }
+          else { ans[q.q] = l; box.querySelectorAll('.opt').forEach(x => x.classList.toggle('on', x === o)); setTimeout(next, 260); }
+          return;
+        }
+        if (!a) return;
+        if (a.dataset.iv === 'start' || a.dataset.iv === 'next') next();
+        else if (a.dataset.iv === 'back') { i = Math.max(-1, i - 1); draw(); }
+        else if (a.dataset.iv === 'skip') finish(true);
+      });
+      draw();
+    });
+  }
+
+  window.FlipTour = { start, auto, mock, interview, typeInto, waitFor, close: () => close(), get running() { return !!T; } };
 })();
